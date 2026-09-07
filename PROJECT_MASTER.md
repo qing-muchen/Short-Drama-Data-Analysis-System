@@ -9,10 +9,10 @@
 | 中文名称 | 短剧数据管理与分析系统 |
 | 英文名称 | Short Drama Data Management and Analysis System |
 | 软件版本 | V1.0 |
-| 文档版本 | V1.4 |
+| 文档版本 | V1.5 |
 | 当前 Phase | Phase 3 - In Progress |
-| 当前 Task | TASK-P3-04 |
-| 文档状态 | 3NF Review Baseline Established |
+| 当前 Task | TASK-P3-05 |
+| 文档状态 | MySQL Schema Baseline Established |
 | 下一阶段状态 | Waiting for Next Phase 3 Task |
 | 最近更新日期 | 2026-09-07 |
 
@@ -22,7 +22,7 @@
 - 【待后续设计】：需求方向明确，但具体技术设计尚未确定。
 - 【未来扩展】：不属于 V1.0 开发范围。
 
-本文档记录真实的软件工程设计与开发状态，不是课程设计报告正文，也不代表数据库概念设计、逻辑设计或 Schema 已获批准。
+本文档记录真实的软件工程设计与开发状态，不是课程设计报告正文。当前数据库概念模型、关系模型、逐表 3NF Review 与 MySQL Schema V1 已建立设计基线，但尚未生成 DDL、创建数据库或完成实现验证。
 
 ## 1. 项目定义
 
@@ -2374,20 +2374,20 @@ DRAFT 可以先具备基础关系资料，但不得伪造上线后的运营表�
 - 后续数据库必须体现实体完整性、参照完整性和用户定义完整性。
 - 合理使用 PRIMARY KEY、FOREIGN KEY、UNIQUE、NOT NULL、CHECK 和 INDEX。
 - 核心业务关系必须在 MySQL 中建立真实 FOREIGN KEY，不得只在 SQLAlchemy ORM 中声明 `relationship`。
-- 最终外键及 ON DELETE 策略【待后续设计】。
+- MySQL Schema Design V1 的外键落点与 ON DELETE 策略见第 11.19 节；所有核心引用均使用真实 FOREIGN KEY。
 
 ### 11.7 主键原则【当前设计原则】
 
 - 核心业务实体内部主键默认优先考虑 `BIGINT UNSIGNED AUTO_INCREMENT`。
 - `drama_code` 等业务编号应作为独立字段并设置 UNIQUE。
 - 无充分设计理由不得用复杂、可变业务编码作为数据库主键。
-- 最终字段与 MySQL 数据类型【待数据库逻辑设计阶段冻结】。
+- MySQL Schema Design V1 的内部主键统一使用 `BIGINT UNSIGNED AUTO_INCREMENT`；业务编号与业务组合唯一性通过独立 UNIQUE 约束表达。
 
 ### 11.8 时间原则【已冻结方向】
 
 - 后端业务时间统一使用 UTC。
 - 前端默认按 Asia/Shanghai（UTC+8）展示。
-- MySQL 使用 DATETIME 还是 TIMESTAMP，以及 ORM 时区处理策略【待数据库和后端专项 Task 冻结】。
+- MySQL Schema Design V1 的业务时间、审计时间和快照时间统一使用 `DATETIME(6)` 保存 UTC；数据库连接会话必须使用 UTC，前端负责转换为 Asia/Shanghai。
 
 ### 11.9 原始与派生指标分离【已冻结】
 
@@ -2397,7 +2397,153 @@ DRAFT 可以先具备基础关系资料，但不得伪造上线后的运营表�
 
 后续数据库应合理体现 E-R 模型、关系模式、主键、外键、完整性约束、索引、View、Transaction、SQL 初始化 / Migration 和数据字典。Trigger 与 Stored Procedure 为可选项，只有具备真实业务价值时才使用，不得为展示技术数量而强行引入。
 
-最终 E-R 模型、实体字段、关系模式、候选键、MySQL 数据类型、删除策略、外键 ON DELETE 策略、索引、View、Migration 和数据字典均【待后续设计】。本文档不包含具体 Schema 或建表 SQL。
+MySQL Schema Design V1 已在本 Task 冻结字段、键、约束、删除动作与逻辑索引需求；实际 DDL、数据库、View、Migration、ORM 和初始化数据仍未创建。
+
+### 11.11 MySQL Schema Design V1 定位与命名规范【物理设计基线】
+
+本节把 17 个逻辑关系模式转换为 18 个 MySQL 8.x 物理表。新增的 `drama_metric_snapshot_revisions` 用于把稳定观测槽与不可变修订历史分离，以关闭 P3-04 的 Snapshot 条件项。这里是可供后续 DDL Task 实现的 Schema 规格，不包含任何建表语句。
+
+- 物理表和列采用小写 `snake_case`；表名采用复数形式。
+- 默认字符集为 `utf8mb4`，默认排序规则为 `utf8mb4_0900_ai_ci`，以支持中文和大小写不敏感的 V1 名称检索。
+- 每张表使用单列内部主键 `BIGINT UNSIGNED AUTO_INCREMENT`。内部主键只承担稳定引用；`username`、`drama_code` 和关系组合等业务身份继续使用独立 UNIQUE。
+- 所有引用内部主键的 `..._id` 外键列统一为 `BIGINT UNSIGNED`，不得使用与目标主键不同的符号或宽度。
+- 角色、状态和业务类型使用 `VARCHAR` 加 CHECK 约束，不使用 MySQL ENUM，便于以后以版本化迁移扩展；取值仍必须受数据库约束，不能只由前端校验。
+- `created_at`、`updated_at`、业务发生时间和审计时间统一为 UTC `DATETIME(6)`。选择 DATETIME 而非 TIMESTAMP，避免会话隐式时区转换和较窄时间范围；应用及连接会话必须显式使用 UTC。
+- 计数使用 `BIGINT UNSIGNED`；排序值使用可空 `INT UNSIGNED` 且非空时必须大于 0；不存在或未知使用 NULL，不得伪造为 0。
+- 文本长度是 V1 物理边界，不改变业务语义；任何扩容必须通过后续 Migration，不得静默改动本基线。
+- 新建对象的默认状态为：User/Actor/Director/Company/Platform/Tag 与四类 M:N 关系为 `ACTIVE`，Drama 为 `DRAFT`，DramaPlatform 为 `PLANNED`，ImportJob 为 `PENDING_VALIDATION`；导入行数与 occurrence_count 分别默认 0 和 1。默认值不得绕过业务状态转换规则。
+
+### 11.12 核心实体表【MySQL Schema Design V1】
+
+| 表名 | 用途与字段规格 | 主键 / 业务唯一 | 外键 | 主要约束与索引需求 | 3NF |
+| --- | --- | --- | --- | --- | --- |
+| `users` | `user_id BIGINT UNSIGNED`；`username VARCHAR(64)`；`password_hash VARCHAR(255)`；`display_name VARCHAR(100)` 可空；`role_code VARCHAR(32)`；`status VARCHAR(16)`；`last_login_at DATETIME(6)` 可空；创建/更新时间 | PK `user_id`；UNIQUE `username` | 无 | username、password_hash、role_code、status、时间非空；角色限 `ADMINISTRATOR/USER`，状态限 `ACTIVE/INACTIVE`；索引 status。只保存密码 Hash | PASS |
+| `dramas` | `drama_id BIGINT UNSIGNED`；`drama_code VARCHAR(32)`；`drama_name VARCHAR(200)`；`synopsis TEXT` 可空；`episode_count SMALLINT UNSIGNED` 可空；`episode_duration_seconds INT UNSIGNED` 可空；`premiere_date DATE` 可空；`status VARCHAR(16)`；创建/更新时间 | PK `drama_id`；UNIQUE `drama_code`；名称不唯一 | 无 | 集数、时长非空时大于 0；状态限 `DRAFT/SERIALIZING/COMPLETED/INACTIVE`；索引 `(status, premiere_date)`、drama_name。不得保存平台/演员/标签列表或 Heat/Potential | PASS |
+
+`users.username` 作为稳定登录标识，V1.0 不允许用户或管理员直接改名；需要更换登录标识时应新建账号并停用旧账号。密码重置只替换 Hash，不返回或记录原密码。
+
+### 11.13 主数据表【MySQL Schema Design V1】
+
+| 表名 | 用途与字段规格 | 主键 / 业务唯一 | 外键 | 主要约束与索引需求 | 3NF |
+| --- | --- | --- | --- | --- | --- |
+| `actors` | `actor_id BIGINT UNSIGNED`；`actor_name VARCHAR(100)`；`profile_note TEXT` 可空；`status VARCHAR(16)`；创建/更新时间 | PK `actor_id`；姓名不唯一 | 无 | 名称、状态非空；状态限 `ACTIVE/INACTIVE`；索引 `(actor_name, status)` | PASS |
+| `directors` | `director_id BIGINT UNSIGNED`；`director_name VARCHAR(100)`；`profile_note TEXT` 可空；`status VARCHAR(16)`；创建/更新时间 | PK `director_id`；姓名不唯一 | 无 | 名称、状态非空；状态限 `ACTIVE/INACTIVE`；索引 `(director_name, status)` | PASS |
+| `companies` | `company_id BIGINT UNSIGNED`；`company_name VARCHAR(200)`；`description TEXT` 可空；`status VARCHAR(16)`；创建/更新时间 | PK `company_id`；公司名不设绝对唯一 | 无 | 名称、状态非空；状态限 `ACTIVE/INACTIVE`；索引 `(company_name, status)`，重名由内部 ID 区分 | PASS |
+| `platforms` | `platform_id BIGINT UNSIGNED`；`platform_name VARCHAR(100)`；`description TEXT` 可空；`status VARCHAR(16)`；创建/更新时间 | PK `platform_id`；UNIQUE `platform_name` | 无 | 名称、状态非空；状态限 `ACTIVE/INACTIVE`；索引 status | PASS |
+| `tags` | `tag_id BIGINT UNSIGNED`；`tag_name VARCHAR(100)`；`status VARCHAR(16)`；创建/更新时间 | PK `tag_id`；UNIQUE `tag_name` | 无 | 名称、状态非空；状态限 `ACTIVE/INACTIVE`；索引 status。停用后再次使用同名标签必须重新启用原记录 | PASS |
+
+Actor、Director 和 Company 的名称只能作为查重线索，不能替代内部身份。Platform 和 Tag 在当前大小写不敏感排序规则下全生命周期名称唯一；应用写入前还必须去除首尾空白，防止视觉重复。所有主数据都以停用代替常规物理删除，不保存作品数量、平均 Heat 或其他分析结果。
+
+### 11.14 关系与发行表【MySQL Schema Design V1】
+
+| 表名 | 用途与字段规格 | 主键 / 业务唯一 | 外键 | 主要约束与索引需求 | 3NF |
+| --- | --- | --- | --- | --- | --- |
+| `drama_actors` | `drama_actor_id BIGINT UNSIGNED`；`drama_id`；`actor_id`；`role_name VARCHAR(100)` 可空；`role_type VARCHAR(32)`；`billing_order SMALLINT UNSIGNED` 可空；`relation_status VARCHAR(16)`；创建/更新时间 | PK `drama_actor_id`；UNIQUE `(drama_id, actor_id)`；非空排位在同一 Drama 内唯一 | FK → dramas、actors | role_type 限 `LEAD/SUPPORTING/GUEST/OTHER`；排位非空时大于 0；关系状态限 `ACTIVE/INACTIVE`；索引 `(actor_id, relation_status)` | PASS |
+| `drama_directors` | `drama_director_id BIGINT UNSIGNED`；`drama_id`；`director_id`；`relation_status VARCHAR(16)`；创建/更新时间 | PK `drama_director_id`；UNIQUE `(drama_id, director_id)` | FK → dramas、directors | 关系状态限 `ACTIVE/INACTIVE`；索引 `(director_id, relation_status)` | PASS |
+| `drama_companies` | `drama_company_id BIGINT UNSIGNED`；`drama_id`；`company_id`；`relation_type VARCHAR(32)`；`relation_status VARCHAR(16)`；创建/更新时间 | PK `drama_company_id`；UNIQUE `(drama_id, company_id, relation_type)` | FK → dramas、companies | 类型限 `PRODUCER/PRODUCTION/DISTRIBUTOR/CO_PRODUCTION/OTHER`；状态限 `ACTIVE/INACTIVE`；索引 `(company_id, relation_type, relation_status)` | PASS |
+| `drama_tags` | `drama_tag_id BIGINT UNSIGNED`；`drama_id`；`tag_id`；`relation_status VARCHAR(16)`；创建/更新时间 | PK `drama_tag_id`；UNIQUE `(drama_id, tag_id)` | FK → dramas、tags | 状态限 `ACTIVE/INACTIVE`；索引 `(tag_id, relation_status)` | PASS |
+| `drama_platforms` | `drama_platform_id BIGINT UNSIGNED`；`drama_id`；`platform_id`；`platform_drama_code VARCHAR(100)` 可空；`online_at DATETIME(6)` 可空；`page_url VARCHAR(2048)` 可空；`status VARCHAR(16)`；创建/更新时间 | PK `drama_platform_id`；UNIQUE `(drama_id, platform_id)`；UNIQUE `(platform_id, platform_drama_code)`，允许编号为空 | FK → dramas、platforms | 状态限 `PLANNED/ONLINE/OFFLINE`；ONLINE/OFFLINE 必须有 online_at；索引 `(platform_id, status, online_at)`、`(drama_id, status)` | PASS |
+
+关系表保留稳定代理主键是为了审计目标能够使用真实外键；业务组合 UNIQUE 仍负责防止重复。解除关系采用 `relation_status=INACTIVE`，重新建立时恢复原关系记录，不新建重复业务组合。`drama_platforms` 表达 V1.0 唯一发行关系，不复制平台资料，也不支持同平台多发行周期。
+
+### 11.15 Snapshot 观测槽与修订历史【最终方案】
+
+P3-04 的冲突采用“稳定观测槽 + 不可变修订记录”两表方案解决。观测槽唯一标识一个 `(DramaPlatform, SnapshotTime)` 业务时点；修订表保存该时点的 INITIAL、CORRECTION 和 VOID 历史。该方案无需让多条历史行争夺同一个有效唯一键，也不会覆盖原始观测。
+
+| 表名 | 用途与字段规格 | 主键 / 业务唯一 | 外键 | 主要约束与索引需求 | 3NF |
+| --- | --- | --- | --- | --- | --- |
+| `drama_metric_snapshots` | 稳定观测槽：`snapshot_id BIGINT UNSIGNED`；`drama_platform_id`；`snapshot_time DATETIME(6)`；`current_revision_id BIGINT UNSIGNED` 可空；`source_import_job_id BIGINT UNSIGNED` 可空；创建/更新时间 | PK `snapshot_id`；UNIQUE `(drama_platform_id, snapshot_time)`；current_revision_id 非空时唯一 | FK → drama_platforms；可选 FK → import_jobs；复合 FK 保证 current_revision_id 属于同一 snapshot | current_revision_id 非空表示存在当前有效修订，NULL 表示当前业务状态为 VOID；索引 `(drama_platform_id, snapshot_time)`、source_import_job_id | PASS |
+| `drama_metric_snapshot_revisions` | 不可变修订：`snapshot_revision_id BIGINT UNSIGNED`；`snapshot_id`；`version_no INT UNSIGNED`；`previous_revision_id BIGINT UNSIGNED` 可空；`revision_action VARCHAR(16)`；五项累计计数可空；`ranking INT UNSIGNED` 可空；`change_reason TEXT` 可空；`changed_by_user_id`；`changed_at DATETIME(6)` | PK `snapshot_revision_id`；UNIQUE `(snapshot_id, version_no)`；UNIQUE previous_revision_id 防止修订分叉；为复合回指提供 `(snapshot_id, snapshot_revision_id)` 唯一组合 | FK → drama_metric_snapshots、users；previous_revision_id 自引用 | version_no ≥ 1；动作限 `INITIAL/CORRECTION/VOID`；INITIAL/CORRECTION 必须有 play_count，CORRECTION/VOID 必须有原因；计数不得为负，ranking 非空时 >0；索引 `(snapshot_id, changed_at)`、`(changed_by_user_id, changed_at)` | PASS |
+
+修订事务语义：初次写入在同一事务中创建观测槽、INITIAL 修订并更新当前指针；普通修正追加 CORRECTION 并移动指针；作废追加 VOID 事件并将当前指针置空；后续恢复必须追加新 CORRECTION 后再设置指针。旧修订永不覆盖，分析只读取槽指向的当前有效修订。数据库约束负责版本唯一、同槽指针和基本值域；动作转换、版本连续性以及 current_revision 指向非 VOID 修订由 Service 在事务中校验。任何外键删除都不得级联删除槽或修订。
+
+### 11.16 导入治理表【MySQL Schema Design V1】
+
+| 表名 | 用途与字段规格 | 主键 / 业务唯一 | 外键 | 主要约束与索引需求 | 3NF |
+| --- | --- | --- | --- | --- | --- |
+| `import_jobs` | `import_job_id BIGINT UNSIGNED`；`initiated_by_user_id`；`import_type VARCHAR(32)`；`status VARCHAR(32)`；`original_filename VARCHAR(255)`；`file_format VARCHAR(16)`；`file_hash CHAR(64)` 可空；total/valid/error/imported 行数均为 `BIGINT UNSIGNED`；`started_at`、`finished_at` 可空；创建/更新时间 | PK `import_job_id`；文件 Hash 不唯一，允许修正后重试 | FK → users | 类型限 `MASTER_DATA/SNAPSHOT`；格式限 `CSV/XLSX`；状态限 `PENDING_VALIDATION/VALIDATION_FAILED/READY/IMPORTING/COMPLETED/COMPLETED_WITH_ERRORS/FAILED`；行数非负且彼此满足任务结果语义；索引 `(status, created_at)`、`(initiated_by_user_id, created_at)`、file_hash | PASS |
+| `import_errors` | `import_error_id BIGINT UNSIGNED`；`import_job_id`；`row_number BIGINT UNSIGNED` 可空；`column_name VARCHAR(128)` 可空；`error_code VARCHAR(64)`；`error_message VARCHAR(1000)`；`raw_value TEXT` 可空；`created_at DATETIME(6)` | PK `import_error_id`；错误允许同位置多规则，不设业务唯一 | FK → import_jobs | error_code/message 非空；row_number 非空时 >0；索引 `(import_job_id, row_number)`、`(import_job_id, error_code)` | PASS |
+
+ImportJob 生命周期与 P1-02 的两阶段导入一致：校验阶段不写正式业务表；用户确认后的有效集合在单事务内全部提交或回滚。`COMPLETED_WITH_ERRORS` 只表示文件错误行被排除后，有效集合完整提交，不表示正式事务部分提交。
+
+### 11.17 DataQualityIssue 真实目标方案【最终方案】
+
+V1.0 选择“固定目标集合的多个可空真实外键”，不采用 `target_type + target_id` 逻辑外键。质量问题允许精确指向一个 Snapshot Revision、一个 DramaPlatform 或一个 Drama；三者必须且只能有一个非空。目标类型可由非空外键直接确定，不另存冗余 target_type。
+
+| 表名 | 用途与字段规格 | 主键 / 业务唯一 | 外键 | 主要约束与索引需求 | 3NF |
+| --- | --- | --- | --- | --- | --- |
+| `data_quality_issues` | `data_quality_issue_id BIGINT UNSIGNED`；三个可空目标：`target_snapshot_revision_id`、`target_drama_platform_id`、`target_drama_id`；`issue_type VARCHAR(64)`；`severity VARCHAR(16)`；`status VARCHAR(16)`；`source VARCHAR(32)`；`rule_code VARCHAR(64)`；`evidence_summary TEXT`；`first_detected_at`、`last_detected_at`；`occurrence_count INT UNSIGNED`；`handled_by_user_id`、`handled_at`、`handling_note` 可空；创建/更新时间 | PK `data_quality_issue_id`；同一活动问题的去重由事务与目标索引协同控制，不把关闭后重发误作永久唯一 | FK → snapshot_revisions / drama_platforms / dramas 三选一；可选 FK → users 作为处理人 | CHECK 保证恰好一个目标；issue_type、severity、status、source 使用既有 V1 字典；occurrence_count ≥1；处理完成时处理人、时间和说明应一致；索引 `(status, severity, last_detected_at)` 及每个目标与 `(issue_type, status)` 的组合 | PASS |
+
+多个可空外键在本表中表达互斥关系角色，均直接依赖 Issue 主键，不复制目标资料，不产生传递依赖，因此 3NF PASS。MySQL 8.x 不提供通用跨多个目标的条件唯一约束；活动问题去重由 Service 在事务中按目标、rule_code 与活动状态检查，并由相应复合索引支持。未来增加其他治理对象必须通过版本化 Schema Migration 增加真实引用，不能退回无外键的多态 ID。
+
+### 11.18 OperationLog 真实目标方案【最终方案】
+
+V1.0 同样选择“固定目标集合的多个可空真实外键”。一条日志必须关联操作用户和恰好一个主要目标；批量操作以 ImportJob 等聚合业务对象为主要目标，避免一条日志绑定多个目标。日志不保存明文密码、Hash、Token、Secret 或完整目标对象快照。
+
+| 表名 | 用途与字段规格 | 主键 / 业务唯一 | 外键 | 主要约束与索引需求 | 3NF |
+| --- | --- | --- | --- | --- | --- |
+| `operation_logs` | `operation_log_id BIGINT UNSIGNED`；`actor_user_id`；对 users、dramas、actors、directors、companies、platforms、tags、四类 M:N 关系、drama_platforms、snapshot 槽、snapshot revision、import_jobs、data_quality_issues 的可空目标 ID；`operation_type VARCHAR(64)`；`result_status VARCHAR(16)`；`summary VARCHAR(1000)`；`request_id VARCHAR(64)` 可空；`occurred_at DATETIME(6)` | PK `operation_log_id`；审计事件不设业务唯一 | FK → users 作为操作者；全部目标列分别建立对应真实 FK | CHECK 保证恰好一个主要目标；结果限 `SUCCESS/FAILURE`；索引 `(actor_user_id, occurred_at)`、`(operation_type, occurred_at)` 以及各目标 ID 与 occurred_at；摘要不得包含认证秘密 | PASS |
+
+目标列明确为：`target_user_id`、`target_drama_id`、`target_actor_id`、`target_director_id`、`target_company_id`、`target_platform_id`、`target_tag_id`、`target_drama_actor_id`、`target_drama_director_id`、`target_drama_company_id`、`target_drama_tag_id`、`target_drama_platform_id`、`target_snapshot_id`、`target_snapshot_revision_id`、`target_import_job_id`、`target_data_quality_issue_id`，全部为可空 `BIGINT UNSIGNED`，但每条日志恰有一个非空。
+
+该固定集合覆盖 V1.0 已冻结的重要操作目标。多个互斥目标列均直接描述审计事件，不复制目标属性，3NF PASS。未来新增可审计对象应显式迁移；不得用失去参照完整性的通用对象 ID。完整 before/after JSON 仍不进入 V1 基线，必要变更只保存可理解且脱敏的摘要。
+
+### 11.19 外键与删除策略【已冻结】
+
+所有外键默认采用阻止父记录物理删除的策略（RESTRICT / NO ACTION 语义），不使用 CASCADE。具体约束名称可在 DDL Task 统一，但不得改变下表业务结果。
+
+| 对象 | 外键删除行为 | 正常业务动作与历史结果 |
+| --- | --- | --- |
+| User、Drama、Actor、Director、Company、Platform、Tag | 被引用时禁止物理删除 | 使用 ACTIVE/INACTIVE 或 Drama 生命周期状态；历史关系和审计保留 |
+| DramaActor、DramaDirector、DramaCompany、DramaTag | 端点删除被阻止，关系本身不常规物理删除 | 使用 relation_status 解除/恢复；审计目标持续有效 |
+| DramaPlatform | Drama/Platform 删除被阻止；自身有 Snapshot 时不可删除 | 使用 PLANNED/ONLINE/OFFLINE；历史发行与快照保留 |
+| Snapshot 槽与 Revision | 任何上游或修订引用均不级联删除 | 使用追加修订与 VOID；原始历史永久保留 |
+| ImportJob、ImportError | User/Job 删除被阻止 | 任务与错误作为治理历史保留；不提供常规删除 |
+| DataQualityIssue | 目标或处理用户删除被阻止 | 使用 RESOLVED/IGNORED 关闭，处理历史保留 |
+| OperationLog | 操作者和目标删除被阻止 | 审计日志只追加、不可由普通业务功能修改或删除 |
+
+停用对象能否用于新关系或新快照仍由已冻结业务规则和 Service 校验；外键只保证引用存在，不能代替状态校验。
+
+### 11.20 索引规划【逻辑需求基线】
+
+1. PRIMARY KEY 与 UNIQUE 自动形成的索引用于内部身份、username、drama_code、Platform/Tag 名称和所有业务组合去重。
+2. 所有外键列必须具有可用索引；复合关系 UNIQUE 已覆盖首列时，仍为反向查询端建立以 Actor/Director/Company/Tag/Platform 开头的索引。
+3. 列表检索使用状态、名称和业务时间组合：Drama `(status, premiere_date)`，主数据 `(name, status)`，DramaPlatform `(platform_id, status, online_at)`。
+4. Snapshot 观测槽使用 `(drama_platform_id, snapshot_time)` 唯一索引支持 as-of 和时间范围；Revision 使用 `(snapshot_id, version_no)`、`(snapshot_id, changed_at)` 支持版本与审计。
+5. ImportJob 使用 `(status, created_at)`、`(initiated_by_user_id, created_at)`；ImportError 使用 `(import_job_id, row_number/error_code)`。
+6. DataQualityIssue 使用 `(status, severity, last_detected_at)` 和各目标 ID + issue_type + status；OperationLog 使用用户/操作类型/目标 + occurred_at。
+7. 索引只服务已冻结查询、约束和审计需求。后续必须用约 10 万快照的真实执行计划验证，禁止为猜测场景建立大量重复索引。
+
+### 11.21 CHECK 与跨行规则边界【已冻结】
+
+- 数据库 CHECK 负责单行可验证的状态字典、正值、互斥目标、必填组合和计数边界。
+- UNIQUE 与 FOREIGN KEY 负责业务组合去重及真实参照完整性。
+- 状态转换、停用对象不可新关联、Snapshot 修订连续性、累计值下降告警、ImportJob 复杂计数一致性和质量问题活动去重涉及历史或多行语义，由 Service 使用事务校验；不得把它们错误描述为前端约束。
+- 后续 DDL/Migration 必须验证 MySQL 8.x 实际执行 CHECK，不得只写文档而忽略数据库能力。
+
+### 11.22 View 规划【仅规划，未创建】
+
+后续可评估三个只读 View：当前有效 Snapshot（观测槽到 current revision）、当前活动 DataQualityIssue、便于基础查询的 DramaPlatform 展开视图。任意 analysis_as_of 的跨平台 Drama Overall、Growth、Heat 和 Potential 仍应由参数化查询或 Analytics Service 计算，不用静态 View 固化错误时间口径。本 Task 未创建任何 View。
+
+### 11.23 逐表 3NF 最终复核【MySQL Schema Design V1】
+
+| 物理表组 | 结果 | 结论依据 |
+| --- | --- | --- |
+| users、dramas、五类主数据 | PASS | 单一稳定身份决定本对象资料；角色为固定值域，不保存独立角色资料或统计结果 |
+| 五类关系与 drama_platforms | PASS | 代理主键负责引用，业务组合 UNIQUE；关系信息完全依赖对应业务组合 |
+| drama_metric_snapshots | PASS | 只保存观测槽身份、发行上下文、时点、当前指针和可选导入来源，不保存运营值或派生指标 |
+| drama_metric_snapshot_revisions | PASS | 每个版本的原始事实与修订语义依赖 revision 身份；不复制 Drama/Platform 资料或分析结果 |
+| import_jobs、import_errors | PASS | 任务概览与错误明细分离，Error 通过真实 FK 归属 Job |
+| data_quality_issues | PASS | 一个互斥真实目标与治理语义直接依赖 Issue，不保存目标资料或冗余 target_type |
+| operation_logs | PASS | 操作者、互斥主要目标与事件语义直接依赖 Log，不复制用户/目标资料 |
+
+MySQL Schema Design V1 共 18 张物理表，全部达到 1NF、2NF 和 3NF 的最终设计目标。P3-04 的三个 CONDITIONAL 已由观测槽/修订拆分和两组固定真实目标外键关闭。该 PASS 是设计复核结果，不代表 DDL、数据库或约束测试已经完成；实现后仍须执行数据库级 3NF、FK、UNIQUE、CHECK、Transaction 和执行计划验证。
+
+### 11.24 MySQL Schema Design V1 实施边界
+
+- 已冻结：物理表边界、字段语义与类型、内部主键、业务唯一、真实外键落点、CHECK 方向、删除语义和逻辑索引需求。
+- 未执行：DDL、数据库/表创建、初始化数据、View、Trigger、Stored Procedure、Migration、ORM、API、前后端或测试代码。
+- DDL Task 可统一约束/索引命名、默认时间写入方式和迁移顺序，但不得更改业务键、Snapshot 方案、目标引用方案或删除结果；如发现 MySQL 8.x 实现冲突，必须登记并由项目负责人批准变更。
 
 ## 12. 系统架构
 
@@ -2769,12 +2915,13 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 | TASK-P3-02 | E-R 模型设计 V0.1 | Completed |
 | TASK-P3-03 | 关系模式转换与规范化分析 V0.1 | Completed |
 | TASK-P3-04 | 逐表 3NF Review V0.1 | Completed |
+| TASK-P3-05 | MySQL Schema 设计 V0.1 | Completed |
 
 - 当前 Phase：Phase 3 In Progress。
-- 文档版本：V1.4。
-- 文档状态：3NF Review Baseline Established。
+- 文档版本：V1.5。
+- 文档状态：MySQL Schema Baseline Established。
 - 项目状态：Waiting for Next Phase 3 Task。
-- 最终 E-R 模型尚未设计、绘制或冻结；数据库概念结构设计、逻辑结构设计和 DB Schema 均未批准或冻结。
+- MySQL Schema Design V1 已冻结设计基线；尚未生成 SQL/DDL、创建数据库或表、实现 View/Migration/ORM，也未执行数据库约束和性能测试。
 
 ## 23. 设计决策记录
 
@@ -3000,6 +3147,21 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 7. **Decision：DataQualityIssue 与 OperationLog 标记 CONDITIONAL。Reason：**通用目标引用方案尚未确定，必须先保证真实参照完整性且不复制目标资料。
 8. **Decision：PASS* 仅表示逻辑依赖通过。Reason：**无自然候选键的关系仍需后续稳定主键实现确认，PASS* 不代表允许缺少主键。
 
+### ADR-026：MySQL Schema Design V1【物理设计基线】
+
+1. **Decision：全部物理表使用 `BIGINT UNSIGNED AUTO_INCREMENT` 内部主键，并保留独立业务 UNIQUE。Reason：**稳定引用与可读业务身份职责不同，代理键不能取代业务去重。
+2. **Decision：统一使用 `utf8mb4` 与 `utf8mb4_0900_ai_ci`。Reason：**满足中文及 Unicode 数据，并为 V1 名称去重提供一致比较语义。
+3. **Decision：UTC 时间使用 `DATETIME(6)`。Reason：**避免 TIMESTAMP 会话隐式转换和较窄范围，同时保留微秒级审计顺序；应用连接统一 UTC。
+4. **Decision：角色、状态和业务类型采用 VARCHAR + CHECK。Reason：**数据库仍可校验值域，未来扩展又无需依赖 ENUM 的隐式修改语义。
+5. **Decision：Snapshot 拆分稳定观测槽与不可变修订表。Reason：**观测槽唯一 `(DramaPlatform, SnapshotTime)`，修订表同时保留 INITIAL/CORRECTION/VOID 历史和单一当前有效指针，关闭有效唯一与历史保留冲突。
+6. **Decision：DataQualityIssue 使用三个互斥可空真实外键。Reason：**V1 的 Revision、DramaPlatform、Drama 质量目标范围明确；该方案保持参照完整性且不需要冗余 target_type。
+7. **Decision：OperationLog 使用固定 V1 目标集合的互斥真实外键。Reason：**宽而稀疏的结构换取可验证的参照完整性，避免无法建立 FOREIGN KEY 的通用 target_type + target_id。
+8. **Decision：所有外键删除默认 RESTRICT / NO ACTION，不使用 CASCADE。Reason：**主数据停用、关系解除、Snapshot 修订和治理审计都要求历史引用长期保留。
+9. **Decision：关系表同时保留代理主键和业务组合 UNIQUE。Reason：**代理键支持审计引用，复合唯一性继续表达 DramaActor、DramaCompany 等不可重复业务事实。
+10. **Decision：派生指标不进入 Snapshot 修订表。Reason：**Heat、Potential、Growth、互动率和 Insight 依赖 AnalysisContext 与模型版本，存入原始事实会破坏一致性和 3NF。
+11. **Decision：逻辑索引按唯一性、外键、as-of、列表和审计查询规划。Reason：**覆盖当前 10 万级数据需求，同时将具体执行计划验证留给实现测试，避免过度索引。
+12. **Decision：P3-04 三个 CONDITIONAL 全部关闭并复核为 3NF PASS。Reason：**Snapshot 已拆分版本职责，Quality/Audit 已选择固定真实目标引用，三者均不复制目标资料或形成传递依赖。
+
 ## 24. Bug 与技术债务
 
 - 当前无已确认的软件 Bug。
@@ -3007,7 +3169,7 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - README 技术栈说明过时的一致性问题已由 TASK-P0-03 修复。
 - README 阶段状态过时事项已由 TASK-P1-03 同步解决。
 - README 的 Phase 1 Completed 状态已由 TASK-P2-06 同步为 Phase 2 Completed。
-- 【Phase 3/4 必须解决的 Schema 设计问题】Snapshot 有效唯一性与保留 VOID 修订历史之间的约束冲突，详见 18.6 节；当前不是软件 Bug，且尚未冻结解决方案。
+- Snapshot 有效唯一性与保留 VOID 修订历史之间的 Schema 问题已由 TASK-P3-05 的“观测槽 + 不可变修订记录”方案关闭；实现与事务验证仍待后续 Task。
 - 所有标记为【待后续设计】的事项属于计划内设计工作，不得误报为已实现功能或当前 Bug。
 
 ## 25. 最终报告 / 软著素材索引
@@ -3035,15 +3197,15 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 | Phase 2 Analytics Design Baseline V1.0 Review | PASS，已冻结 |
 | Entity Catalog V1 与概念实体分类 | 已建立 V0.1 基线，17 个概念实体 |
 | ER Relationship Catalog V1 | 已建立 V0.1 基线，基数与参与约束已明确 |
-| Relational Model Catalog V1 | 已建立 V0.1 基线，17 个逻辑关系模式待逐项 3NF Review |
-| Table-level 3NF Review Catalog V1 | 已完成；14 个 PASS/PASS*，3 个 CONDITIONAL |
+| Relational Model Catalog V1 | 已建立 V0.1 基线，17 个逻辑关系模式已完成逐项 3NF Review |
+| Table-level 3NF Review Catalog V1 | 已完成；P3-04 的 3 个 CONDITIONAL 已在 P3-05 关闭 |
 | E-R 图 | 待完成 |
-| 最终数据库 Schema | 待完成 |
-| 数据字典 | 待完成 |
-| 3NF Review | 待完成 |
-| 主键 / 外键 / 完整性设计 | 待完成 |
-| 索引 | 待完成 |
-| View | 待完成 |
+| MySQL Schema Design V1 | 已建立 V0.1 物理设计基线，18 张物理表 |
+| 数据字典 | 已纳入 MySQL Schema Design V1 字段规格；正式实现字典待 DDL/Migration Task |
+| 3NF Review | 设计级 PASS；实现后数据库级验证待完成 |
+| 主键 / 外键 / 完整性设计 | 已建立 V1 基线，实际约束待实现验证 |
+| 索引 | 已完成逻辑规划，实际索引与执行计划验证待完成 |
+| View | 已完成候选规划，尚未创建 |
 | Transaction 设计与验证 | 待完成 |
 | SQL / Migration | 待完成 |
 | Git Commit | 持续保留 |
@@ -3231,3 +3393,14 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - GitHub remote：Not Configured。
 - 当前状态：Completed；Phase 3 In Progress；Waiting for Next Phase 3 Task。
 - Commit：`docs: complete 3nf review baseline`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
+
+### TASK-P3-05
+
+- 日期：2026-09-07。
+- 任务：MySQL Schema 设计 V0.1。
+- 完成内容：建立 MySQL Schema Design V1；冻结 18 张物理表的字段语义与 MySQL 类型、统一内部主键、业务 UNIQUE、真实外键、CHECK、RESTRICT/NO ACTION 删除策略和逻辑索引需求；采用“观测槽 + 不可变修订记录”解决 Snapshot 有效唯一与 VOID/修订历史冲突；为 DataQualityIssue 和 OperationLog 选择固定 V1 目标集合的互斥真实外键；复核全部物理表达到 3NF PASS；记录十二项设计决策。
+- 验证内容：完成 11 项 Schema 设计自检，确认覆盖原 17 个实体职责、冻结主外键、关闭 Snapshot/Quality/Audit 三项遗留、保留真实外键与至少 3NF；仅执行文档和 Git 检查，未执行数据库测试。
+- 未开发内容：未编写 SQL/DDL 或 CREATE TABLE，未创建数据库、Schema、表、View、Migration、ORM 或初始化数据，未开发 API、Vue、FastAPI 或任何业务代码，未执行下一 Task。
+- GitHub remote：Not Configured。
+- 当前状态：Completed；Phase 3 In Progress；Waiting for Next Phase 3 Task。
+- Commit：`docs: establish mysql schema baseline`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
