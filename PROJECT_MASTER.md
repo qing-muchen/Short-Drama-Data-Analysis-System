@@ -9,10 +9,10 @@
 | 中文名称 | 短剧数据管理与分析系统 |
 | 英文名称 | Short Drama Data Management and Analysis System |
 | 软件版本 | V1.0 |
-| 文档版本 | V2.4 |
+| 文档版本 | V2.5 |
 | 当前 Phase | Phase 4 - In Progress |
-| 当前 Task | TASK-P4-03 |
-| 文档状态 | Repository Layer Baseline Established |
+| 当前 Task | TASK-P4-04 |
+| 文档状态 | Service Layer Baseline Established |
 | 下一阶段状态 | Waiting for Next Phase 4 Task |
 | 最近更新日期 | 2026-09-07 |
 
@@ -22,7 +22,7 @@
 - 【待后续设计】：需求方向明确，但具体技术设计尚未确定。
 - 【未来扩展】：不属于 V1.0 开发范围。
 
-本文档记录真实的软件工程设计与开发状态，不是课程设计报告正文。Phase 3 Database Design Baseline V1.0 与 TASK-P4-02 ORM Mapping Baseline 保持冻结；TASK-P4-03 已建立外部 Session 注入、无事务所有权的 Repository Layer Baseline V0.1，提供通用数据访问、基础过滤和服务端分页，但未创建 Service、API 或业务计算。
+本文档记录真实的软件工程设计与开发状态，不是课程设计报告正文。数据库、ORM 与 Repository 基线保持冻结；TASK-P4-04 已建立 Service Layer Baseline V0.1，包括依赖注入、事务模板、安全异常边界和业务模块职责骨架，但未实现具体业务流程、API、Router 或分析算法。
 
 ## 1. 项目定义
 
@@ -2931,6 +2931,98 @@ Router 不得直接执行 SQL、持有事务或实现跨行业务规则。Servic
 
 本 Task 未修改 ORM Model、Schema、DDL 或 Migration；未创建 Service、Router、API、业务计算或真实数据库测试数据。
 
+### 12.5 Service Layer Baseline V0.1【TASK-P4-04】
+
+#### 12.5.1 目录与职责边界
+
+Service 继续使用 TASK-P4-01 已冻结的顶层 `backend/services/`。当前结构：
+
+```text
+services/
+├── base.py
+├── exceptions.py
+├── user_service.py
+├── drama_service.py
+├── master_data_service.py
+├── platform_service.py
+├── snapshot_service.py
+├── import_service.py
+├── quality_service.py
+├── analytics_service.py
+└── __init__.py
+```
+
+固定依赖方向保持 Router → Service → Repository → ORM → Database。Service 负责业务规则、跨 Repository 协调、事务边界、流程校验和安全异常转换；本基线中的业务 Service 仅声明依赖和职责，不实现任何具体业务流程。
+
+#### 12.5.2 BaseService 与依赖注入
+
+- `BaseService` 接受外部 SQLAlchemy Session 和零个或多个已经构造的 Repository，不创建、关闭或替换 Session。
+- 构造时验证全部 Repository 与 Service 共用同一个 Session；发现不同 Session 立即抛出配置错误，避免跨事务编排。
+- 子类只保存显式注入的 Repository；禁止从 `models` 导入 ORM 类、调用 `session.execute()` 或绕过 Repository 访问数据库。
+- 未来组合层负责按请求创建同一 Session 下的 Repository 与 Service；具体 FastAPI Depends wiring 留给后续 Router/API Task。
+
+#### 12.5.3 事务与异常边界
+
+`BaseService.transaction()` 是当前唯一事务模板：
+
+1. 调用方进入 Service 事务上下文并通过 Repository 执行持久化；成功退出时由 Service `commit()`。
+2. 业务异常或其他异常发生时由 Service `rollback()` 后原样继续抛出，供上层统一处理。
+3. SQLAlchemy 数据库异常必须先 rollback，再转换为不包含 SQL、凭证或内部数据库细节的 `PersistenceException`；禁止原始数据库异常直接暴露给 API 用户。
+4. Repository 继续禁止 commit/rollback；同一不可分割业务流程的多个 Repository 必须共享此 Service Session。
+
+异常基础结构与默认 code：
+
+| 异常 | 默认 code | 语义 |
+| --- | --- | --- |
+| `BusinessException` | `BUSINESS_ERROR` | 可安全跨 Service 边界的业务异常基类 |
+| `NotFoundException` | `NOT_FOUND` | 业务资源不存在 |
+| `ValidationException` | `VALIDATION_ERROR` | 业务校验失败 |
+| `ConflictException` | `BUSINESS_CONFLICT` | 状态或唯一性等业务冲突 |
+| `PersistenceException` | `PERSISTENCE_ERROR` | 已脱敏的数据库操作失败 |
+
+异常类型不依赖 FastAPI、HTTP status 或响应 Schema。Router 后续负责把 Service 异常映射为统一 HTTP 错误响应；Service 不接收 Request、Response 等 HTTP 对象。
+
+#### 12.5.4 业务 Service 职责骨架
+
+| Service | 后续职责边界 | 本 Task 状态 |
+| --- | --- | --- |
+| `UserService` | 用户生命周期、状态、密码与权限业务入口 | 仅注入 UserRepository |
+| `DramaService` | Drama 生命周期及跨关系编排 | 仅注入 DramaRepository |
+| `MasterDataService` | Actor、Director、Company、Tag 业务入口 | 仅注入四类 Repository |
+| `PlatformService` | Platform 与发行关系业务入口 | 仅注入 PlatformRepository |
+| `SnapshotService` | Observation Slot、INITIAL/CORRECTION/VOID 与 current pointer 事务 | 仅注入 SnapshotRepository；流程未实现 |
+| `ImportService` | 两阶段导入、校验、确认与事务入口 | 仅建立结构；流程未实现 |
+| `QualityService` | 质量问题发现、确认、修正、忽略和关闭入口 | 仅建立结构；流程未实现 |
+| `AnalyticsService` | AnalysisContext、as-of、指标、模型与 Insight 入口 | 仅注入只读数据 Repository；算法未实现 |
+
+具体方法、DTO、跨表写入顺序、审计生成和业务验收测试必须由后续明确 Task 实现，不得从当前骨架推断为已完成。
+
+#### 12.5.5 Analytics 与 DTO 边界
+
+- AnalyticsService 当前没有 Heat、Potential、Growth、Robust Z-score、Quality Filter 或 Insight Rule 实现，也不冻结任何新增算法边界。
+- 后续分析实现必须引用 Phase 2 冻结版本并复用统一 AnalysisContext/有效数据规则，不得在当前结构 Task 中静默加入计算。
+- Router 后续通过 Pydantic Schema 与 Service 交互；Service 接受业务级参数/DTO，不依赖 FastAPI HTTP 对象。当前未创建任何 API Schema。
+
+#### 12.5.6 验证证据
+
+测试使用 Session/Repository Mock，不连接数据库：
+
+| 验证项 | 结果 |
+| --- | --- |
+| Service package 与 8 个业务入口 import | PASS |
+| Repository 构造器注入 | PASS |
+| Repository/Service Session 一致性保护 | PASS |
+| 成功事务 commit | PASS |
+| 失败事务 rollback | PASS |
+| 业务异常保留 | PASS |
+| SQLAlchemy 异常脱敏转换 | PASS |
+| 异常 code/details 契约 | PASS |
+| Service 无 ORM import/session.execute/Router/FastAPI | PASS |
+| Python compileall | PASS |
+| pytest | 19/19 PASS |
+
+本 Task 未修改 ORM、Repository、数据库 Schema、DDL 或 Migration；未创建 Router、API、业务 DTO、具体业务流程或分析算法。
+
 ## 13. 技术栈
 
 ### 13.1 Web 技术栈【已冻结】
@@ -3294,12 +3386,13 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 | TASK-P4-01 | FastAPI 后端架构初始化与工程基线设计 V0.1 | Completed |
 | TASK-P4-02 | 数据库 ORM 模型映射设计 V0.1 | Completed |
 | TASK-P4-03 | Repository 数据访问层设计与基础查询能力 V0.1 | Completed |
+| TASK-P4-04 | Service 业务层架构设计 V0.1 | Completed |
 
 - 当前 Phase：Phase 4 In Progress。
-- 文档版本：V2.4。
-- 文档状态：Repository Layer Baseline Established。
+- 文档版本：V2.5。
+- 文档状态：Service Layer Baseline Established。
 - 项目状态：Waiting for Next Phase 4 Task。
-- TASK-P4-03 已建立 BaseRepository、Page 和 8 个实体 Repository，提供外部 Session 注入、通用数据访问、基础过滤与数据库侧分页；pytest 11/11 PASS。未创建 Service、Router、API 或业务计算。
+- TASK-P4-04 已建立 BaseService、Service异常体系与8个业务Service依赖骨架，冻结Service事务所有权、Repository调用和HTTP无关边界；pytest 19/19 PASS。未创建Router、API、具体业务流程或分析算法。
 
 ## 23. 设计决策记录
 
@@ -3586,6 +3679,17 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 6. **Decision：统一分页结果 `Page[T]` 不依赖 FastAPI/Pydantic。Reason：**Repository 返回持久化层数据结构，不应生成 HTTP 响应或绑定接口协议。
 7. **Decision：Snapshot Repository 只提供观测槽和时间条件查询。Reason：**as-of、有效性、Growth、Heat、Potential 和 Insight 属于后续 Service/Analytics，不得下沉为隐含业务计算。
 
+### ADR-032：Service Layer Baseline V0.1【Phase 4 业务层基线】
+
+1. **Decision：Service 构造器注入 Session 和 Repository。Reason：**依赖显式、便于测试，并确保跨 Repository 流程可共享同一事务上下文。
+2. **Decision：Service 必须拒绝不同 Session 的 Repository 组合。Reason：**一个不可分割业务操作跨多个数据库事务将无法保证原子性。
+3. **Decision：事务成功由 Service commit，任意失败由 Service rollback。Reason：**Repository 只负责数据访问，事务完成与失败恢复必须位于了解完整业务流程的层。
+4. **Decision：Service 禁止直接导入 ORM 或调用 session.execute。Reason：**所有持久化查询必须通过 Repository，避免业务层绕过数据访问规范。
+5. **Decision：SQLAlchemyError 转换为脱敏 PersistenceException。Reason：**API 层不得接收可能包含 SQL、连接或内部实现细节的原始数据库异常。
+6. **Decision：Service 异常不绑定 HTTP。Reason：**Router 负责协议映射，Service 保持可复用、可单元测试的业务边界。
+7. **Decision：本 Task 的业务 Service 只建立依赖骨架。Reason：**用户、Drama、Snapshot、Import、Quality 和 Analytics 具体流程必须由后续明确 Task 分别实现和验证。
+8. **Decision：AnalyticsService 不包含任何算法占位实现。Reason：**Heat、Potential、Anomaly、Insight 与 AnalysisContext 已在 Phase 2 冻结，必须通过专项实现 Task 忠实落地。
+
 ## 24. Bug 与技术债务
 
 - 当前无已确认的软件 Bug。
@@ -3600,7 +3704,7 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - 【非阻塞文档同步事项】`README.md` 仍显示 Phase 2 Completed / Waiting for Phase 3 Database Design；本 Task 未获授权修改 README，须由后续明确文档同步 Task 更新，不影响 Database Design Baseline V1.0。
 - 【非阻塞环境事项】宿主 PATH 当前未提供 `python`/`py` 命令；TASK-P4-01 使用 Codex 提供的 Python 3.12.14 创建被 Git 忽略的 `backend/.venv` 并完成验证。其他开发环境仍须自行提供 Python 3.12+。
 - 【待后续设计】Alembic 已初始化但没有业务 Revision；必须由后续明确 Task 决定其与已验证 V001～V006 SQL 基线的接管/对齐方式，不得直接 stamp 或 autogenerate。
-- 【非阻塞文档同步事项】`backend/README.md` 仍保留 TASK-P4-01“models/repositories 尚待后续实现”的阶段性描述；TASK-P4-02/P4-03 修改范围未包含该文件，应由后续明确文档同步 Task 更新，不影响 ORM 或 Repository Baseline。
+- 【非阻塞文档同步事项】`backend/README.md` 仍保留 TASK-P4-01“models/repositories/services 尚待后续实现”的阶段性描述；TASK-P4-02～P4-04 修改范围未包含该文件，应由后续明确文档同步 Task 更新，不影响 ORM、Repository 或 Service Baseline。
 - 所有标记为【待后续设计】的事项属于计划内设计工作，不得误报为已实现功能或当前 Bug。
 
 ## 25. 最终报告 / 软著素材索引
@@ -3638,6 +3742,7 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 | FastAPI Backend Engineering Baseline V0.1 | 已建立；应用入口、配置、SQLAlchemy 基础、Alembic 空基线和健康测试 PASS |
 | SQLAlchemy ORM Mapping Baseline V0.1 | 已建立；18 Model、39 FK、58 CHECK、16 UNIQUE、46 显式索引，pytest 4/4 PASS |
 | Repository Layer Baseline V0.1 | 已建立；BaseRepository、Page、8 个实体 Repository，pytest 11/11 PASS |
+| Service Layer Baseline V0.1 | 已建立；BaseService、5类异常、8个业务Service职责骨架，pytest 19/19 PASS |
 | 数据字典 | 已纳入 MySQL Schema Design V1 字段规格，并由 DDL/Migration V1 实现 |
 | 3NF Review | 设计级 PASS；18 表物理实现一致性验证 PASS |
 | 主键 / 外键 / 完整性设计 | 已建立 V1 基线；18/18 主键、39/39 外键及约束验证 PASS |
@@ -3959,3 +4064,18 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - GitHub remote：以本 Task 实际检查结果为准。
 - 当前状态：Completed；Phase 4 In Progress；Waiting for Next Phase 4 Task。
 - Commit：`feat(backend): add repository layer baseline`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
+
+### TASK-P4-04
+
+- 日期：2026-09-07。
+- 任务：Service 业务层架构设计 V0.1。
+- 完成内容：建立 BaseService、Repository Session 一致性保护、Service 异常体系，以及 User、Drama、MasterData、Platform、Snapshot、Import、Quality、Analytics 8 个职责入口骨架。
+- 事务边界：Service transaction context 成功时 commit；业务/系统异常时 rollback；SQLAlchemyError rollback 后转换为不泄露数据库细节的 PersistenceException。Repository 仍禁止 commit/rollback。
+- Repository 规范：Service 通过构造器接收外部 Session 和已构造 Repository；禁止直接导入 ORM、调用 session.execute 或绕过 Repository；不同 Session 的 Repository 组合被拒绝。
+- 异常契约：BusinessException、NotFoundException、ValidationException、ConflictException、PersistenceException 不依赖 FastAPI/HTTP；未来 Router 负责统一协议映射。
+- 业务边界：各 Service 当前只有职责说明和依赖绑定，没有用户生命周期、Drama状态、Snapshot修订、导入、质量处理、Heat/Potential/Anomaly/Insight 等具体流程或算法。
+- 实际验证：Python compileall PASS；Service import/依赖注入/Session一致性/commit/rollback/异常脱敏/HTTP无关检查 PASS；完整 pytest 19/19 PASS；未连接数据库。
+- 未执行内容：未修改 ORM、Repository、Schema、DDL/Migration，未创建 Router、API、Pydantic API Schema、具体业务流程或分析算法。
+- GitHub remote：以本 Task 实际检查结果为准。
+- 当前状态：Completed；Phase 4 In Progress；Waiting for Next Phase 4 Task。
+- Commit：`feat(backend): establish service layer baseline`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
