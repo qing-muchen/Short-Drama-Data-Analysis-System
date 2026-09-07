@@ -9,10 +9,10 @@
 | 中文名称 | 短剧数据管理与分析系统 |
 | 英文名称 | Short Drama Data Management and Analysis System |
 | 软件版本 | V1.0 |
-| 文档版本 | V2.3 |
+| 文档版本 | V2.4 |
 | 当前 Phase | Phase 4 - In Progress |
-| 当前 Task | TASK-P4-02 |
-| 文档状态 | ORM Mapping Baseline Established |
+| 当前 Task | TASK-P4-03 |
+| 文档状态 | Repository Layer Baseline Established |
 | 下一阶段状态 | Waiting for Next Phase 4 Task |
 | 最近更新日期 | 2026-09-07 |
 
@@ -22,7 +22,7 @@
 - 【待后续设计】：需求方向明确，但具体技术设计尚未确定。
 - 【未来扩展】：不属于 V1.0 开发范围。
 
-本文档记录真实的软件工程设计与开发状态，不是课程设计报告正文。Phase 3 Database Design Baseline V1.0 保持冻结；TASK-P4-02 已在 TASK-P4-01 工程基线上建立 SQLAlchemy ORM Mapping Baseline V0.1，忠实映射冻结的 18 张物理表、39 个真实外键、58 个 CHECK、16 个业务 UNIQUE 与 46 个显式索引，但未创建业务 Router、Service、Repository、API 或 Alembic 业务 Migration。
+本文档记录真实的软件工程设计与开发状态，不是课程设计报告正文。Phase 3 Database Design Baseline V1.0 与 TASK-P4-02 ORM Mapping Baseline 保持冻结；TASK-P4-03 已建立外部 Session 注入、无事务所有权的 Repository Layer Baseline V0.1，提供通用数据访问、基础过滤和服务端分页，但未创建 Service、API 或业务计算。
 
 ## 1. 项目定义
 
@@ -2871,6 +2871,66 @@ Router 不得直接执行 SQL、持有事务或实现跨行业务规则。Servic
 | pytest | 4/4 PASS |
 | Alembic offline env | PASS；无业务 Revision、无数据库写入 |
 
+### 12.4 Repository Layer Baseline V0.1【TASK-P4-03】
+
+#### 12.4.1 目录与分层边界
+
+- Repository 继续使用 TASK-P4-01 已冻结的顶层 `backend/repositories/`，不创建第二套 `backend/app/repositories/`。
+- 固定依赖方向为 Router → Service → Repository → ORM → Database；Repository 只封装持久化语句和结果，不生成 HTTP 响应、不执行业务计算、不做权限判断。
+- `repositories/__init__.py` 统一导出通用基类、分页结果和 8 个实体 Repository。
+
+#### 12.4.2 BaseRepository 与分页
+
+`BaseRepository[ModelT]` 提供：
+
+- 构造函数外部注入 SQLAlchemy `Session`；Repository 内禁止创建、关闭或替换 Session。
+- `get_by_id`、有界 `list`、`count`、`create`、`update`、`delete` 基础能力，全部使用 SQLAlchemy 2.x `select()`、`update()`、`delete()` 和映射列，不使用字符串 SQL。
+- `create` 仅在获取数据库生成值所需时执行 `flush()`；任何方法均不调用 `commit()` 或 `rollback()`。
+- `update` 禁止更新主键并拒绝未知映射列；物理 `delete` 只是底层能力，是否允许调用必须由后续 Service 按冻结删除规则判断。
+- `Page[T]` 为与 HTTP 无关的只读分页结果，包含 `page`、`page_size`、`total`、`items`；总数和分页行均由数据库查询，禁止加载全表后在 Python 中切片。
+
+#### 12.4.3 实体 Repository 与查询能力
+
+| Repository | 基础能力 |
+| --- | --- |
+| `UserRepository` | 主键查询、username 精确查询、状态过滤与分页 |
+| `DramaRepository` | 主键查询、drama_code 精确查询、状态/名称过滤与分页 |
+| `ActorRepository` | 主键查询、状态/名称过滤与分页 |
+| `DirectorRepository` | 主键查询、状态/名称过滤与分页 |
+| `CompanyRepository` | 主键查询、状态/名称过滤与分页 |
+| `PlatformRepository` | 主键查询、platform_name 精确查询、状态/名称过滤与分页 |
+| `TagRepository` | 主键查询、tag_name 精确查询、状态/名称过滤与分页 |
+| `SnapshotRepository` | 主键查询、DramaPlatform + snapshot_time 精确查询、按 DramaPlatform/时间范围分页 |
+
+名称模糊查询使用 SQLAlchemy 参数绑定及自动转义；排序字段由 Repository 代码固定，不接受任意客户端列名。Snapshot Repository 只查询观测槽和时间范围，不计算 as-of、Growth、Heat、Potential、质量有效性或其他分析指标。
+
+#### 12.4.4 Session 与事务规范
+
+1. Service 是业务事务所有者，负责 `commit()`、`rollback()`、跨 Repository 编排、状态转换和失败恢复。
+2. 同一业务操作涉及多个 Repository 时必须共享同一外部 Session；Repository 不自行开启独立事务。
+3. Repository 不捕获并吞掉数据库完整性异常；Service 后续负责将约束冲突转换为业务错误。
+4. BaseRepository 的物理删除能力不改变 User/Master/Snapshot/Audit 等冻结删除原则，后续 Service 必须限制调用；数据库 RESTRICT 与 append-only Trigger 继续是最终完整性边界。
+
+#### 12.4.5 验证证据
+
+测试使用 SQLAlchemy Session Mock 和 MySQL 方言语句编译，不连接开发或生产数据库，也未执行任何写入：
+
+| 验证项 | 结果 |
+| --- | --- |
+| Repository package/import | PASS |
+| 外部 Session 注入 | PASS |
+| select/update/delete 语句构造 | PASS |
+| User username 查询 | PASS |
+| Drama 分页、状态和名称过滤 | PASS |
+| Snapshot DramaPlatform/时间范围过滤 | PASS |
+| `Page` 的 page/page_size/total/items | PASS |
+| 未知列、主键更新与非法分页参数防护 | PASS |
+| Repository 无 commit/rollback/sessionmaker | PASS |
+| Python compileall | PASS |
+| pytest | 11/11 PASS |
+
+本 Task 未修改 ORM Model、Schema、DDL 或 Migration；未创建 Service、Router、API、业务计算或真实数据库测试数据。
+
 ## 13. 技术栈
 
 ### 13.1 Web 技术栈【已冻结】
@@ -3233,12 +3293,13 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 | TASK-P3-08 | Phase 3 Database Design Final Review V1.0 | Completed |
 | TASK-P4-01 | FastAPI 后端架构初始化与工程基线设计 V0.1 | Completed |
 | TASK-P4-02 | 数据库 ORM 模型映射设计 V0.1 | Completed |
+| TASK-P4-03 | Repository 数据访问层设计与基础查询能力 V0.1 | Completed |
 
 - 当前 Phase：Phase 4 In Progress。
-- 文档版本：V2.3。
-- 文档状态：ORM Mapping Baseline Established。
+- 文档版本：V2.4。
+- 文档状态：Repository Layer Baseline Established。
 - 项目状态：Waiting for Next Phase 4 Task。
-- TASK-P4-02 已将冻结的 18 张 MySQL 表映射为 SQLAlchemy 2.x ORM Model；metadata 一致性检查为 18 表、39 FK、58 CHECK、16 UNIQUE、46 显式索引，pytest 4/4 PASS。未创建业务 Router、Service、Repository、CRUD、API 或 Alembic 业务 Migration。
+- TASK-P4-03 已建立 BaseRepository、Page 和 8 个实体 Repository，提供外部 Session 注入、通用数据访问、基础过滤与数据库侧分页；pytest 11/11 PASS。未创建 Service、Router、API 或业务计算。
 
 ## 23. 设计决策记录
 
@@ -3515,6 +3576,16 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 6. **Decision：DataQualityIssue 与 OperationLog 保持固定真实目标外键。Reason：**互斥目标 CHECK、真实引用完整性和 3NF 已经由数据库验证，禁止退化为 JSON 或无外键多态引用。
 7. **Decision：ORM metadata 注册全部约束和索引，但数据库 DDL 仍是物理权威。Reason：**metadata 支持导入验证和未来工具发现；触发器及既有迁移历史仍由 Phase 3 的 DDL/Migration 基线管理。
 
+### ADR-031：Repository Layer Baseline V0.1【Phase 4 数据访问基线】
+
+1. **Decision：Repository 的 Session 必须由外部注入。Reason：**Service 需要在同一事务中编排多个 Repository，内部创建 Session 会破坏事务原子性与测试替换边界。
+2. **Decision：Repository 禁止 commit、rollback 和 close。Reason：**事务成功、失败恢复和业务异常转换属于 Service，数据访问层不得擅自结束调用方事务。
+3. **Decision：分页总数和结果集均在数据库侧执行。Reason：**运营快照约 10 万行，禁止全量加载到 Python 或前端后再切片。
+4. **Decision：Repository 只接受代码定义的过滤和排序表达式。Reason：**避免任意客户端列名进入 SQL 构造，同时保持查询职责可审查、可测试。
+5. **Decision：BaseRepository 保留通用物理 delete，但调用授权留给 Service。Reason：**数据访问能力与 User、Master、Snapshot、Audit 的业务删除规则必须分离；数据库 RESTRICT/Trigger 仍负责最终保护。
+6. **Decision：统一分页结果 `Page[T]` 不依赖 FastAPI/Pydantic。Reason：**Repository 返回持久化层数据结构，不应生成 HTTP 响应或绑定接口协议。
+7. **Decision：Snapshot Repository 只提供观测槽和时间条件查询。Reason：**as-of、有效性、Growth、Heat、Potential 和 Insight 属于后续 Service/Analytics，不得下沉为隐含业务计算。
+
 ## 24. Bug 与技术债务
 
 - 当前无已确认的软件 Bug。
@@ -3529,7 +3600,7 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - 【非阻塞文档同步事项】`README.md` 仍显示 Phase 2 Completed / Waiting for Phase 3 Database Design；本 Task 未获授权修改 README，须由后续明确文档同步 Task 更新，不影响 Database Design Baseline V1.0。
 - 【非阻塞环境事项】宿主 PATH 当前未提供 `python`/`py` 命令；TASK-P4-01 使用 Codex 提供的 Python 3.12.14 创建被 Git 忽略的 `backend/.venv` 并完成验证。其他开发环境仍须自行提供 Python 3.12+。
 - 【待后续设计】Alembic 已初始化但没有业务 Revision；必须由后续明确 Task 决定其与已验证 V001～V006 SQL 基线的接管/对齐方式，不得直接 stamp 或 autogenerate。
-- 【非阻塞文档同步事项】`backend/README.md` 仍保留 TASK-P4-01“models 当前为空”的阶段性描述；TASK-P4-02 修改范围未包含该文件，应由后续明确文档同步 Task 更新，不影响 ORM Mapping Baseline。
+- 【非阻塞文档同步事项】`backend/README.md` 仍保留 TASK-P4-01“models/repositories 尚待后续实现”的阶段性描述；TASK-P4-02/P4-03 修改范围未包含该文件，应由后续明确文档同步 Task 更新，不影响 ORM 或 Repository Baseline。
 - 所有标记为【待后续设计】的事项属于计划内设计工作，不得误报为已实现功能或当前 Bug。
 
 ## 25. 最终报告 / 软著素材索引
@@ -3566,6 +3637,7 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 | Database Design Final Review Summary V1.0 | PASS；Database Schema Baseline Frozen，Phase 3 Completed |
 | FastAPI Backend Engineering Baseline V0.1 | 已建立；应用入口、配置、SQLAlchemy 基础、Alembic 空基线和健康测试 PASS |
 | SQLAlchemy ORM Mapping Baseline V0.1 | 已建立；18 Model、39 FK、58 CHECK、16 UNIQUE、46 显式索引，pytest 4/4 PASS |
+| Repository Layer Baseline V0.1 | 已建立；BaseRepository、Page、8 个实体 Repository，pytest 11/11 PASS |
 | 数据字典 | 已纳入 MySQL Schema Design V1 字段规格，并由 DDL/Migration V1 实现 |
 | 3NF Review | 设计级 PASS；18 表物理实现一致性验证 PASS |
 | 主键 / 外键 / 完整性设计 | 已建立 V1 基线；18/18 主键、39/39 外键及约束验证 PASS |
@@ -3873,3 +3945,17 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - GitHub remote：以本 Task 实际检查结果为准。
 - 当前状态：Completed；Phase 4 In Progress；Waiting for Next Phase 4 Task。
 - Commit：`feat(backend): add sqlalchemy orm models`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
+
+### TASK-P4-03
+
+- 日期：2026-09-07。
+- 任务：Repository 数据访问层设计与基础查询能力 V0.1。
+- 完成内容：建立泛型 `BaseRepository`、与 HTTP 无关的 `Page[T]`，以及 User、Drama、Actor、Director、Company、Platform、Tag、Snapshot 8 个 Repository。
+- 查询能力：通用主键查询/list/count/create/update/delete；username、drama_code、platform_name、tag_name 精确查询；基础状态/名称过滤；DramaPlatform 与时间范围 Snapshot 查询；数据库侧 total 与分页结果。
+- 事务边界：Session 仅由外部注入；Repository 不创建、关闭、commit 或 rollback Session；create 可 flush 获取生成值；跨 Repository 事务、约束异常转换和业务删除授权留给 Service。
+- 安全与边界：仅使用 SQLAlchemy 2.x select/update/delete 和参数绑定；拒绝未知更新列和主键更新；排序字段由代码固定；未实现 Heat、Potential、as-of、质量有效性或其他业务计算。
+- 实际验证：Python compileall PASS；Repository import PASS；Session Mock 语句/分页/事务边界测试 PASS；完整 pytest 11/11 PASS；未连接或修改数据库。
+- 未执行内容：未修改 ORM Model、Schema、DDL/Migration，未创建 Service、Router、API、业务计算或测试数据。
+- GitHub remote：以本 Task 实际检查结果为准。
+- 当前状态：Completed；Phase 4 In Progress；Waiting for Next Phase 4 Task。
+- Commit：`feat(backend): add repository layer baseline`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
