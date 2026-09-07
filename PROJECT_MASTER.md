@@ -9,11 +9,11 @@
 | 中文名称 | 短剧数据管理与分析系统 |
 | 英文名称 | Short Drama Data Management and Analysis System |
 | 软件版本 | V1.0 |
-| 文档版本 | V1.6 |
+| 文档版本 | V1.7 |
 | 当前 Phase | Phase 3 - In Progress |
-| 当前 Task | TASK-P3-06R |
-| 文档状态 | Database DDL Baseline Established |
-| 下一阶段状态 | Waiting for Next Phase 3 Task |
+| 当前 Task | TASK-P3-07 |
+| 文档状态 | Database Validation Failed |
+| 下一阶段状态 | Waiting for Database DDL Repair Task |
 | 最近更新日期 | 2026-09-07 |
 
 状态标签：
@@ -22,7 +22,7 @@
 - 【待后续设计】：需求方向明确，但具体技术设计尚未确定。
 - 【未来扩展】：不属于 V1.0 开发范围。
 
-本文档记录真实的软件工程设计与开发状态，不是课程设计报告正文。当前数据库概念模型、关系模型、逐表 3NF Review、MySQL Schema V1 及 DDL/Migration V1 已建立基线；数据库尚未实际初始化，约束和索引仍待 TASK-P3-07 执行验证。
+本文档记录真实的软件工程设计与开发状态，不是课程设计报告正文。当前数据库概念模型、关系模型、逐表 3NF Review、MySQL Schema V1 及 DDL/Migration V1 已建立基线；TASK-P3-07 实际执行发现 V004 阻塞性语法问题，数据库验证未完成。
 
 ## 1. 项目定义
 
@@ -2594,6 +2594,32 @@ Migration 假定 `001_create_database.sql` 已创建目标库，V001～V006 分�
 
 根据 TASK-P3-06R 要求，本 Task 只编写、不执行测试。当前“数据库物理实现完成”仅指 DDL、Migration 和测试文件已就绪；不得宣称数据库已初始化、DDL 已实际通过 MySQL 或约束测试已 PASS。上述结果必须由后续 TASK-P3-07 在空库环境中验证并记录实际证据。
 
+### 11.26 Database Validation Report【TASK-P3-07 实际结果】
+
+验证时间为 2026-09-07 20:05:58（Asia/Shanghai）。验证使用隔离临时 MySQL 实例、独立数据目录和 Named Pipe；实例已正常关闭，临时目录已删除，没有连接或修改用户现有数据库。
+
+| 验证项 | 实际结果 | 状态 |
+| --- | --- | --- |
+| MySQL 环境 | Community Server 8.0.45；InnoDB；utf8mb4；utf8mb4_0900_ai_ci | PASS |
+| 空库前置 | 执行前不存在 `short_drama_analysis` | PASS |
+| 数据库入口 | `001_create_database.sql`，exit 0 | PASS |
+| V001 核心表 | exit 0 | PASS |
+| V002 关系表 | exit 0 | PASS |
+| V003 Snapshot 表 | exit 0 | PASS |
+| V004 Import/Quality | `import_errors.row_number` 附近 MySQL 1064 | FAIL |
+| V005 OperationLog | 被 V004 阻塞，未执行 | NOT RUN |
+| V006 Index | 被 V004 阻塞，未执行 | NOT RUN |
+| 完整表数量 | 期望 18，失败现场实际 15 | FAIL |
+| 主键 / 外键 / CHECK | 失败现场 15 / 16 / 40，未达到完整基线 | INCOMPLETE |
+| constraint_test.sql | 完整 Schema 未建立，未执行 | NOT RUN |
+| 3NF 物理复核 | V001～V003 未见偏离，18 表整体未完成 | INCOMPLETE |
+
+#### DBVAL-P3-07-001【Blocking】
+
+`row_number` 在 MySQL 8.0 中是保留关键字，V004 与对应 DDL 005 在 `import_errors` 中未转义该标识符，导致 Migration 无法继续。本 Task 根据禁止事项仅记录问题，不修改 DDL、Schema、业务规则或 3NF 结论。
+
+详细证据见 `database/tests/validation_report.md`。必须由获授权的 DDL Repair Task 同步修复 DDL 005 与 Migration V004，随后从新空库重新执行完整 TASK-P3-07；在此之前不得标记 `Database Validation Completed`，也不得进入 Phase 3 Final Review。
+
 ## 12. 系统架构
 
 ### 12.1 总体架构【已冻结】
@@ -2966,12 +2992,13 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 | TASK-P3-04 | 逐表 3NF Review V0.1 | Completed |
 | TASK-P3-05 | MySQL Schema 设计 V0.1 | Completed |
 | TASK-P3-06R | 数据库 DDL 与 Migration 实现 V0.1 | Completed |
+| TASK-P3-07 | 数据库初始化验证与约束测试 V0.1 | Failed — DBVAL-P3-07-001 |
 
 - 当前 Phase：Phase 3 In Progress。
-- 文档版本：V1.6。
-- 文档状态：Database DDL Baseline Established。
-- 项目状态：Waiting for Next Phase 3 Task。
-- Database DDL & Migration Baseline V1 已建立；SQL 文件已生成但尚未对 MySQL 空库执行，数据库、表、View、ORM 和初始化数据均未实际创建，约束及索引待 TASK-P3-07 验证。
+- 文档版本：V1.7。
+- 文档状态：Database Validation Failed。
+- 项目状态：Waiting for Database DDL Repair Task。
+- TASK-P3-07 已在隔离 MySQL 8.0.45 空实例执行：V001～V003 PASS，V004 因 `row_number` 保留关键字语法错误 FAIL；完整约束和索引测试未执行，禁止进入 Phase 3 Final Review。
 
 ## 23. 设计决策记录
 
@@ -3230,6 +3257,7 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - README 的 Phase 1 Completed 状态已由 TASK-P2-06 同步为 Phase 2 Completed。
 - Snapshot 有效唯一性与保留 VOID 修订历史之间的 Schema 问题已由 TASK-P3-05 的“观测槽 + 不可变修订记录”方案关闭；实现与事务验证仍待后续 Task。
 - TASK-P3-07 首次前置检查因 DDL/Migration 不存在而停止；TASK-P3-06R 已补齐文件，实际数据库初始化与约束结果仍需重新执行 TASK-P3-07。
+- 【DBVAL-P3-07-001 / Blocking】Migration V004 和对应 DDL 005 未转义 MySQL 8.0 保留关键字 `row_number`，导致 `import_errors` 创建时报 1064；本验证 Task 未获授权修改 DDL，必须由后续 Repair Task 处理并重新执行空库验证。
 - 所有标记为【待后续设计】的事项属于计划内设计工作，不得误报为已实现功能或当前 Bug。
 
 ## 25. 最终报告 / 软著素材索引
@@ -3262,6 +3290,7 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 | E-R 图 | 待完成 |
 | MySQL Schema Design V1 | 已建立 V0.1 物理设计基线，18 张物理表 |
 | Database DDL & Migration Baseline V1 | 已建立；7 个 DDL、6 个 Migration，均覆盖 18 张物理表 |
+| Database Validation Report | FAILED；V001～V003 PASS，V004 被 DBVAL-P3-07-001 阻塞 |
 | 数据字典 | 已纳入 MySQL Schema Design V1 字段规格；正式实现字典待 DDL/Migration Task |
 | 3NF Review | 设计级 PASS；实现后数据库级验证待完成 |
 | 主键 / 外键 / 完整性设计 | 已建立 V1 基线，实际约束待实现验证 |
@@ -3270,7 +3299,7 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 | Transaction 设计与验证 | 待完成 |
 | SQL / Migration | 已完成 V1 基线文件，尚未执行空库验证 |
 | Git Commit | 持续保留 |
-| 测试记录 | 待后续 Task 产生 |
+| 测试记录 | 已新增 `database/tests/validation_report.md`；完整约束测试待修复后重跑 |
 | Bug 修复记录 | 待后续 Task 产生 |
 | 核心代码位置 | 待后续 Task 产生 |
 | 系统运行截图 | 待完成 |
@@ -3476,3 +3505,15 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - GitHub remote：Not Configured。
 - 当前状态：Completed；Phase 3 In Progress；Waiting for Next Phase 3 Task。
 - Commit：`feat(database): create mysql ddl and migration baseline`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
+
+### TASK-P3-07
+
+- 日期：2026-09-07。
+- 任务：数据库初始化验证与约束测试 V0.1。
+- 执行内容：在隔离临时 MySQL Community Server 8.0.45 实例中确认 InnoDB、utf8mb4 和 utf8mb4_0900_ai_ci；从不存在目标库的状态执行数据库入口及 V001～V006 顺序；记录每段 exit code、耗时、失败现场表/主键/外键/CHECK 数量，并安全关闭实例和删除临时数据目录。
+- 实际结果：数据库入口、V001、V002、V003 PASS；V004 在创建 `import_errors` 时因未转义 `row_number` 返回 MySQL 1064。失败现场为 15/18 张表、15 个主键、16 个外键、40 个 CHECK；V005、V006 和 constraint_test.sql 未执行，未伪造其 PASS 结果。
+- Database Validation Issue：DBVAL-P3-07-001（Blocking）。修复必须由获授权的 DDL Repair Task 同步处理 DDL 005 与 Migration V004，再从新空库完整重跑。
+- 未修改内容：未修改任何 DDL、Migration、Schema、实体、E-R、3NF、业务规则或 constraint_test.sql；未创建后端、ORM、API、Vue 或其他业务代码；未进入 Phase 3 Final Review。
+- GitHub remote：Not Configured。
+- 当前状态：Failed；Phase 3 In Progress；Waiting for Database DDL Repair Task。
+- Commit：`test(database): validate mysql schema constraints`（本次失败验证证据提交，Commit Hash 以 Git 历史记录为准）。
