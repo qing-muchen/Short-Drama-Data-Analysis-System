@@ -9,11 +9,11 @@
 | 中文名称 | 短剧数据管理与分析系统 |
 | 英文名称 | Short Drama Data Management and Analysis System |
 | 软件版本 | V1.0 |
-| 文档版本 | V2.0 |
-| 当前 Phase | Phase 3 - In Progress |
-| 当前 Task | TASK-P3-07 Retry |
-| 文档状态 | Database Validation Completed |
-| 下一阶段状态 | Waiting for Phase 3 Final Review |
+| 文档版本 | V2.1 |
+| 当前 Phase | Phase 3 - Completed |
+| 当前 Task | TASK-P3-08 |
+| 文档状态 | Phase 3 Database Design Completed |
+| 下一阶段状态 | Waiting for Phase 4 Task |
 | 最近更新日期 | 2026-09-07 |
 
 状态标签：
@@ -22,7 +22,7 @@
 - 【待后续设计】：需求方向明确，但具体技术设计尚未确定。
 - 【未来扩展】：不属于 V1.0 开发范围。
 
-本文档记录真实的软件工程设计与开发状态，不是课程设计报告正文。当前数据库概念模型、关系模型、逐表 3NF Review、MySQL Schema V1 及 DDL/Migration V1 已建立基线；TASK-P3-07 Retry 已在隔离 MySQL 8.0.45 空实例完成数据库初始化、结构与约束验证，Database Validation 已完成。
+本文档记录真实的软件工程设计与开发状态，不是课程设计报告正文。Phase 3 Database Design 已完成最终 Review：概念模型、E-R 关系、关系模型、逐表 3NF、MySQL Schema V1、DDL/Migration V1 和数据库验证结果共同构成冻结的 Database Design Baseline V1.0；当前等待项目负责人下达 Phase 4 Backend Development Task。
 
 ## 1. 项目定义
 
@@ -2537,7 +2537,7 @@ V1.0 同样选择“固定目标集合的多个可空真实外键”。一条日
 | data_quality_issues | PASS | 一个互斥真实目标与治理语义直接依赖 Issue，不保存目标资料或冗余 target_type |
 | operation_logs | PASS | 操作者、互斥主要目标与事件语义直接依赖 Log，不复制用户/目标资料 |
 
-MySQL Schema Design V1 共 18 张物理表，全部达到 1NF、2NF 和 3NF 的最终设计目标。P3-04 的三个 CONDITIONAL 已由观测槽/修订拆分和两组固定真实目标外键关闭。该 PASS 是设计复核结果，不代表 DDL、数据库或约束测试已经完成；实现后仍须执行数据库级 3NF、FK、UNIQUE、CHECK、Transaction 和执行计划验证。
+MySQL Schema Design V1 共 18 张物理表，全部达到 1NF、2NF 和 3NF 的最终设计目标。P3-04 的三个 CONDITIONAL 已由观测槽/修订拆分和两组固定真实目标外键关闭。该结论最初为 P3-05 的设计级复核；后续 TASK-P3-07 Retry 已完成空库 DDL/Migration、FK、UNIQUE、CHECK、Transaction 与关键索引存在性验证。约 10 万快照下的执行计划和性能仍属于后续性能 Task，不影响当前 3NF 结论。
 
 ### 11.24 MySQL Schema Design V1 实施边界
 
@@ -2656,6 +2656,69 @@ Migration 假定 `001_create_database.sql` 已创建目标库，V001～V006 分�
 | 3NF 物理一致性 | 18 表实现未引入设计外的冗余分析字段 | PASS |
 
 DBVAL-P3-07-001 已关闭：`source_row_number` 在 V004 中成功执行，首次失败不可复现。完整实际证据见 `database/tests/validation_report.md`。本结果只完成 Phase 3 数据库验证，不代表 Phase 3 已结束，也不授权进入 Phase 4。
+
+### 11.28 Database Design Final Review Summary V1.0【TASK-P3-08 冻结基线】
+
+#### 11.28.1 Review 结论与成果链
+
+Phase 3 最终 Review 结论为 PASS。以下成果按“概念 → 关系 → 规范化 → 物理实现 → 实际验证”形成完整、可追溯的数据库设计链：
+
+| 成果 | 冻结结果 |
+| --- | --- |
+| Entity Catalog V1 | 17 个逻辑实体；主数据、业务实体、关系、历史事实、治理与审计职责分离 |
+| ER Relationship Catalog V1 | 关系语义、基数、可选性与关系属性归属已确认 |
+| Relational Model Catalog V1 | 17 个逻辑关系模式、候选键、引用方向和函数依赖已确认 |
+| Table-level 3NF Review Catalog V1 | 17 个逻辑关系模式逐项 Review 完成；三个 CONDITIONAL 已关闭 |
+| MySQL Schema Design V1 | 18 张物理表；字段、主键、业务唯一、真实外键、CHECK、删除策略和索引基线已确认 |
+| Database DDL & Migration Baseline V1 | 7 个 DDL 文件、6 个 Migration 文件；空库执行顺序已验证 |
+| Database Validation Report | MySQL 8.0.45 验证 PASS；32/32 约束测试通过，DBVAL-P3-07-001 已关闭 |
+
+17 个逻辑实体与 18 张物理表的唯一数量差异来自 `DramaMetricSnapshot`：为同时满足稳定观测时点唯一性、当前有效修订和不可变历史保留，物理模型将其拆为 `drama_metric_snapshots` 观测槽与 `drama_metric_snapshot_revisions` 修订记录。该拆分不新增业务概念，也不改变 E-R 业务语义。
+
+#### 11.28.2 3NF 最终确认
+
+所有 18 张物理表最终 3NF 状态为 PASS：
+
+1. Snapshot 的 CONDITIONAL 由“稳定观测槽 + 不可变修订记录”两表方案关闭；事实指标只保存在修订表，不复制 Drama/Platform 资料或 Heat、Potential 等派生指标。
+2. DataQualityIssue 的 CONDITIONAL 由三个互斥真实目标外键和“恰好一个目标”CHECK 关闭，不使用 `target_type + target_id` 逻辑外键，也不复制目标资料。
+3. OperationLog 的 CONDITIONAL 由固定目标集合真实外键和“恰好一个主要目标”CHECK 关闭，不复制用户或目标完整资料。
+
+主数据不保存作品统计，关系信息只归属关系表，Snapshot 不保存派生分析结果。性能优化若未来需要汇总或缓存，必须与规范化事实模型分离，不得破坏当前 3NF 基线。
+
+#### 11.28.3 物理实现与验证冻结
+
+| 验证项 | 最终结果 |
+| --- | --- |
+| 数据库入口 + V001～V006 | 7/7 PASS |
+| 物理表 | 18/18 PASS |
+| BIGINT UNSIGNED AUTO_INCREMENT 主键 | 18/18 PASS |
+| 真实外键 / RESTRICT | 39/39 PASS |
+| CHECK | 58 个建立并通过代表性非法值测试 |
+| constraint_test.sql | 32/32 PASS，0 FAIL |
+| Snapshot 模型 | PASS |
+| DataQualityIssue 目标模型 | PASS |
+| OperationLog 操作者与目标模型 | PASS |
+| 关键索引存在性 | PASS |
+
+Schema、DDL、Migration 与验证证据自本节起组成 `Database Schema Baseline Frozen`。后续不得静默修改表结构、字段语义、主外键、UNIQUE、CHECK、索引方向、删除策略或 Snapshot 方案；确需变更时必须获得明确 Task 授权、更新本设计真源并通过新的版本化 Migration 与回归验证。
+
+#### 11.28.4 冻结数据库约束
+
+- 禁止用 `target_type + target_id` 等逻辑外键替代当前真实 FOREIGN KEY。
+- 禁止把 Actor、Director、Company、Platform、Tag 等多值关系 JSON 化并塞回 Drama。
+- 禁止在 Snapshot 事实表保存 Heat、Potential、Growth、互动率或 Insight 等派生指标。
+- 禁止在主数据表保存作品数量、平均 Heat、热门作品等统计结果。
+- 禁止以 CASCADE 级联删除历史快照、修订、导入、质量或审计数据。
+- 禁止后端绕过已冻结 UNIQUE、CHECK、RESTRICT、不可变修订与互斥目标规则。
+
+#### 11.28.5 Phase 4 Backend Development 输入
+
+1. 数据库目标为 MySQL 8.x，字符集 `utf8mb4`、排序规则 `utf8mb4_0900_ai_ci`，业务时间按 UTC 写入并在前端转换为 Asia/Shanghai。
+2. 后端通过 SQLAlchemy 2.x ORM 访问数据库，但 ORM 映射必须忠实反映 18 表、39 个真实外键、业务 UNIQUE、CHECK 与 RESTRICT，不得创造与 Schema 冲突的逻辑关系。
+3. Router 只处理协议边界；Service 负责状态转换、停用对象限制、Snapshot 修订连续性与当前指针、导入事务、质量问题活动去重和审计等跨行规则；Repository/ORM 负责持久化访问。
+4. 数据库保持主数据、关系与原始事实；动态 AnalysisContext、as-of、Growth、Heat、Potential、Quality 过滤与 Insight 由 Analytics Service 或经批准的只读 View 实现，不得回写污染事实表。
+5. 不可分割的多表写入必须使用事务；Snapshot 的 Slot、Revision 与 current pointer 更新必须在同一事务中完成。
+6. Phase 4 开始前仍须由项目负责人下达明确 Task；本 Review 未创建 ORM、后端工程或 API。
 
 ## 12. 系统架构
 
@@ -2989,9 +3052,9 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 | Phase 0 | 项目初始化和设计基线 | Completed |
 | Phase 1 | 需求与功能模块正式冻结 | Completed |
 | Phase 2 | 数据分析规则细化 | Completed |
-| Phase 3 | 数据库概念结构设计 | In Progress |
-| Phase 4 | 数据库逻辑结构与 3NF Review | Waiting |
-| Phase 5 | MySQL Schema 实现 | Waiting |
+| Phase 3 | Database Design：概念、E-R、关系模型、3NF、Schema、DDL/Migration 与验证 | Completed |
+| Phase 4 | Backend Development | Waiting |
+| Phase 5 | 原 MySQL Schema 实现工作项，已并入 Phase 3 | Merged / Completed |
 | Phase 6 | 模拟数据系统 | Waiting |
 | Phase 7 | FastAPI 基础架构 | Waiting |
 | Phase 8 | 核心业务 API | Waiting |
@@ -3006,6 +3069,8 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 | Phase 17 | V1.0 最终验收 | Waiting |
 | Phase 18 | 课程设计报告统一生成 | Waiting |
 | Phase 19 | 后续软件完善 / 软著准备 | Future |
+
+项目负责人后续 Task 已将初始路线中的数据库逻辑设计与 MySQL Schema 实现统一纳入 Phase 3 并完成；因此当前有效的下一阶段为 Phase 4 Backend Development。Phase 5 的原数据库工作项仅保留合并轨迹，不代表需要在 Phase 4 之后重复执行。Phase 6 及后续初始编号仍是候选工作分解，若与后续明确 Task 冲突，以项目负责人新 Task 和本文档届时更新为准。
 
 ## 22. 当前 Task 状态
 
@@ -3032,12 +3097,13 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 | TASK-P3-07 | 数据库初始化验证与约束测试 V0.1 | Completed — Retry 32/32 PASS |
 | TASK-P3-06R-FIX | 数据库 DDL 兼容性修复 V0.1 | Completed |
 | TASK-P3-07-PREP | 数据库验证测试脚本同步修复 V0.1 | Completed |
+| TASK-P3-08 | Phase 3 Database Design Final Review V1.0 | Completed |
 
-- 当前 Phase：Phase 3 In Progress。
-- 文档版本：V2.0。
-- 文档状态：Database Validation Completed。
-- 项目状态：Waiting for Phase 3 Final Review。
-- TASK-P3-07 Retry 已在隔离 MySQL 8.0.45 空实例通过 V001～V006、18 表结构、39 个 RESTRICT 外键、58 个 CHECK、关键索引及 32/32 约束测试；Phase 3 仍为 In Progress，未进入 Phase 4。
+- 当前 Phase：Phase 3 Completed。
+- 文档版本：V2.1。
+- 文档状态：Phase 3 Database Design Completed。
+- 项目状态：Waiting for Phase 4 Task。
+- TASK-P3-08 已完成 Database Design Final Review V1.0；17 个逻辑实体、18 张物理表、最终 3NF、MySQL Schema、7 个 DDL、6 个 Migration 与真实验证结果共同形成冻结基线。尚未创建 ORM、后端工程或 API，未进入 Phase 4。
 
 ## 23. 设计决策记录
 
@@ -3287,6 +3353,14 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 5. **Decision：约束测试脚本本 Task 只创建、不执行。Reason：**P3-06R 负责恢复实现前置，空库初始化和实际 PASS/FAIL 证据仍属于 TASK-P3-07。
 6. **Decision：物理命名继续使用 MySQL Schema V1 的复数形式。Reason：**实现必须服从 V1.5 唯一设计真源，不能因任务描述中的概念名单改变已冻结表名。
 
+### ADR-028：Database Design Baseline V1.0 Final Freeze【Phase 3 最终决策】
+
+1. **Decision：Phase 3 数据库设计最终 Review 为 PASS，并冻结 Database Schema Baseline。Reason：**概念、E-R、关系模式、逐表 3NF、物理 Schema、DDL/Migration 与实际约束验证已形成完整证据链。
+2. **Decision：17 个逻辑实体映射为 18 张物理表。Reason：**唯一差异是 Snapshot 为满足时点唯一、当前有效与不可变历史而拆成观测槽和修订表，不代表新增业务实体。
+3. **Decision：三个 3NF CONDITIONAL 正式关闭。Reason：**Snapshot 拆分、DataQualityIssue 互斥真实目标外键和 OperationLog 固定真实目标外键均已完成设计与数据库验证。
+4. **Decision：后续数据库变更必须采用明确 Task、设计真源更新、版本化 Migration 和回归验证。Reason：**禁止后端开发阶段为实现便利静默破坏 3NF、真实外键、审计历史或既有约束。
+5. **Decision：Phase 4 后端以 ORM + Service 分层消费冻结 Schema。Reason：**数据库负责事实与完整性，Service 负责跨行状态和事务规则，Analytics 负责上下文相关派生结果。
+
 ## 24. Bug 与技术债务
 
 - 当前无已确认的软件 Bug。
@@ -3294,9 +3368,11 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - README 技术栈说明过时的一致性问题已由 TASK-P0-03 修复。
 - README 阶段状态过时事项已由 TASK-P1-03 同步解决。
 - README 的 Phase 1 Completed 状态已由 TASK-P2-06 同步为 Phase 2 Completed。
-- Snapshot 有效唯一性与保留 VOID 修订历史之间的 Schema 问题已由 TASK-P3-05 的“观测槽 + 不可变修订记录”方案关闭；实现与事务验证仍待后续 Task。
-- TASK-P3-07 首次前置检查因 DDL/Migration 不存在而停止；TASK-P3-06R 已补齐文件，实际数据库初始化与约束结果仍需重新执行 TASK-P3-07。
+- Snapshot 有效唯一性与保留 VOID 修订历史之间的 Schema 问题已由 TASK-P3-05 的“观测槽 + 不可变修订记录”方案关闭，并由 TASK-P3-07 Retry 完成实现与事务验证。
+- TASK-P3-07 首次前置检查缺失 DDL/Migration 的问题已由 TASK-P3-06R 补齐；完整数据库初始化和约束结果已由 TASK-P3-07 Retry 验证通过。
 - 【DBVAL-P3-07-001 / Closed】保留关键字冲突及测试脚本引用已完成修复；TASK-P3-07 Retry 在 MySQL 8.0.45 空实例中确认 V004 与完整 V001～V006 执行成功，32/32 约束测试通过。
+- TASK-P3-08 Final Review 未发现新的 Database Final Review Issue；早期路线中 Phase 4/5 的数据库工作拆分已同步为并入 Phase 3，当前下一阶段统一为 Phase 4 Backend Development。
+- 【非阻塞文档同步事项】`README.md` 仍显示 Phase 2 Completed / Waiting for Phase 3 Database Design；本 Task 未获授权修改 README，须由后续明确文档同步 Task 更新，不影响 Database Design Baseline V1.0。
 - 所有标记为【待后续设计】的事项属于计划内设计工作，不得误报为已实现功能或当前 Bug。
 
 ## 25. 最终报告 / 软著素材索引
@@ -3326,25 +3402,26 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 | ER Relationship Catalog V1 | 已建立 V0.1 基线，基数与参与约束已明确 |
 | Relational Model Catalog V1 | 已建立 V0.1 基线，17 个逻辑关系模式已完成逐项 3NF Review |
 | Table-level 3NF Review Catalog V1 | 已完成；P3-04 的 3 个 CONDITIONAL 已在 P3-05 关闭 |
-| E-R 图 | 待完成 |
+| E-R 模型 | ER Relationship Catalog V1 已冻结；独立可视化图文件未创建，不阻塞当前数据库基线 |
 | MySQL Schema Design V1 | 已建立 V0.1 物理设计基线，18 张物理表 |
 | Database DDL & Migration Baseline V1 | 已建立；7 个 DDL、6 个 Migration，均覆盖 18 张物理表 |
 | Database Validation Report | TASK-P3-07 Retry PASS；18/18 表、39/39 RESTRICT FK、58 CHECK、32/32 约束测试通过 |
-| 数据字典 | 已纳入 MySQL Schema Design V1 字段规格；正式实现字典待 DDL/Migration Task |
+| Database Design Final Review Summary V1.0 | PASS；Database Schema Baseline Frozen，Phase 3 Completed |
+| 数据字典 | 已纳入 MySQL Schema Design V1 字段规格，并由 DDL/Migration V1 实现 |
 | 3NF Review | 设计级 PASS；18 表物理实现一致性验证 PASS |
 | 主键 / 外键 / 完整性设计 | 已建立 V1 基线；18/18 主键、39/39 外键及约束验证 PASS |
 | 索引 | 已完成逻辑规划；关键结构存在性验证 PASS，10 万级执行计划验证仍待后续性能 Task |
 | View | 已完成候选规划，尚未创建 |
-| Transaction 设计与验证 | 待完成 |
+| Transaction 设计与验证 | 约束测试事务回滚 PASS；跨表 Service 事务实现与测试属于 Phase 4 |
 | SQL / Migration | 已完成 V1 基线文件；MySQL 8.0.45 空库 V001～V006 验证 PASS |
 | Git Commit | 持续保留 |
-| 测试记录 | 已新增 `database/tests/validation_report.md`；完整约束测试待修复后重跑 |
-| Bug 修复记录 | 待后续 Task 产生 |
+| 测试记录 | `database/tests/validation_report.md` 已记录 MySQL 空库验证与 32/32 约束测试 PASS |
+| Bug 修复记录 | DBVAL-P3-07-001 已记录、修复并由真实重试关闭 |
 | 核心代码位置 | 待后续 Task 产生 |
 | 系统运行截图 | 待完成 |
 | Dashboard 截图 | 待完成 |
 | 数据分析结果 | 待完成 |
-| 模拟数据说明 | 待完成 |
+| 模拟数据说明 | Simulation Dataset V1 Specification 已冻结；模拟数据文件尚未生成 |
 | 实际软件版本 | 持续维护 |
 | 最终运行环境 | 待最终确认 |
 
@@ -3595,3 +3672,17 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - GitHub remote：以本 Task 实际检查结果为准。
 - 当前状态：Completed；Phase 3 In Progress；Waiting for Phase 3 Final Review。
 - Commit：`test(database): complete schema validation`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
+
+### TASK-P3-08
+
+- 日期：2026-09-07。
+- 任务：Phase 3 Database Design Final Review V1.0。
+- Review 范围：Entity Catalog V1、ER Relationship Catalog V1、Relational Model Catalog V1、Table-level 3NF Review Catalog V1、MySQL Schema Design V1、DDL/Migration V1 与 Database Validation Report。
+- 最终结论：PASS。确认 17 个逻辑实体与 18 张物理表的差异仅来自 Snapshot 观测槽/修订拆分；18 表全部 3NF PASS，P3-04 的 Snapshot、DataQualityIssue、OperationLog 三个 CONDITIONAL 已关闭。
+- 实现确认：7 个 DDL、6 个 Migration；数据库入口与 V001～V006 为 7/7 PASS；18/18 主键、39/39 RESTRICT 外键、58 个 CHECK、32/32 约束测试及 Snapshot/Quality/Audit 验证 PASS。
+- 冻结内容：表结构、字段语义、主外键、UNIQUE、CHECK、索引方向、删除策略、Snapshot 模型、DDL/Migration 和验证结果共同组成 Database Design Baseline V1.0；后续变更必须通过明确 Task、设计真源更新、版本化 Migration 与回归验证。
+- Phase 4 输入：MySQL 8.x；SQLAlchemy 2.x ORM 忠实映射；Router/Service/Repository 分层；跨行规则与事务由 Service 负责；Analytics 通过 Service/经批准 View 实现，不污染事实表。
+- 未执行内容：未修改 Schema、DDL、Migration、实体、E-R、3NF 或业务规则；未创建后端代码、ORM 或 API，未进入 Phase 4。
+- GitHub remote：以本 Task 实际检查结果为准。
+- 当前状态：Completed；Phase 3 Completed；Waiting for Phase 4 Task。
+- Commit：`docs(database): complete phase3 final review`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
