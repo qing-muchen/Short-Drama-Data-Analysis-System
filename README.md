@@ -8,10 +8,11 @@
 
 ## 当前状态
 
-- 当前阶段：Phase 1 Completed。
-- 已完成项目工程初始化、需求设计基线、功能模块和权限设计、核心业务规则及非功能需求。
+- 当前阶段：Phase 2 Completed。
+- 已完成项目工程初始化、需求设计基线，以及 Analytics Semantics、Data Quality Detection、Insight Engine、Simulation Dataset Specification 和 Analytics Metric Dictionary 分析设计基线。
 - 当前尚未开始业务功能开发。
-- 下一阶段：Waiting for Phase 2 Task。
+- 数据库概念结构、逻辑结构和 Schema 尚未设计或冻结。
+- 下一阶段：Waiting for Phase 3 Database Design。
 
 ## 技术栈
 

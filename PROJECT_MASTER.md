@@ -9,11 +9,11 @@
 | 中文名称 | 短剧数据管理与分析系统 |
 | 英文名称 | Short Drama Data Management and Analysis System |
 | 软件版本 | V1.0 |
-| 文档版本 | V0.9 |
-| 当前 Phase | Phase 2 - In Progress |
-| 当前 Task | TASK-P2-05 |
-| 文档状态 | Analytics Metric Baseline Established |
-| 下一阶段状态 | Waiting for Next Phase 2 Task |
+| 文档版本 | V1.0 |
+| 当前 Phase | Phase 2 - Completed |
+| 当前 Task | TASK-P2-06 |
+| 文档状态 | Analytics Design Baseline Frozen |
+| 下一阶段状态 | Waiting for Phase 3 Database Design |
 | 最近更新日期 | 2026-09-07 |
 
 状态标签：
@@ -2151,6 +2151,109 @@ Phase 1 已完成并确认以下需求层内容：系统定位与 V1.0 范围、
 
 Review 结论：PASS。`Requirements Baseline Frozen` 仅表示需求基线冻结，不代表概念设计、逻辑结构或任何数据库 Schema 已冻结。
 
+### 18.15 Phase 2 Analytics Design Baseline V1.0 Review【PASS】
+
+#### 18.15.1 基线组成与完成情况
+
+`Analytics Design Baseline V1.0` 由以下五个既有组成部分构成。本节只做一致性 Review 与版本冻结，不新增或修改其指标、公式、权重、阈值和业务规则。
+
+| 组成部分 | 来源 Task | 基线内容 | Review |
+| --- | --- | --- | --- |
+| Analytics Semantics | TASK-P2-01 | AnalysisContext、as-of、两层粒度、跨平台聚合、窗口 Growth 与 NULL 规则 | PASS |
+| Data Quality Detection | TASK-P2-02 | 确定性校验、质量生命周期、Robust Z、有效性过滤与异常解释 | PASS |
+| Insight Engine | TASK-P2-03 | Trigger-Evidence-Conclusion、七类 Insight、样本与表达边界 | PASS |
+| Simulation Dataset Specification | TASK-P2-04 | 100 部 Drama、关系/时间/长尾分布、受控异常、版本和 Profile | PASS |
+| Metric Dictionary | TASK-P2-05 | 八类指标、来源、计算语义、粒度、NULL、Dashboard 与版本关联 | PASS |
+
+TASK-P2-01～TASK-P2-05 均已完成并有独立 Git 提交。Phase 2 Review 结论为 PASS，分析设计达到可作为后续数据库设计和实现引用基线的程度。
+
+#### 18.15.2 Analytics Semantics 一致性确认
+
+1. Dashboard、分析中心、导出、异常检测与 Insight 统一使用 AnalysisContext。
+2. 所有当前指标使用不晚于 `analysis_as_of` 的最新分析有效快照，不读取未来数据。
+3. DramaPlatform 与 Drama Overall 是不同粒度，不得混用。
+4. 跨平台累计值先取得各平台 as-of 快照，再按 Drama 聚合；累计快照不得跨时间求和。
+5. 互动率先聚合原始分子和 PlayCount 分母，再计算比率，不简单平均平台比率。
+6. PlatformRanking 只在平台内部解释，禁止跨平台求和或平均。
+7. Growth 使用相邻或 24H/7D/30D 合格历史基准；无基准或基准为 0 时为 NULL。
+8. NULL 表示未知、不可计算或不适用，不等于 0，也不得为展示便利自动填 0。
+
+上述八项与 Analytics Metric Dictionary V1.0 一致，未发现跨 Task 冲突。
+
+#### 18.15.3 模型与规则版本冻结
+
+| 基线项 | 冻结版本 | 冻结语义 |
+| --- | --- | --- |
+| Heat | `Heat Model V1` | 当前累计规模综合表现；保留 Platform Heat 与 Drama Overall Heat；不表示增长或预测 |
+| Potential | `Potential Model V1` | 当前增长与互动数据形成的潜力信号；不是预测或推荐 |
+| Anomaly | `Anomaly Detection Model V1` | DramaPlatform + 单指标每小时增量速率；28 样本窗口、12 样本下限、24h 间隔上限、0.6745 Modified Z、统计异常默认 WARNING |
+| Insight | `Insight Rule Set V1` | Metric + AnalysisContext 输入，Trigger-Evidence-Conclusion 输出；禁止预测、因果与商业推荐 |
+| Metric | `Analytics Metric Dictionary V1.0`（简称 `Metric Dictionary V1`） | Raw、Engagement、Growth、Ranking、Heat、Potential、Quality、Insight 八类统一指标语义 |
+| Simulation | `Simulation Dataset V1` | 100 部 Drama、90 天、每日 4 次、10/30/60 长尾、多平台/多标签和受控异常规范 |
+
+后续数据库、后端、分析服务、前端与测试只能显式引用这些版本。任何公式、权重、阈值、指标语义或规则变化必须建立新版本并记录迁移影响，禁止静默修改 V1 基线。
+
+#### 18.15.4 Heat、Potential、Anomaly、Insight 与 Simulation Review
+
+- Heat Model V1 的五项输入、Min-Max、Candidate Set、权重与排序规则保持原定义；Heat 仅描述 as-of 当前累计表现。
+- Potential Model V1 的 Growth7D、QualityEngagement、FavoriteRate、ShareRate 输入、资格、权重与排序保持原定义；高 Potential 不保证未来成功。
+- Anomaly Detection Model V1 保持单 DramaPlatform、单指标检测；使用每小时 DeltaRate、最近 28 个历史样本、最低 12 个样本、最大 24 小时间隔和 `0.6745 × (x - median) / MAD`；统计偏离默认 WARNING，确定非法数据按既有规则为 ERROR。
+- Insight Engine V1 只消费已计算 Metric、质量结果与 AnalysisContext，通过规则生成 Trigger、Evidence、Conclusion，不使用 LLM，不产生因果、预测或商业推荐。
+- Simulation Dataset V1 保持 100 部 Drama、90 天、每日 08:00/12:00/18:00/22:00 四次采样、头部/中腰部/长尾 10/30/60、多平台、多标签、演员/导演/公司关系和 Clean Base 后受控异常注入。
+
+#### 18.15.5 Phase 2 输出与 Phase 3 边界
+
+Phase 2 向 Phase 3 提供：
+
+1. 业务实体及关系需要支撑的分析事实；
+2. 原始数据库信息与派生计算指标的来源依据；
+3. 历史运营快照、时间窗口、有效性与修订保留需求；
+4. 业务唯一性、质量生命周期、导入审计及操作日志约束；
+5. 高频查询、as-of、时间范围、候选集合和关联聚合对索引设计的参考；
+6. Heat、Potential、Anomaly、Insight 与 Metric Dictionary 的版本引用要求。
+
+Phase 2 不决定最终实体取舍、表、列、MySQL 类型、主键、外键、候选键、索引、View、ON DELETE、ORM Mapping、Migration 或 E-R 模型。分析派生值原则上不进入基础快照；是否建立独立分析结果/汇总层只能在后续基于真实性能与 3NF 边界审查。
+
+#### 18.15.6 Phase 3 数据库设计输入候选清单
+
+以下均为业务/过程对象候选，不是最终数据库表或 Schema：
+
+| 候选对象 | Phase 2 提供的核心输入 |
+| --- | --- |
+| User | 管理员/普通用户、启用禁用、username 业务唯一、审计保留 |
+| Drama | 稳定内部业务编码、生命周期、同名允许、分析主体 |
+| Actor | 可重名基础对象，与 Drama 多对多，主体分析按作品归属 |
+| Director | 与 Drama 多对多，允许一剧多导演 |
+| Company | 与 Drama 多对多，同一作品允许多种参与类型 |
+| Platform | 平台资料、启停状态、平台内 ranking 语境 |
+| Tag | 扁平多标签、可停用、Tag 内 Drama 去重 |
+| DramaActor | 主要参演关系、role_name、role_type、billing_order 业务语义 |
+| DramaDirector | 多导演关系，同一 Drama + Director 不重复 |
+| DramaCompany | relation_type 参与关系，同一公司可对同一作品多类型 |
+| DramaTag | 多标签关系，同一 Drama + Tag 不重复 |
+| DramaPlatform | 一剧多平台发行上下文，V1 同 Drama + Platform 一条关系 |
+| Snapshot / DramaMetricSnapshot | DramaPlatform 时点累计事实、ranking、有效/作废、历史修订与 as-of 查询 |
+| ImportJob | 两阶段导入生命周期、有效集合单事务和结果追溯 |
+| ImportError | 导入正式写入前的行/字段错误，与长期质量问题分离 |
+| DataQualityIssue | 类型、Severity、Status、来源、Evidence、处理与重检生命周期 |
+| OperationLog | 重要业务变更审计，不保存密码、Token 或 Secret |
+
+Phase 3 必须重新审查候选对象的独立性、关系表达和 3NF，不得把清单机械等同为固定表数量。
+
+#### 18.15.7 Phase 2 遗留与后续设计事项
+
+1. Snapshot 作废历史与同一 DramaPlatform + snapshot_time 仅一个有效快照之间的版本/修订模型；
+2. 最终实体、关系模式、主键、候选键与真实外键设计；
+3. 字段、MySQL 类型、NULL/default/CHECK 与时间类型；
+4. 各关系和历史对象的 ON DELETE、停用及审计保留实现；
+5. as-of、时间范围、质量筛选和关联查询所需索引；
+6. View、分析结果/汇总层与性能优化边界；
+7. 数据字典与逐表 3NF Review；
+8. SQLAlchemy ORM、Alembic Migration、API、Service 与错误响应结构；
+9. 认证会话失效、文件大小上限、日志保留周期等后续专项问题。
+
+其中数据库概念/逻辑事项进入 Phase 3/4；ORM、Migration、API 与 Service 按后续路线处理。本 Task 不解决上述事项，也不表示数据库设计已经开始或获批。
+
 ## 19. Agent 开发规范
 
 ### 19.1 Task 驱动流程【已冻结】
@@ -2194,7 +2297,7 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 | --- | --- | --- |
 | Phase 0 | 项目初始化和设计基线 | Completed |
 | Phase 1 | 需求与功能模块正式冻结 | Completed |
-| Phase 2 | 数据分析规则细化 | In Progress |
+| Phase 2 | 数据分析规则细化 | Completed |
 | Phase 3 | 数据库概念结构设计 | Waiting |
 | Phase 4 | 数据库逻辑结构与 3NF Review | Waiting |
 | Phase 5 | MySQL Schema 实现 | Waiting |
@@ -2228,11 +2331,12 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 | TASK-P2-03 | 自动分析结论规则设计 V0.1 | Completed |
 | TASK-P2-04 | 模拟数据生成规范设计 V0.1 | Completed |
 | TASK-P2-05 | 分析指标体系最终冻结 V0.1 | Completed |
+| TASK-P2-06 | Phase 2 Review 与分析设计基线冻结 V1.0 | Completed |
 
-- 当前 Phase：Phase 2 In Progress（准备进入收尾）。
-- 文档版本：V0.9。
-- 文档状态：Analytics Metric Baseline Established。
-- 项目状态：Waiting for Next Phase 2 Task。
+- 当前 Phase：Phase 2 Completed。
+- 文档版本：V1.0。
+- 文档状态：Analytics Design Baseline Frozen。
+- 项目状态：Waiting for Phase 3 Database Design。
 - 最终 E-R 模型尚未设计、绘制或冻结；数据库概念结构设计、逻辑结构设计和 DB Schema 均未批准或冻结。
 
 ## 23. 设计决策记录
@@ -2408,13 +2512,20 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 11. **Decision：Dashboard 总体互动率先聚合原始分子与分母。Reason：**简单平均对象互动率会忽略播放规模差异。
 12. **Decision：Dashboard 历史记录数与分析有效数分开理解。Reason：**保留的 VOID/问题数据具有审计意义，但不能因此参与分析指标。
 
+### ADR-021：Analytics Design Baseline V1.0 冻结【Phase 2 基线】
+
+1. **Decision：Phase 2 Review 通过并冻结 Analytics Design Baseline V1.0。Reason：**Analytics Semantics、Data Quality Detection、Insight Engine、Simulation Dataset Specification 和 Metric Dictionary 已形成一致闭环。
+2. **Decision：Heat V1、Potential V1、Anomaly Detection V1、Insight Rule Set V1 和 Metric Dictionary V1 后续只可版本化引用。Reason：**禁止实现阶段静默改变已验收的公式、权重、阈值或指标语义。
+3. **Decision：Phase 2 输出作为 Phase 3 输入而非最终 Schema。Reason：**分析事实、历史、约束和查询需求可指导概念设计，但实体取舍、键、字段、类型和索引仍需数据库阶段审查。
+4. **Decision：Snapshot 修订一致性继续保持未决。Reason：**必须在 Phase 3/4 同时满足有效唯一语义、VOID 历史、审计与至少 3NF，本 Task 不越界选定结构。
+
 ## 24. Bug 与技术债务
 
 - 当前无已确认的软件 Bug。
 - TASK-P0-01 时 `PROJECT_MASTER.md` 信息不足的问题已由 TASK-P0-02 建立 V0.1 设计基线解决。
 - README 技术栈说明过时的一致性问题已由 TASK-P0-03 修复。
 - README 阶段状态过时事项已由 TASK-P1-03 同步解决。
-- README 保持显示 Phase 1 Completed，符合 TASK-P2-01 规定的上一阶段完成状态；Phase 2 完成后再统一同步。
+- README 的 Phase 1 Completed 状态已由 TASK-P2-06 同步为 Phase 2 Completed。
 - 【Phase 3/4 必须解决的 Schema 设计问题】Snapshot 有效唯一性与保留 VOID 修订历史之间的约束冲突，详见 18.6 节；当前不是软件 Bug，且尚未冻结解决方案。
 - 所有标记为【待后续设计】的事项属于计划内设计工作，不得误报为已实现功能或当前 Bug。
 
@@ -2440,6 +2551,7 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 | Insight Engine V1 与自动分析结论规则 | 已建立 V0.1 基线 |
 | Simulation Dataset V1 生成规范 | 已建立 V0.1 基线 |
 | Analytics Metric Dictionary V1.0 | 已建立并冻结 V1.0 基线 |
+| Phase 2 Analytics Design Baseline V1.0 Review | PASS，已冻结 |
 | E-R 图 | 待完成 |
 | 最终数据库 Schema | 待完成 |
 | 数据字典 | 待完成 |
@@ -2579,3 +2691,14 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - GitHub remote：Not Configured。
 - 当前状态：Completed；Phase 2 In Progress（准备进入收尾）；Waiting for Next Phase 2 Task。
 - Commit：`docs: establish analytics metric dictionary`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
+
+### TASK-P2-06
+
+- 日期：2026-09-07。
+- 任务：Phase 2 Review 与分析设计基线冻结 V1.0。
+- 完成内容：对 Analytics Semantics、Data Quality Detection、Insight Engine、Simulation Dataset Specification 和 Metric Dictionary 五部分完成一致性 Review；确认 AnalysisContext、as-of、粒度、跨平台聚合、Growth、Ranking、NULL 与质量规则一致；冻结 Heat Model V1、Potential Model V1、Anomaly Detection Model V1、Insight Rule Set V1 和 Analytics Metric Dictionary V1.0 的版本引用；整理 Phase 3 候选对象输入、边界和遗留事项；同步 README 并关闭 Phase 2。
+- 验证内容：完成 13 项 Phase 2 收尾自检，五部分 Review 均 PASS，确认模型、权重、异常规则和指标定义未修改；未执行代码、数据库或算法测试。
+- 未开发内容：未编写代码或 SQL，未创建数据库、Schema、表、字段、View、Migration 或 E-R，未设计 API，未初始化或开发 Vue/FastAPI，未生成模拟数据文件、课程设计报告或软著材料，未开始 Phase 3 数据库设计。
+- GitHub remote：Not Configured。
+- 当前状态：Completed；Phase 2 Completed；Waiting for Phase 3 Database Design。
+- Commit：`docs: freeze phase 2 analytics baseline`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
