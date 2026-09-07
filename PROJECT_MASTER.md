@@ -9,11 +9,11 @@
 | 中文名称 | 短剧数据管理与分析系统 |
 | 英文名称 | Short Drama Data Management and Analysis System |
 | 软件版本 | V1.0 |
-| 文档版本 | V2.1 |
-| 当前 Phase | Phase 3 - Completed |
-| 当前 Task | TASK-P3-08 |
-| 文档状态 | Phase 3 Database Design Completed |
-| 下一阶段状态 | Waiting for Phase 4 Task |
+| 文档版本 | V2.3 |
+| 当前 Phase | Phase 4 - In Progress |
+| 当前 Task | TASK-P4-02 |
+| 文档状态 | ORM Mapping Baseline Established |
+| 下一阶段状态 | Waiting for Next Phase 4 Task |
 | 最近更新日期 | 2026-09-07 |
 
 状态标签：
@@ -22,7 +22,7 @@
 - 【待后续设计】：需求方向明确，但具体技术设计尚未确定。
 - 【未来扩展】：不属于 V1.0 开发范围。
 
-本文档记录真实的软件工程设计与开发状态，不是课程设计报告正文。Phase 3 Database Design 已完成最终 Review：概念模型、E-R 关系、关系模型、逐表 3NF、MySQL Schema V1、DDL/Migration V1 和数据库验证结果共同构成冻结的 Database Design Baseline V1.0；当前等待项目负责人下达 Phase 4 Backend Development Task。
+本文档记录真实的软件工程设计与开发状态，不是课程设计报告正文。Phase 3 Database Design Baseline V1.0 保持冻结；TASK-P4-02 已在 TASK-P4-01 工程基线上建立 SQLAlchemy ORM Mapping Baseline V0.1，忠实映射冻结的 18 张物理表、39 个真实外键、58 个 CHECK、16 个业务 UNIQUE 与 46 个显式索引，但未创建业务 Router、Service、Repository、API 或 Alembic 业务 Migration。
 
 ## 1. 项目定义
 
@@ -2736,7 +2736,140 @@ MySQL Raw Data → SQL / Pandas / NumPy → Derived Metrics
 → FastAPI → Vue / ECharts
 ```
 
-具体前后端内部目录结构【待各自初始化 Task】。
+前端内部目录结构仍待后续初始化 Task；后端内部目录结构已由 TASK-P4-01 建立如下工程基线。
+
+### 12.2 FastAPI Backend Engineering Baseline V0.1【TASK-P4-01】
+
+#### 12.2.1 运行时与应用入口
+
+- Python 基线：3.12+；本 Task 使用 Python 3.12.14 完成验证。
+- Web：FastAPI；ASGI Server：Uvicorn；数据校验与配置：Pydantic v2 / pydantic-settings。
+- ORM：SQLAlchemy 2.x；Migration 框架：Alembic；MySQL Driver：PyMySQL；目标数据库保持 MySQL 8.x。
+- `backend/main.py` 暴露 FastAPI `app`，当前唯一 HTTP 能力为基础设施健康检查 `GET /health`，固定返回 `{"status": "ok"}`，不访问数据库或执行业务逻辑。
+
+#### 12.2.2 后端目录与职责
+
+```text
+backend/
+├── app/                 # 后续应用组装
+├── core/                # 后续横切基础设施
+├── config/              # Pydantic Settings
+├── database/            # Base、Engine、Session
+├── models/              # 后续 ORM 映射；当前为空
+├── schemas/             # 后续 Pydantic 业务契约；当前为空
+├── repositories/        # 后续持久化访问；当前为空
+├── services/            # 后续业务规则与事务；当前为空
+├── routers/             # 后续业务 HTTP Router；当前为空
+├── tests/               # 基础设施测试
+├── alembic/             # Alembic 环境；versions 当前为空
+├── main.py
+├── requirements.txt
+├── pytest.ini
+├── alembic.ini
+├── .env.example
+└── README.md
+```
+
+依赖方向固定为：
+
+```text
+Router → Service → Repository → ORM / Database
+```
+
+Router 不得直接执行 SQL、持有事务或实现跨行业务规则。Service 负责业务规则、事务和编排；Repository 负责持久化访问；ORM 必须忠实映射 Phase 3 冻结的 18 张物理表，禁止为编码便利重构 Schema。
+
+#### 12.2.3 配置与 Secret 管理
+
+- `backend/config/settings.py` 使用 Pydantic Settings，从系统环境变量及被 Git 忽略的 `backend/.env` 读取配置。
+- 当前配置键为 `APP_NAME`、`APP_ENV`、`DATABASE_URL`、`SECRET_KEY_PLACEHOLDER`。
+- `backend/.env.example` 只包含明确占位值，不含真实数据库密码、Token 或 Secret；真实 `.env` 不得提交 Git。
+- development、test、production 是当前允许的环境名称；具体生产配置、认证 Secret 和会话安全留给后续明确 Task。
+
+#### 12.2.4 SQLAlchemy 基础
+
+- `database.base.Base` 使用 SQLAlchemy 2.x `DeclarativeBase`；当前 metadata 表数量为 0，不包含 User、Drama、Snapshot 或其他业务 Model。
+- Engine 通过缓存工厂延迟构造，使用配置的 MySQL/PyMySQL URL、`pool_pre_ping` 与连接回收基础参数；应用导入和健康检查不会建立数据库连接。
+- Session 工厂使用 SQLAlchemy 2.x `sessionmaker`，关闭 autoflush、提交后不过期，并提供始终关闭 Session 的生成器依赖。
+- 本层只建立连接与会话生命周期，不包含查询、CRUD、自动建表或 Schema 变更。
+
+#### 12.2.5 Alembic 边界
+
+- `backend/alembic/`、`alembic.ini`、`env.py`、`script.py.mako` 与空 `versions/` 已初始化；`target_metadata` 指向空的 `Base.metadata`。
+- 当前数据库权威物理基线仍为仓库根目录 `database/migrations/` 的 V001～V006；本 Task 未生成业务 Revision，未执行 stamp、upgrade 或数据库变更。
+- 后续必须由明确 Task 设计 Alembic 如何接管既有 SQL 基线，禁止在策略确定前对已验证数据库自动生成或执行 Migration。
+
+#### 12.2.6 依赖与验证证据
+
+`backend/requirements.txt` 使用主要版本范围声明 FastAPI、Uvicorn、SQLAlchemy、Alembic、Pydantic v2、pydantic-settings、PyMySQL、pytest 与 HTTPX。依赖安装在被 Git 忽略的 `backend/.venv`，不提交虚拟环境。
+
+实际验证结果：
+
+| 验证项 | 结果 |
+| --- | --- |
+| Python | 3.12.14，PASS |
+| Python compileall | PASS |
+| 健康测试 | 1/1 PASS |
+| Uvicorn 实际启动与 `GET /health` | 返回 `status=ok`，PASS；进程已停止 |
+| Pydantic Settings 环境变量覆盖 | PASS |
+| SQLAlchemy Engine | MySQL dialect，PASS；未连接数据库 |
+| SQLAlchemy Base | 0 个业务表，符合本 Task 边界 |
+| Session Factory | PASS |
+| Alembic offline env / 空 heads | PASS；未生成 Revision |
+| pip check | No broken requirements |
+| 业务代码扫描 | 未发现业务 Model、业务 Router、CRUD 或 SQL |
+
+### 12.3 SQLAlchemy ORM Mapping Baseline V0.1【TASK-P4-02】
+
+#### 12.3.1 映射范围与目录决策
+
+- ORM 继续使用 TASK-P4-01 已冻结的 `backend/models/` 包和 `backend/database/base.py`，不另建重复的 `backend/app/models/` 或第二套 Declarative Base。
+- `models/__init__.py` 集中导入并导出 18 个 Model，确保 `Base.metadata` 与 Alembic 环境可以发现全部冻结物理表。
+- 文件按职责划分为 `user.py`、`drama.py`、`master_data.py`、`relations.py`、`snapshot.py`、`import_job.py`、`quality.py`、`operation_log.py`，共享时间列仅由 `common.py` 提供声明式 Mixin。
+
+#### 12.3.2 Schema 忠实映射原则
+
+1. 18 张物理表逐表映射，表名、列名、可空性、默认值、MySQL unsigned 数值语义和 `DATETIME(6)` 精度保持与 Database Schema Baseline V1.0 一致。
+2. 所有主键继续使用 `BIGINT UNSIGNED AUTO_INCREMENT`；Python 注解为 `Mapped[int]`，不引入新的主键、业务编码或代理关系。
+3. 39 个外键全部使用真实 `ForeignKey` / `ForeignKeyConstraint` 并保持 `ON DELETE RESTRICT ON UPDATE RESTRICT`；不使用逻辑外键、JSON 关系或多态 `target_type + target_id` 替代设计。
+4. 数据库状态列继续映射为 `VARCHAR + CHECK` 的字符串存储；本基线不将其改成 MySQL ENUM，也不改变冻结状态值。
+5. metadata 保留 58 个命名 CHECK、16 个命名 UNIQUE 与 46 个显式索引，ORM 不承担替代数据库约束的职责。
+6. 数据库触发器（Snapshot Revision 不可更新/删除、OperationLog 不可更新/删除）仍由已验证 DDL 管理；ORM 不复制或重新实现触发器，也未生成 Migration。
+
+#### 12.3.3 核心与关系 Model
+
+- 核心：`User`、`Drama`。
+- 主数据：`Actor`、`Director`、`Company`、`Platform`、`Tag`。
+- 关系与发行：`DramaActor`、`DramaDirector`、`DramaCompany`、`DramaTag`、`DramaPlatform`。
+- `Drama` 通过关联实体关系连接演员、导演、公司、标签和平台发行，未将多值关系简化为 JSON 或直接列表列。
+- `DramaCompany` 保留 `(drama, company, relation_type)` 业务唯一语义；`DramaPlatform` 保持 Drama 与 Platform 之间独立发行事实。
+
+#### 12.3.4 Snapshot、治理与审计 Model
+
+- `DramaMetricSnapshot` 表示稳定观测槽；`DramaMetricSnapshotRevision` 表示不可变历史修订，二者保持独立 Model。
+- 当前修订、同槽前序修订和版本链由冻结的复合外键/唯一约束表达；ORM 仅提供关系导航，修订追加与 current pointer 原子更新仍必须由后续 Service 事务实现。
+- `ImportJob` 与 `ImportError` 分离，保持一对多；Snapshot 的来源导入任务保持真实可空外键。
+- `DataQualityIssue` 保留 Drama、DramaPlatform、SnapshotRevision 三类互斥真实目标外键，不改为 JSON 或通用多态目标。
+- `OperationLog` 保留操作用户与 16 类固定互斥审计目标；不保存完整对象 JSON，数据库 append-only 触发器继续生效。
+
+#### 12.3.5 Relationship 与验证证据
+
+已建立 User→ImportJob、User→SnapshotRevision、Drama→各关联实体、DramaPlatform→Snapshot、Snapshot→Revision、ImportJob→ImportError，以及质量与审计目标的双向关系。Snapshot current revision 与 previous revision 关系为只读导航，避免 ORM 隐式修改不可变历史；写入顺序与事务规则留给后续 Service Task。
+
+本 Task 未连接数据库、未执行 `create_all()`、未修改 DDL/Migration，也未创建业务 Router、Service、Repository、CRUD 或 API。实际验证：
+
+| 验证项 | 结果 |
+| --- | --- |
+| Python import / `configure_mappers()` | PASS，无 SQLAlchemy Warning |
+| Model 导出 | 18/18 PASS |
+| metadata 表 | 18/18 PASS |
+| 单列主键及 `BIGINT UNSIGNED AUTO_INCREMENT` | 18/18 PASS |
+| 外键 | 39/39 PASS，全部 RESTRICT |
+| CHECK | 58/58 PASS |
+| 命名 UNIQUE | 16/16 PASS |
+| 显式索引 | 46/46 PASS |
+| MySQL 离线 `CreateTable` 编译 | 18/18 PASS；仅编译，未执行 |
+| pytest | 4/4 PASS |
+| Alembic offline env | PASS；无业务 Revision、无数据库写入 |
 
 ## 13. 技术栈
 
@@ -3053,10 +3186,10 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 | Phase 1 | 需求与功能模块正式冻结 | Completed |
 | Phase 2 | 数据分析规则细化 | Completed |
 | Phase 3 | Database Design：概念、E-R、关系模型、3NF、Schema、DDL/Migration 与验证 | Completed |
-| Phase 4 | Backend Development | Waiting |
+| Phase 4 | Backend Development | In Progress |
 | Phase 5 | 原 MySQL Schema 实现工作项，已并入 Phase 3 | Merged / Completed |
 | Phase 6 | 模拟数据系统 | Waiting |
-| Phase 7 | FastAPI 基础架构 | Waiting |
+| Phase 7 | 原 FastAPI 基础架构工作项，已并入 Phase 4 | Merged / In Progress |
 | Phase 8 | 核心业务 API | Waiting |
 | Phase 9 | 数据导入与清洗 | Waiting |
 | Phase 10 | 数据分析服务 | Waiting |
@@ -3070,7 +3203,7 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 | Phase 18 | 课程设计报告统一生成 | Waiting |
 | Phase 19 | 后续软件完善 / 软著准备 | Future |
 
-项目负责人后续 Task 已将初始路线中的数据库逻辑设计与 MySQL Schema 实现统一纳入 Phase 3 并完成；因此当前有效的下一阶段为 Phase 4 Backend Development。Phase 5 的原数据库工作项仅保留合并轨迹，不代表需要在 Phase 4 之后重复执行。Phase 6 及后续初始编号仍是候选工作分解，若与后续明确 Task 冲突，以项目负责人新 Task 和本文档届时更新为准。
+项目负责人后续 Task 已将初始路线中的数据库逻辑设计与 MySQL Schema 实现统一纳入 Phase 3 并完成，并将 FastAPI Backend Development 作为 Phase 4；Phase 5 和 Phase 7 的原工作项只保留合并轨迹，不代表需要重复执行。Phase 6 及后续初始编号仍是候选工作分解，若与后续明确 Task 冲突，以项目负责人新 Task 和本文档届时更新为准。
 
 ## 22. 当前 Task 状态
 
@@ -3098,12 +3231,14 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 | TASK-P3-06R-FIX | 数据库 DDL 兼容性修复 V0.1 | Completed |
 | TASK-P3-07-PREP | 数据库验证测试脚本同步修复 V0.1 | Completed |
 | TASK-P3-08 | Phase 3 Database Design Final Review V1.0 | Completed |
+| TASK-P4-01 | FastAPI 后端架构初始化与工程基线设计 V0.1 | Completed |
+| TASK-P4-02 | 数据库 ORM 模型映射设计 V0.1 | Completed |
 
-- 当前 Phase：Phase 3 Completed。
-- 文档版本：V2.1。
-- 文档状态：Phase 3 Database Design Completed。
-- 项目状态：Waiting for Phase 4 Task。
-- TASK-P3-08 已完成 Database Design Final Review V1.0；17 个逻辑实体、18 张物理表、最终 3NF、MySQL Schema、7 个 DDL、6 个 Migration 与真实验证结果共同形成冻结基线。尚未创建 ORM、后端工程或 API，未进入 Phase 4。
+- 当前 Phase：Phase 4 In Progress。
+- 文档版本：V2.3。
+- 文档状态：ORM Mapping Baseline Established。
+- 项目状态：Waiting for Next Phase 4 Task。
+- TASK-P4-02 已将冻结的 18 张 MySQL 表映射为 SQLAlchemy 2.x ORM Model；metadata 一致性检查为 18 表、39 FK、58 CHECK、16 UNIQUE、46 显式索引，pytest 4/4 PASS。未创建业务 Router、Service、Repository、CRUD、API 或 Alembic 业务 Migration。
 
 ## 23. 设计决策记录
 
@@ -3361,6 +3496,25 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 4. **Decision：后续数据库变更必须采用明确 Task、设计真源更新、版本化 Migration 和回归验证。Reason：**禁止后端开发阶段为实现便利静默破坏 3NF、真实外键、审计历史或既有约束。
 5. **Decision：Phase 4 后端以 ORM + Service 分层消费冻结 Schema。Reason：**数据库负责事实与完整性，Service 负责跨行状态和事务规则，Analytics 负责上下文相关派生结果。
 
+### ADR-029：FastAPI Backend Engineering Baseline V0.1【Phase 4 工程基线】
+
+1. **Decision：后端采用 Router → Service → Repository → ORM/Database 单向分层。Reason：**隔离 HTTP、业务规则、事务和持久化职责，禁止 Router 直接 SQL。
+2. **Decision：配置统一由 Pydantic Settings 和环境变量提供。Reason：**避免把数据库密码、Token 或 Secret 硬编码或提交 Git，并为 development/test/production 保留清晰边界。
+3. **Decision：Engine 与 Session 使用工厂延迟构造。Reason：**应用导入和健康检查不应因数据库暂不可用而建立连接，同时为后续依赖注入与测试替换提供边界。
+4. **Decision：TASK-P4-01 仅创建空 Declarative Base，不映射业务表。Reason：**18 张 ORM Model 必须由后续逐表 Task 忠实映射冻结 Schema，不能在工程初始化中提前实现。
+5. **Decision：Alembic 只初始化环境，不生成 Revision。Reason：**现有权威 Migration 是已经验证的 `database/migrations/V001～V006`，接管策略必须后续专项确定，避免双重历史。
+6. **Decision：健康检查为唯一当前接口且不访问数据库。Reason：**它只证明 ASGI 进程可运行，不提前引入业务可用性、认证或数据库查询语义。
+
+### ADR-030：SQLAlchemy ORM Mapping Baseline V0.1【Phase 4 ORM 基线】
+
+1. **Decision：ORM 必须逐表忠实映射 Database Schema Baseline V1.0。Reason：**后端不得为编码便利改变 18 表结构、39 个真实外键、数据库约束、删除策略或 3NF 结论。
+2. **Decision：沿用 TASK-P4-01 的顶层 `models/` 与单一 `database.base.Base`。Reason：**设计真源已冻结该目录，创建第二套 `app/models` 或 Base 会导致 metadata 分裂和导入歧义。
+3. **Decision：状态字段以字符串映射保留数据库 `VARCHAR + CHECK`。Reason：**Python Enum 不是当前必要条件，字符串映射可以避免静默改变 MySQL 存储形式或重复生成 ENUM 约束。
+4. **Decision：Snapshot Slot 与 Revision 保持两个 Model。Reason：**稳定观测槽、当前修订指针和不可变修订历史是已验证 Schema 的核心，合并会破坏审计与有效版本语义。
+5. **Decision：current/previous revision 使用只读关系导航。Reason：**修订历史不可变，关联写入、版本连续性和 current pointer 切换必须由后续 Service 在显式事务中完成，不能由 relationship 级联隐式改写。
+6. **Decision：DataQualityIssue 与 OperationLog 保持固定真实目标外键。Reason：**互斥目标 CHECK、真实引用完整性和 3NF 已经由数据库验证，禁止退化为 JSON 或无外键多态引用。
+7. **Decision：ORM metadata 注册全部约束和索引，但数据库 DDL 仍是物理权威。Reason：**metadata 支持导入验证和未来工具发现；触发器及既有迁移历史仍由 Phase 3 的 DDL/Migration 基线管理。
+
 ## 24. Bug 与技术债务
 
 - 当前无已确认的软件 Bug。
@@ -3373,6 +3527,9 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - 【DBVAL-P3-07-001 / Closed】保留关键字冲突及测试脚本引用已完成修复；TASK-P3-07 Retry 在 MySQL 8.0.45 空实例中确认 V004 与完整 V001～V006 执行成功，32/32 约束测试通过。
 - TASK-P3-08 Final Review 未发现新的 Database Final Review Issue；早期路线中 Phase 4/5 的数据库工作拆分已同步为并入 Phase 3，当前下一阶段统一为 Phase 4 Backend Development。
 - 【非阻塞文档同步事项】`README.md` 仍显示 Phase 2 Completed / Waiting for Phase 3 Database Design；本 Task 未获授权修改 README，须由后续明确文档同步 Task 更新，不影响 Database Design Baseline V1.0。
+- 【非阻塞环境事项】宿主 PATH 当前未提供 `python`/`py` 命令；TASK-P4-01 使用 Codex 提供的 Python 3.12.14 创建被 Git 忽略的 `backend/.venv` 并完成验证。其他开发环境仍须自行提供 Python 3.12+。
+- 【待后续设计】Alembic 已初始化但没有业务 Revision；必须由后续明确 Task 决定其与已验证 V001～V006 SQL 基线的接管/对齐方式，不得直接 stamp 或 autogenerate。
+- 【非阻塞文档同步事项】`backend/README.md` 仍保留 TASK-P4-01“models 当前为空”的阶段性描述；TASK-P4-02 修改范围未包含该文件，应由后续明确文档同步 Task 更新，不影响 ORM Mapping Baseline。
 - 所有标记为【待后续设计】的事项属于计划内设计工作，不得误报为已实现功能或当前 Bug。
 
 ## 25. 最终报告 / 软著素材索引
@@ -3407,6 +3564,8 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 | Database DDL & Migration Baseline V1 | 已建立；7 个 DDL、6 个 Migration，均覆盖 18 张物理表 |
 | Database Validation Report | TASK-P3-07 Retry PASS；18/18 表、39/39 RESTRICT FK、58 CHECK、32/32 约束测试通过 |
 | Database Design Final Review Summary V1.0 | PASS；Database Schema Baseline Frozen，Phase 3 Completed |
+| FastAPI Backend Engineering Baseline V0.1 | 已建立；应用入口、配置、SQLAlchemy 基础、Alembic 空基线和健康测试 PASS |
+| SQLAlchemy ORM Mapping Baseline V0.1 | 已建立；18 Model、39 FK、58 CHECK、16 UNIQUE、46 显式索引，pytest 4/4 PASS |
 | 数据字典 | 已纳入 MySQL Schema Design V1 字段规格，并由 DDL/Migration V1 实现 |
 | 3NF Review | 设计级 PASS；18 表物理实现一致性验证 PASS |
 | 主键 / 外键 / 完整性设计 | 已建立 V1 基线；18/18 主键、39/39 外键及约束验证 PASS |
@@ -3686,3 +3845,31 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - GitHub remote：以本 Task 实际检查结果为准。
 - 当前状态：Completed；Phase 3 Completed；Waiting for Phase 4 Task。
 - Commit：`docs(database): complete phase3 final review`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
+
+### TASK-P4-01
+
+- 日期：2026-09-07。
+- 任务：FastAPI 后端架构初始化与工程基线设计 V0.1。
+- 完成内容：建立 backend 分层目录、FastAPI `main.py` 与 `GET /health`、Pydantic Settings 与 `.env.example`、SQLAlchemy 2.x Base/Engine/Session、Alembic env/空 versions、主要版本范围 requirements、工程 README 和基础设施健康测试。
+- 分层规范：Router → Service → Repository → ORM/Database；Router 禁止直接 SQL，Service 负责业务规则和事务，ORM 后续必须忠实映射 Phase 3 冻结 Schema。
+- Alembic 状态：框架已初始化，offline env 和空 heads 验证 PASS；未生成业务 Revision，未执行 stamp/upgrade，现有权威迁移仍为 `database/migrations/V001～V006`。
+- 实际验证：Python 3.12.14 compileall PASS；pytest 1/1 PASS；Uvicorn 随机本地端口实际启动，`GET /health` 返回 `status=ok` 后进程正常停止；配置覆盖、MySQL dialect Engine、空 Base metadata、Session factory、pip check 均 PASS。
+- 依赖环境：依赖安装在被 Git 忽略的 `backend/.venv`，未提交虚拟环境；宿主 PATH 没有全局 `python`/`py`，属于非阻塞本地环境事项。
+- 未执行内容：未连接或修改数据库，未创建业务 Model、业务 Schema、Repository、Service、Router、CRUD、登录、Dashboard、导入、分析或其他业务 API，未修改 Phase 3 数据库基线。
+- GitHub remote：以本 Task 实际检查结果为准。
+- 当前状态：Completed；Phase 4 In Progress；Waiting for Next Phase 4 Task。
+- Commit：未形成独立 Commit；前一轮 Git 写入审批因账户使用额度限制被环境拒绝，已完成文件保留在工作区并随 TASK-P4-02 一并纳入版本控制，不伪造 Commit Hash。
+
+### TASK-P4-02
+
+- 日期：2026-09-07。
+- 任务：数据库 ORM 模型映射设计 V0.1。
+- 完成内容：使用 SQLAlchemy 2.x `Mapped[]`、`mapped_column()`、`relationship()`、`ForeignKey()` / `ForeignKeyConstraint()` 映射 Phase 3 冻结的 18 张 MySQL 物理表，并由 `models/__init__.py` 统一注册。
+- Schema 一致性：18/18 表、18/18 `BIGINT UNSIGNED AUTO_INCREMENT` 单列主键、39/39 RESTRICT 外键、58/58 CHECK、16/16 命名 UNIQUE、46/46 显式索引均在 metadata 导入测试中通过。
+- 特殊模型：Snapshot 继续拆分为稳定 Observation Slot 与不可变 Revision；DataQualityIssue 继续使用三类互斥真实目标外键；OperationLog 继续使用操作用户与 16 类固定互斥目标，不引入 JSON 或多态弱引用。
+- Relationship：建立 User→ImportJob/Revision、Drama→Actor/Director/Company/Tag/Platform 关联实体、DramaPlatform→Snapshot、Snapshot→Revision、ImportJob→ImportError，以及质量与审计目标导航。
+- 实际验证：Python compile/import PASS；`configure_mappers()` PASS 且无 Warning；MySQL 离线 CreateTable 编译 18/18 PASS；pytest 4/4 PASS；Alembic offline env PASS。
+- 未执行内容：未连接或修改数据库，未执行 `create_all()`，未修改 Schema/DDL/Migration，未生成 Alembic Revision，未创建 Router、Service、Repository、CRUD、业务计算或 API。
+- GitHub remote：以本 Task 实际检查结果为准。
+- 当前状态：Completed；Phase 4 In Progress；Waiting for Next Phase 4 Task。
+- Commit：`feat(backend): add sqlalchemy orm models`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。

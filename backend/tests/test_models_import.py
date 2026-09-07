@@ -1,0 +1,118 @@
+"""Import-only verification for the frozen 18-table ORM mapping."""
+
+from sqlalchemy import CheckConstraint, ForeignKeyConstraint, UniqueConstraint, inspect
+from sqlalchemy.dialects.mysql import BIGINT
+from sqlalchemy.orm import configure_mappers
+
+import models
+from database.base import Base
+
+
+EXPECTED_TABLES = {
+    "users",
+    "dramas",
+    "actors",
+    "directors",
+    "companies",
+    "platforms",
+    "tags",
+    "drama_actors",
+    "drama_directors",
+    "drama_companies",
+    "drama_tags",
+    "drama_platforms",
+    "drama_metric_snapshots",
+    "drama_metric_snapshot_revisions",
+    "import_jobs",
+    "import_errors",
+    "data_quality_issues",
+    "operation_logs",
+}
+
+
+def test_all_models_import_and_configure() -> None:
+    """All model classes load and every relationship resolves without a DB."""
+
+    assert len(models.__all__) == 18
+    configure_mappers()
+    assert {
+        "actor_relations",
+        "director_relations",
+        "company_relations",
+        "tag_relations",
+        "platform_relations",
+    }.issubset(inspect(models.Drama).relationships.keys())
+    assert "snapshots" in inspect(models.DramaPlatform).relationships
+    assert {
+        "revisions",
+        "current_revision",
+        "source_import_job",
+    }.issubset(inspect(models.DramaMetricSnapshot).relationships.keys())
+    assert "errors" in inspect(models.ImportJob).relationships
+
+
+def test_metadata_matches_frozen_schema_shape() -> None:
+    """Metadata preserves table, PK, FK, CHECK, and UNIQUE baseline counts."""
+
+    assert set(Base.metadata.tables) == EXPECTED_TABLES
+
+    tables = tuple(Base.metadata.tables.values())
+    assert all(len(table.primary_key.columns) == 1 for table in tables)
+    assert all(
+        isinstance(next(iter(table.primary_key.columns)).type, BIGINT)
+        and next(iter(table.primary_key.columns)).type.unsigned
+        and next(iter(table.primary_key.columns)).autoincrement is True
+        for table in tables
+    )
+
+    foreign_keys = sum(
+        isinstance(constraint, ForeignKeyConstraint)
+        for table in tables
+        for constraint in table.constraints
+    )
+    checks = sum(
+        isinstance(constraint, CheckConstraint)
+        for table in tables
+        for constraint in table.constraints
+    )
+    uniques = sum(
+        isinstance(constraint, UniqueConstraint)
+        and constraint.name is not None
+        for table in tables
+        for constraint in table.constraints
+    )
+
+    assert foreign_keys == 39
+    assert all(
+        constraint.name is not None
+        for table in tables
+        for constraint in table.foreign_key_constraints
+    )
+    assert checks == 58
+    assert uniques == 16
+    assert sum(len(table.indexes) for table in tables) == 46
+    assert all(
+        foreign_key.ondelete == "RESTRICT" and foreign_key.onupdate == "RESTRICT"
+        for table in tables
+        for foreign_key in table.foreign_keys
+    )
+
+
+def test_snapshot_and_governance_models_remain_separate() -> None:
+    """Special schema designs remain explicit rather than JSON/polymorphic fields."""
+
+    snapshot = Base.metadata.tables["drama_metric_snapshots"]
+    revision = Base.metadata.tables["drama_metric_snapshot_revisions"]
+    quality = Base.metadata.tables["data_quality_issues"]
+    operation = Base.metadata.tables["operation_logs"]
+
+    assert "current_revision_id" in snapshot.c
+    assert "revision_action" in revision.c
+    assert {
+        "target_snapshot_revision_id",
+        "target_drama_platform_id",
+        "target_drama_id",
+    }.issubset(quality.c.keys())
+    assert "target_type" not in quality.c
+    assert "target_id" not in quality.c
+    assert "target_json" not in operation.c
