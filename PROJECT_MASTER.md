@@ -9,10 +9,10 @@
 | 中文名称 | 短剧数据管理与分析系统 |
 | 英文名称 | Short Drama Data Management and Analysis System |
 | 软件版本 | V1.0 |
-| 文档版本 | V0.6 |
+| 文档版本 | V0.7 |
 | 当前 Phase | Phase 2 - In Progress |
-| 当前 Task | TASK-P2-02 |
-| 文档状态 | Anomaly Detection Baseline Established |
+| 当前 Task | TASK-P2-03 |
+| 文档状态 | Insight Generation Baseline Established |
 | 下一阶段状态 | Waiting for Next Phase 2 Task |
 | 最近更新日期 | 2026-09-07 |
 
@@ -1211,6 +1211,146 @@ Potential Eligible Candidate Set 中每个对象必须同时满足：
 | 多 Tag 筛选 | V1.0 默认 OR；AND 为 Future |
 | 可重复性 | 相同 AnalysisContext 与数据内容产生相同结果 |
 
+### 7.15 Insight Engine V1【自动分析结论基线】
+
+#### 7.15.1 定位、输入与确定性
+
+`Insight Engine V1` 是基于已计算指标与显式业务规则生成可解释分析摘要的规则引擎。它不是预测系统、推荐系统、人工智能决策系统或大语言模型应用，不预测未来播放量、收益或商业成功，也不替用户作观看、投资、签约等决策。
+
+每次生成结论必须绑定页面当前 `AnalysisContext`，包括 `analysis_as_of`、时间窗口、平台范围、标签范围、分析粒度、Heat Model Version、Potential Model Version 和数据有效性策略。规则不得暗中扩大或切换范围；相同数据内容与相同 AnalysisContext 必须产生相同结论，不允许随机选择或随机措辞改变结论语义。
+
+Insight 使用第 7 节已计算结果和第 8 节质量结果作为输入，不修改 Heat、Potential 或 Anomaly Detection Model。结论必须明确数据截至时间、适用范围与对象粒度，不能把平台级结果表述为短剧整体结果。
+
+#### 7.15.2 Trigger → Evidence → Conclusion 模型
+
+每条 Insight 必须遵循：
+
+```text
+Trigger（命中规则） → Evidence（可核验指标证据） → Conclusion（克制的业务摘要）
+```
+
+- `Trigger`：被命中的规则、排名区间、阈值、质量状态或新鲜度条件。
+- `Evidence`：至少包含对象与粒度、指标名、未提前舍入的实际值、阈值或排名、候选集合大小、AnalysisContext 摘要，以及适用的模型/规则版本。
+- `Conclusion`：只概括证据直接支持的表现、变化、潜力信号或风险，不添加因果、预测或商业建议。
+- 逻辑上必须能够追溯 `Value`、`Threshold` 和 `Rule`；本节不设计数据库字段、API 结构或持久化方案。
+
+示例方向：当某短剧 HeatScore 进入合格候选集合 Top 10%，Evidence 展示 HeatScore、排名与候选数，Conclusion 可表述为“该短剧在当前分析范围内综合热度较高”。不得仅输出没有指标依据的形容词。
+
+#### 7.15.3 Insight 分类体系
+
+| 类型 | 中文定位 | 主要依据 | 输出目的 |
+| --- | --- | --- | --- |
+| `PERFORMANCE` | 表现分析 | Heat、累计指标、当前排名 | 描述当前规模与综合表现 |
+| `GROWTH` | 增长分析 | 24H、7D、30D Growth，默认以 7D 为主 | 描述近期变化方向与幅度 |
+| `POTENTIAL` | 潜力分析 | Potential、7D Growth、互动质量 | 识别高增长潜力信号 |
+| `RISK` | 风险提示 | 增长下降、平台数据缺失、样本不足等 | 提醒关注，不评价成败 |
+| `PLATFORM` | 平台分析 | 平台规模、累计表现、互动与 Heat | 总结平台统计表现 |
+| `TAG` | 标签趋势 | Drama Overall 后的标签统计 | 总结题材/标签相对表现 |
+| `DATA_QUALITY` | 数据质量提示 | ERROR 排除、WARNING 参与、Fresh/Stale | 说明结果的数据使用限制 |
+
+七类共同构成 V1.0 分类体系。Actor、Director、Company 的关联统计结论由相应分析页面使用 `PERFORMANCE` 或 `GROWTH` 方向表达，不额外制造主体因果类别。
+
+#### 7.15.4 Heat / Performance 结论规则
+
+- Heat 只描述截至 `analysis_as_of` 的累计运营规模和综合表现，不得用 Heat 推导“增长快”“潜力高”或“未来成功”。
+- 候选对象不少于 10 个时，排名进入前 10%（名次数量按候选数的 10% 向上取整）可触发“当前综合热度较高”；Evidence 必须展示 HeatScore、实际名次、候选数和粒度。
+- 候选对象少于 10 个时，不生成 Top 10% 强结论，只能依据自适应 Top 3 输出“在当前小样本范围内排名靠前”的对象级描述。
+- Heat 排名、候选资格、并列排序和精度继续严格使用第 7.8 节规则；Insight 不另建排名口径。
+
+#### 7.15.5 Growth 结论规则
+
+Growth Insight 默认使用播放量 `Growth7D` 作为主评价指标，24H 与 30D 用于补充短期或较长窗口证据；所用窗口必须在结论中明确。V1.0 的 7D 解释层阈值冻结为：
+
+| Growth7D | 解释标签 | 允许的结论方向 |
+| --- | --- | --- |
+| `> 50%` | 快速增长 | 近期播放增长较快 |
+| `> 20%` 且 `<= 50%` | 明显增长 | 近期播放呈明显增长 |
+| `>= -10%` 且 `<= 20%` | 相对稳定 | 近期播放变化相对稳定 |
+| `< -10%` | 下降 | 近期播放下降，需要关注 |
+
+- `Growth7D = NULL` 时不生成增长方向结论，改为样本/基准不足提示；不得把不可计算解释为稳定或零增长。
+- 增长判断必须结合第 7.7.6 节的合格基准、可比较平台集合与质量提示；不得仅按最高增长率输出榜首而忽略样本资格。
+- 以上阈值是 `Insight Rule Set V1` 的解释层阈值，未来如调整必须建立新规则版本，不得静默修改。
+
+#### 7.15.6 Potential 结论规则
+
+- Potential 表示增长潜力信号，不代表未来一定成功。禁止使用“爆款候选”，V1.0 统一使用“高增长潜力作品”。
+- 候选对象不少于 10 个时，只有同时满足 PotentialScore 排名前 10% 且 `Growth7D > 20%` 的合格对象，才触发“高增长潜力作品”结论；Evidence 至少包含 PotentialScore、Potential 排名、候选数、Growth7D 及互动质量相关指标。
+- Potential 排名靠前但 `Growth7D <= 20%` 时，不输出高增长潜力结论；可以客观说明互动质量或 Potential 相对排名，但必须同时说明近期增长信号尚不明显。
+- 候选对象少于 10 个时，仅可描述“在当前小样本候选中 Potential 排名靠前”，不得升级为群体性的高潜力判断。
+- Potential 候选资格、NULL、Min-Max、排序和权重完全沿用第 7.5、7.9 节，不由 Insight 规则重新定义。
+
+#### 7.15.7 Risk、Data Quality 与 Fresh/Stale 规则
+
+- `RISK` 可由近期 Growth 下降、平台数据缺失、窗口基准不足、统计样本不足或其他明确限制触发。风险提示表示需要关注，不得写成“该剧失败”或其他负面定性。
+- 当前分析集合包含仍参与分析的 WARNING 数据时，必须生成或合并质量提示：“当前分析包含部分质量告警数据。”并提供问题类型或影响范围作为 Evidence。
+- 有 ERROR 数据依据统一有效性规则被排除时，必须提示：“部分异常数据未参与分析。”不得假装候选集合完整。
+- 包含 Stale 数据时生成新鲜度提示，例如“部分平台最新数据超过 24 小时未更新。”Stale 仍是实时 Analysis Quality Flag，不创建 DataQualityIssue。
+- 平台数据缺失、Growth 基准不足或异常检测 `Insufficient History` 必须说明影响范围；不能用 0、稳定或“无风险”替代不可用结果。
+- 同一限制已由 DATA_QUALITY 清楚表达时，RISK 不再输出语义重复的独立结论；可合并证据，避免提示噪声。
+
+#### 7.15.8 Platform、Tag 与主体关联结论
+
+- Platform Insight 只描述平台短剧数量、累计表现、平均互动、共同基准下的平均 Heat 或趋势等统计结果，不得声称平台导致作品成功。
+- Tag Insight 必须先按 Drama Overall 形成作品级指标，再执行第 7.10.1 节的 Tag 归属与去重。允许表述“悬疑题材在当前范围内平均 Heat 较高”，不得表述“悬疑一定更受欢迎”。
+- Actor、Director、Company Insight 只能表述其参与/关联作品的平均 Heat、互动、数量或热门作品，不得表述其造成、提升或决定作品热度。
+- 平台、标签和主体统计结论必须展示样本数与范围；多标签、多导演、多公司归属不能被误解为互斥分类或因果证据。
+
+#### 7.15.9 冲突合并与结论优先级
+
+同一对象与同一 AnalysisContext 下的不同维度可以同时成立。系统不得为了避免表面矛盾而丢弃真实证据，也不得输出两条缺乏关系说明的相反结论；应合并为一个有转折关系的综合描述。例如：
+
+```text
+当前综合热度较高，但近 7 日播放增长下降，需要关注近期变化。
+```
+
+冲突合并规则：先保留数据质量和限制条件，再陈述当前表现，随后陈述增长与潜力；若 Potential 较高但增长未达阈值，按 7.15.6 节降级表达。Dashboard 空间有限时，Insight 优先级冻结为：
+
+1. 风险与数据质量提示；
+2. 核心表现；
+3. 增长变化；
+4. 潜力发现；
+5. 标签 / 平台趋势。
+
+同一优先级内，优先展示影响对象更多、异常等级更高、排名更靠前或变化幅度更明显的结论；确定性排序必须使用既有稳定 tie-breaker，不能随机挑选。
+
+#### 7.15.10 Top N、样本量、数量限制与空结果
+
+- 列表型 Insight 使用自适应 Top N：候选对象 `>= 50` 时 Top 10；`10～49` 时 Top 5；`< 10` 时 Top 3，且不得超过实际候选数。
+- 自适应 Top N 控制展示对象数量，不等于所有入选对象都自动获得“高 Heat”或“高 Potential”标签；类型结论仍须满足 7.15.4～7.15.6 的独立触发条件。
+- 统计类、平台类、标签类和主体群体比较 Insight 至少需要 5 个合格对象。少于 5 个时只能展示对象级事实与“样本较少”提示，不得形成行业、题材、平台或主体群体趋势结论。
+- Dashboard 最多展示 5 条 Insight；分析中心单次结果最多 10 条；短剧或其他主体详情页最多 5 条。超出时按 7.15.9 节优先级和稳定排序截取。
+- 没有对象满足业务规则时，不生成勉强结论，统一输出：“当前筛选条件下暂无满足条件的分析对象。”
+- 候选集合为空、关键指标为 NULL 或样本不足时，应输出相应 Empty/Insufficient 状态，不得制造数值或复用其他范围结论。
+
+#### 7.15.11 版本、可解释性与禁止表达
+
+- 本节规则共同构成 `Insight Rule Set V1`，逻辑上必须与 Heat Model V1、Potential Model V1、Anomaly Detection Model V1 及当前 AnalysisContext 关联。
+- 未来规则阈值、分类或措辞语义发生实质变化时必须建立新版本；不得用新规则静默重写旧规则含义。
+- 每条 Insight 必须可展开查看 Trigger、Evidence、Conclusion、规则版本、模型版本与 AnalysisContext；具体 UI、API 和存储方式留待后续专项设计。
+- 禁止预测性确定表达，如“一定会成功”“未来收益将增长”；禁止因果表达，如“演员导致爆火”“平台使作品成功”；禁止推荐或决策表达，如“推荐观看”“建议投资”“建议签约”。
+- 禁止把 Heat 表述为增长，把 Potential 表述为确定未来，把统计异常表述为已证实错误，把 Stale 表述为持久质量问题，或把相关性表述为因果关系。
+
+### 7.16 Insight Engine V1 规则速查表
+
+| 类型 | 触发条件 | 必要 Evidence | 输出方向 |
+| --- | --- | --- | --- |
+| 高 Heat | 候选数 >= 10 且 Heat 排名前 10% | HeatScore、名次、候选数、粒度 | 当前综合表现较高 |
+| 小样本 Heat 靠前 | 候选数 < 10 且进入 Top 3 | HeatScore、名次、候选数 | 当前小样本内相对靠前 |
+| 快速增长 | Growth7D > 50% | Growth7D、当前与基准、窗口 | 近期增长较快 |
+| 明显增长 | 20% < Growth7D <= 50% | Growth7D、当前与基准、窗口 | 近期明显增长 |
+| 相对稳定 | -10% <= Growth7D <= 20% | Growth7D、当前与基准、窗口 | 近期变化相对稳定 |
+| 增长下降 | Growth7D < -10% | Growth7D、当前与基准、窗口 | 近期下降、需关注 |
+| 高增长潜力 | 候选数 >= 10、Potential 前 10% 且 Growth7D > 20% | Potential、名次、Growth7D、互动证据 | 存在较高增长潜力信号 |
+| 数据质量风险 | 分析集合含 WARNING | Issue 类型、数量、影响范围 | 含质量告警数据 |
+| 异常排除 | ERROR 数据被过滤 | 排除数量、类型、影响范围 | 部分异常数据未参与 |
+| 数据较旧 | 任一纳入平台为 Stale | 最新快照时间、平台范围、as-of | 数据新鲜度提示 |
+| 样本不足 | 群体样本 < 5 或关键基准不足 | 实际样本数、缺失条件 | 仅对象事实，不作群体结论 |
+| 平台表现 | 合格平台统计出现可比较领先项 | 指标、共同口径、样本数 | 平台统计总结，无因果 |
+| 标签趋势 | Drama Overall 后标签统计出现可比较领先项 | 指标、标签、样本数、去重口径 | 标签相对趋势，无因果 |
+
+本表只定义业务规则，不是模板代码、Prompt、API、数据库枚举或 Schema。
+
 ## 8. 数据质量与异常检测
 
 ### 8.1 两层异常检测【已冻结方向】
@@ -1744,10 +1884,11 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 | TASK-P1-03 | 非功能需求、系统级约束与 Phase 1 基线收尾 V0.1 | Completed |
 | TASK-P2-01 | 数据分析口径、时间窗口与多平台聚合规则设计 V0.1 | Completed |
 | TASK-P2-02 | 数据异常检测、质量判定与 Robust Z-score 规则设计 V0.1 | Completed |
+| TASK-P2-03 | 自动分析结论规则设计 V0.1 | Completed |
 
 - 当前 Phase：Phase 2 In Progress。
-- 文档版本：V0.6。
-- 文档状态：Anomaly Detection Baseline Established。
+- 文档版本：V0.7。
+- 文档状态：Insight Generation Baseline Established。
 - 项目状态：Waiting for Next Phase 2 Task。
 - 最终 E-R 模型尚未设计、绘制或冻结；数据库概念结构设计、逻辑结构设计和 DB Schema 均未批准或冻结。
 
@@ -1874,6 +2015,26 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 16. **Decision：同对象、类型、快照只保留一个活动 Issue，数据变更后重犯则新建 Issue。Reason：**避免扫描噪声并保留清晰审计链，不自动 reopen 已关闭问题。
 17. **Decision：Robust Z 不触发自动数值修正。Reason：**统计模型仅检测风险，替换为 Median 会破坏原始观测和可追溯性。
 
+### ADR-018：Insight Engine V1【自动分析结论基线】
+
+1. **Decision：Insight Engine 不是预测、推荐或 AI 决策系统。Reason：**V1.0 只对已发生数据作可解释摘要，不具备预测未来或替用户决策的证据基础。
+2. **Decision：Insight 基于确定性规则生成。Reason：**明确阈值和选择规则可测试、可复现，也符合不接入 LLM 的冻结边界。
+3. **Decision：每条 Insight 必须绑定 AnalysisContext。Reason：**截止时刻、窗口、平台、标签、粒度与有效性范围决定指标含义，脱离上下文会产生误导。
+4. **Decision：采用 Trigger → Evidence → Conclusion。Reason：**结论必须能回溯到实际值、阈值、排名、候选数和规则，而不是无依据描述。
+5. **Decision：禁止因果表达。Reason：**当前系统提供观察性统计，不能证明演员、平台、标签或公司导致作品表现。
+6. **Decision：Heat 只描述累计规模表现。Reason：**Heat Model V1 不包含增长率，不能用它表达增长或未来潜力。
+7. **Decision：Growth 描述时间窗口内变化。Reason：**以合格当前值和基准值计算的 Growth 才能支持增长、稳定或下降表述。
+8. **Decision：Potential 只描述增长潜力信号。Reason：**Potential 综合增长与互动质量，但不能保证未来成功；以“高增长潜力作品”替代“爆款候选”。
+9. **Decision：风险与质量规则联动。Reason：**WARNING、ERROR 排除、数据缺失和样本不足会影响结论可信范围，必须优先提示而非负面评价对象。
+10. **Decision：Stale 只生成新鲜度提示。Reason：**新鲜度随 analysis_as_of 动态变化，不应因此创建持久 DataQualityIssue。
+11. **Decision：Actor、Director、Company 与 Platform/Tag 结论只表达关联统计。Reason：**参与或归属关系不构成因果证据。
+12. **Decision：统计类 Insight 最低样本量为 5。Reason：**少于 5 个对象不足以支持群体趋势，只保留对象级事实并提示小样本。
+13. **Decision：限制 Insight 数量。Reason：**Dashboard/分析中心/详情页分别最多 5/10/5 条，按风险、表现、增长、潜力、标签/平台顺序保留高价值信息。
+14. **Decision：Insight 具备规则与模型版本意识。Reason：**规则变化或模型升级必须可识别，避免同名结论的含义被静默改变。
+15. **Decision：排名展示采用自适应 Top N。Reason：**候选数 >=50、10～49、<10 时分别使用 Top10、Top5、Top3，在信息量和小样本克制之间保持一致。
+16. **Decision：Potential 前 10% 还需 Growth7D > 20% 才称为高增长潜力。Reason：**避免仅因互动质量较高、但近期无明显增长的对象被过度解读。
+17. **Decision：同一对象的高 Heat 与下降 Growth 合并表达。Reason：**二者描述不同维度，可以同时成立；合并能保留证据并避免孤立文字看似矛盾。
+
 ## 24. Bug 与技术债务
 
 - 当前无已确认的软件 Bug。
@@ -1903,6 +2064,7 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 | Phase 1 需求完整性 Review | PASS |
 | 数据分析公共口径与 AnalysisContext | 已建立 V0.1 基线 |
 | 数据质量判定与 Anomaly Detection Model V1 | 已建立 V0.1 基线 |
+| Insight Engine V1 与自动分析结论规则 | 已建立 V0.1 基线 |
 | E-R 图 | 待完成 |
 | 最终数据库 Schema | 待完成 |
 | 数据字典 | 待完成 |
@@ -2009,3 +2171,14 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - GitHub remote：Not Configured。
 - 当前状态：Completed；Phase 2 In Progress；Waiting for Next Phase 2 Task。
 - Commit：`docs: establish anomaly detection baseline`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
+
+### TASK-P2-03
+
+- 日期：2026-09-07。
+- 任务：自动分析结论规则设计 V0.1。
+- 完成内容：建立 Insight Engine V1 定位、AnalysisContext 绑定、Trigger-Evidence-Conclusion 模型、七类结论体系、Heat/Growth/Potential 解释规则、Risk/Quality/Fresh-Stale 提示、平台/标签/主体表达边界、冲突合并、优先级、自适应 Top N、小样本、数量上限、空结果、禁止表达及版本追溯规则；建立 Insight Rule Set V1 和十七项设计决策。
+- 验证内容：完成 26 项自动结论规则文档自检，确认 Heat Model V1、Potential Model V1 与 Anomaly Detection Model V1 未修改；未执行代码、数据库或算法测试。
+- 未开发内容：未编写 Python、SQL、Prompt 或自然语言生成代码，未创建数据库、Schema、表或字段，未设计 API，未初始化或开发 Vue/FastAPI，未接入 LLM，未创建模拟数据，未生成课程设计报告或软著材料，未执行下一 Task。
+- GitHub remote：Not Configured。
+- 当前状态：Completed；Phase 2 In Progress；Waiting for Next Phase 2 Task。
+- Commit：`docs: establish insight generation baseline`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
