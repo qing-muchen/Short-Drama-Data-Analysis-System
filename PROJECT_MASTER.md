@@ -9,10 +9,10 @@
 | 中文名称 | 短剧数据管理与分析系统 |
 | 英文名称 | Short Drama Data Management and Analysis System |
 | 软件版本 | V1.0 |
-| 文档版本 | V0.5 |
+| 文档版本 | V0.6 |
 | 当前 Phase | Phase 2 - In Progress |
-| 当前 Task | TASK-P2-01 |
-| 文档状态 | Analytics Semantics Baseline Established |
+| 当前 Task | TASK-P2-02 |
+| 文档状态 | Anomaly Detection Baseline Established |
 | 下一阶段状态 | Waiting for Next Phase 2 Task |
 | 最近更新日期 | 2026-09-07 |
 
@@ -788,7 +788,7 @@ OPEN（新发现、待处理）
 
 - `RESOLVED` 和 `IGNORED` 均为业务关闭状态，不额外设置含义重复的 `CLOSED`。
 - `IGNORED` 不代表删除问题，必须保留处理人、处理时间和忽略理由。
-- 已关闭问题如因新检测再次出现，应形成新的检测事实或按后续规则重新打开；具体策略【待质量实现专项设计】。
+- Issue 去重与重新发生规则已按第 8.5.3 节冻结：未修改数据的重复扫描不重开，数据修改后再次违反规则时创建新 Issue。
 
 #### 4.19.2 严重等级
 
@@ -802,17 +802,7 @@ V1.0 采用 `DataQualitySeverity`：
 
 #### 4.19.3 问题类型与来源
 
-`DataQualityIssueType` 至少包括：
-
-- `MISSING_REQUIRED`（必填缺失）；
-- `DUPLICATE`（重复）；
-- `TYPE_ERROR`（类型错误）；
-- `NEGATIVE_VALUE`（非法负值）；
-- `INVALID_TIME`（时间格式或时间语义非法）；
-- `UNKNOWN_PLATFORM`（未知平台）；
-- `CUMULATIVE_DECREASE`（累计值异常下降）；
-- `STATISTICAL_SPIKE`（统计异常增长）；
-- `STATISTICAL_DROP`（统计异常下降）。
+`DataQualityIssueType` 的 V1.0 正式业务字典已由 TASK-P2-02 在第 8.7 节冻结，覆盖核心缺失、非法负值、非法排名/时间、未知引用、重复/冲突快照、累计下降和统计异常。数据新鲜度不作为持久质量问题。
 
 系统必须区分问题来源：`MANUAL_ENTRY`（手工录入）、`IMPORT`（导入后正式数据检查）、`STATISTICAL_DETECTION`（统计检测）、`BUSINESS_RULE`（系统业务规则检测）。区分来源对于追溯、筛选和复现问题具有直接价值。
 
@@ -856,7 +846,7 @@ V1.0 采用 `DataQualitySeverity`：
 | `ImportJobStatus` | `PENDING_VALIDATION`, `VALIDATION_FAILED`, `READY`, `IMPORTING`, `COMPLETED`, `COMPLETED_WITH_ERRORS`, `FAILED` | 待校验；校验失败；待确认；导入中；完成；排除错误行后完成；写入失败并回滚 |
 | `DataQualityIssueStatus` | `OPEN`, `CONFIRMED`, `RESOLVED`, `IGNORED` | 新发现；确认异常；修正关闭；确认非问题并关闭 |
 | `DataQualitySeverity` | `INFO`, `WARNING`, `ERROR` | 信息；警告；严重不可用 |
-| `DataQualityIssueType` | `MISSING_REQUIRED`, `DUPLICATE`, `TYPE_ERROR`, `NEGATIVE_VALUE`, `INVALID_TIME`, `UNKNOWN_PLATFORM`, `CUMULATIVE_DECREASE`, `STATISTICAL_SPIKE`, `STATISTICAL_DROP` | 对应缺失、重复、类型、负值、时间、平台、累计下降和统计异常类型 |
+| `DataQualityIssueType` | `MISSING_REQUIRED_DATA`, `INVALID_NEGATIVE_VALUE`, `INVALID_RANKING`, `INVALID_TIMESTAMP`, `UNKNOWN_REFERENCE`, `DUPLICATE_RECORD`, `CONFLICTING_SNAPSHOT`, `CUMULATIVE_REGRESSION`, `STATISTICAL_SPIKE`, `STATISTICAL_DROP`, `OTHER` | 对应第 8.7 节已冻结质量问题类型；Stale 不持久化为 Issue |
 | `DataQualitySource` | `MANUAL_ENTRY`, `IMPORT`, `STATISTICAL_DETECTION`, `BUSINESS_RULE` | 手工录入；导入后检查；统计检测；业务规则检测 |
 
 ### 4.22 业务唯一性与基础去重规则
@@ -912,7 +902,7 @@ Platform 以业务唯一名称满足 V1.0 识别需要；Actor、Director、Comp
 
 - Dashboard、排行、趋势和分析中心默认只使用 `VALID` 且未被明确判定不可用的运营快照。
 - `VOID` 快照默认排除，但在管理员审计和质量问题详情中可查询。
-- 存在未解决 `ERROR` 质量问题且问题表明数据不可用的快照，默认排除分析，解决后按处理结果恢复或继续排除。
+- 存在未解决 `ERROR` 质量问题且问题表明数据不可用的快照，默认排除分析；确定非法 ERROR 即使被误标 IGNORED 也不能恢复分析资格，必须修正或作废并重新验证。
 - 仅存在 `WARNING` 的快照不机械排除，仍可参与分析，但结果或数据详情必须提供质量提示。
 - `INFO` 不影响分析使用。
 - 累计值下降默认形成 WARNING 并保留原始值；若人工确认其严重非法，可升级处理并按有效性规则决定是否排除。
@@ -1079,7 +1069,7 @@ V1.0 使用统计结果、规则和模板生成基础数据结论，不使用 LL
 - `VOID` 快照排除；具有至少一个当前未解决且判定数据不可用的严重 `ERROR` 的快照排除。
 - 同一快照存在多个质量问题时，只要存在一个上述 `ERROR`，即不能作为分析有效快照。
 - `WARNING` 快照允许参与分析，但结果必须能够传播“存在质量风险”的提示；`INFO` 不影响分析。
-- `RESOLVED` 或 `IGNORED` 的历史质量问题不得永久阻止快照参与分析，数据是否可用按其处理结果和当前有效状态判断。
+- `RESOLVED` 的历史问题或已合理 `IGNORED` 的 WARNING 不得永久阻止快照参与分析；确定非法 ERROR 不能通过 IGNORED 绕过，数据是否可用按当前有效状态与重新验证结果判断。
 - Dashboard、分析中心、导出和自动结论必须复用这一过滤规则。
 
 #### 7.7.4 跨平台累计指标与比率
@@ -1225,11 +1215,11 @@ Potential Eligible Candidate Set 中每个对象必须同时满足：
 
 ### 8.1 两层异常检测【已冻结方向】
 
-第一层为业务规则异常，包括各累计指标小于 0、非法时间、未知平台、必填字段缺失和明显不合理的累计值下降。
+第一层为 Deterministic Business Validation（确定性业务规则检测），用于识别确定错误或明确违反业务规则的数据，包括累计指标小于 0、非法时间、未知引用、核心必填数据缺失、重复冲突和累计值下降。
 
-第二层为统计异常，优先采用 `Median + MAD + Robust Z-score` 检测异常增长和异常下降；V1.0 不采用机器学习异常检测模型。
+第二层为 Statistical Anomaly Detection（统计异常检测），采用 `Median + MAD + Robust Z-score` 识别合法数据中明显偏离近期行为模式的增长或下降。统计异常不等于数据错误，原则上不得自动删除、作废或修改原始数据。
 
-滚动窗口大小、`MAD = 0`、Z-score 阈值、最低样本数和多平台异常比较范围【待异常检测算法专项 Task 冻结】。
+V1.0 具体窗口、`MAD = 0`、Robust Z 阈值、最低样本数及多平台规则见第 8.4 节 Anomaly Detection Model V1。
 
 ### 8.2 数据清洗【已冻结】
 
@@ -1238,6 +1228,180 @@ V1.0 支持缺失值、重复数据、数据类型、非法负数、日期 / 时
 允许去除字符串首尾空格、处理数字千位符、转换明确可识别的数字与时间格式、将空字符串转为 `NULL`，以及执行明确无歧义的数据名称映射和格式转换。
 
 禁止将负播放量直接改为 0、用平均值填补缺失播放量、随机匹配未知演员或平台、制造不存在的运营数据，或用虚构值掩盖数据质量问题。重要数据处理必须可追溯。
+
+### 8.3 Data Quality Detection Semantics V0.1【质量检测基线】
+
+#### 8.3.1 严重等级
+
+- `INFO`：数据本身仍然有效，只提示状态或使用注意事项，不阻止分析。数据新鲜度不足属于实时计算的 INFO 级分析标记。
+- `WARNING`：数据可能异常但不能确定错误，默认仍参与分析；页面、导出和自动结论必须传播质量提示。
+- `ERROR`：数据确定非法、存在严重业务冲突，或已明确不可使用；默认排除正常分析，必须修正或作废后才可能恢复分析资格。
+
+Severity 表示问题严重程度，Status 表示处理阶段，两者相互独立；例如 `WARNING + CONFIRMED` 完全合法，`CONFIRMED` 不等于 `ERROR`。
+
+#### 8.3.2 核心完整性与缺失值
+
+- DramaPlatform 上下文、`snapshot_time` 和 `play_count` 是形成有效运营快照的核心业务信息。导入阶段缺失时产生 `ImportError` 并阻止该行进入正式有效集合；历史正式数据中发现缺失时产生 `MISSING_REQUIRED_DATA`，Severity 为 ERROR。
+- `like_count`、`comment_count`、`favorite_count`、`share_count` 在业务语义上允许“未知”，不得将未知值当作 0；但 V1.0 标准模拟数据和标准导入模板要求完整提供，模板导入缺失时作为 `ImportError` 阻止该行。
+- 未来企业接入若确实不提供某互动指标，可以保留未知语义并产生完整性 WARNING；相应 Heat、Potential 或比率按第 7 节规则为不可计算，不得填造数据。
+- 本规则不决定数据库 `NULL / NOT NULL` 或字段实现。
+
+#### 8.3.3 确定性取值与时间校验
+
+- `play_count`、`like_count`、`comment_count`、`favorite_count`、`share_count < 0` 均为确定非法：导入阶段拒绝该行，手工录入直接拒绝；历史正式数据产生 `INVALID_NEGATIVE_VALUE + ERROR` 并默认排除分析。禁止自动改成 0。
+- `ranking` 允许未知或正整数；`ranking <= 0` 为 `INVALID_RANKING + ERROR`。未知不是错误，不得自动填 0。
+- 无法解析的核心 `snapshot_time` 为 `INVALID_TIMESTAMP + ERROR`。
+- V1.0 允许最多 5 分钟时钟偏差；`snapshot_time` 晚于接收时刻超过 5 分钟时为非法未来快照，导入/手工录入拒绝，历史正式数据产生 `INVALID_TIMESTAMP + ERROR`。分析 as-of 规则无论如何不得使用未来数据。
+- 过旧时间不是 ERROR，系统允许有审计的历史补录。
+- 运营快照导入无法解析既有 Drama、Platform、DramaPlatform 或稳定业务标识时产生 `ImportError`；V1.0 不自动创建未知 Drama/Platform，也不随机映射，基础资料必须预先存在或通过专门基础数据导入。
+
+#### 8.3.4 重复与冲突快照
+
+- **完全重复：**同一 DramaPlatform、同一 `snapshot_time` 且运营指标相同。导入预检查将其标为重复提示并排除重复行，不再次写入，也不为未写入数据创建持久化 DataQualityIssue。
+- **冲突重复：**同一 DramaPlatform、同一 `snapshot_time` 但指标不同。导入阶段产生 Conflict 类 `ImportError` 并阻止相关行，不得自动覆盖或猜测正确记录。
+- 正式数据中发现完全重复时产生 `DUPLICATE_RECORD`，发现冲突重复时产生 `CONFLICTING_SNAPSHOT`；二者均代表已违反唯一业务语义，按 ERROR 处理并进入人工修订/作废流程。
+- 最终 Snapshot 版本与有效唯一约束方案仍按 18.6 节留给 Phase 3/4，不在本 Task 设计 Schema。
+
+#### 8.3.5 累计值下降
+
+- 对同一 DramaPlatform 的 `play_count`、`like_count`、`comment_count`、`favorite_count`、`share_count` 分别与最近前序分析有效快照比较；任一累计值下降均产生 `CUMULATIVE_REGRESSION + WARNING`。
+- 下降率按既有 Growth 语义表达为负值，用于解释幅度；无论下降是否超过 30%，V1.0 都不自动升级为 ERROR，因为平台纠正、删赞/删评或口径变化可能是真实发生。
+- 同一快照多个累计指标下降时，只生成一个活动的 CUMULATIVE_REGRESSION 问题实例，并在问题详情逻辑上列出受影响指标、前值、当前值和下降幅度；本 Task 不设计存储字段。
+- 原始下降值不得自动回填、改为 0 或恢复为旧值。管理员确认数据错误后，将 Issue 置为 CONFIRMED，再通过修正或作废解决。
+
+### 8.4 Anomaly Detection Model V1【统计异常模型基线】
+
+#### 8.4.1 检测对象与输入序列
+
+- 对五个累计原始指标的相邻变化分别检测：Play、Like、Comment、Favorite、Share；播放变化是主要观察指标，但五项均纳入 V1.0。
+- 不直接对累计原值执行 Robust Z。累计值随时间自然增长，直接检测容易将后期正常大数值误判为异常。
+- V1.0 不对原始 `ranking` 执行 Robust Z，因为排名受同平台其他作品共同影响；仅展示趋势。
+- V1.0 不对 LikeRate、CommentRate、FavoriteRate、ShareRate 等派生比率执行 Robust Z，避免分母变化造成额外噪声；比率异常属于未来扩展。
+- 不建立跨平台联合异常模型。统计基线严格按单个 DramaPlatform + 单个指标独立计算，不把不同短剧或平台混入同一序列。
+
+当前快照 t 与其之前最近的分析有效快照 prev 形成每小时增量速率：
+
+```text
+DeltaRate(X, t) = (X_t - X_prev) / elapsed_hours(t, prev)
+```
+
+选择 prev 时跳过 VOID 或被 ERROR 排除的快照。`elapsed_hours <= 0` 时不计算；相邻有效快照间隔超过 24 小时时，本次统计检测记为 `Skipped due to gap`，不使用该速率执行 Robust Z。累计下降仍先按 8.3.5 节确定性规则处理。
+
+#### 8.4.2 历史窗口与最低样本
+
+- 历史基线使用当前点之前最近 28 个有效每小时增量速率样本，不包含当前待检测速率；在默认每日 4 快照策略下约代表近期 7 天行为，未来真实接入可通过新模型版本调整。
+- 每个历史速率样本必须来自 VALID、未被 ERROR 排除、可计算且相邻间隔不超过 24 小时的快照对。
+- WARNING 数据允许进入历史窗口，避免时间序列因提示性异常永久断裂；Median/MAD 对少量异常具有鲁棒性。VOID 与 ERROR 数据排除。
+- 至少需要 12 个有效历史速率样本。少于 12 时不执行 Robust Z，只执行确定性业务规则，并返回 `Insufficient History` 分析状态；该状态不是 DataQualityIssue。
+
+#### 8.4.3 Median、MAD 与 Robust Z
+
+对历史窗口速率样本集合计算：
+
+```text
+HistoricalMedian = median(x_i)
+MAD = median(|x_i - HistoricalMedian|)
+RZ = 0.6745 × (CurrentDeltaRate - HistoricalMedian) / MAD
+```
+
+常数 0.6745 用于使 MAD 在近似正态分布下与标准差尺度接近。当前速率不得进入自身的 HistoricalMedian 或 MAD。
+
+#### 8.4.4 阈值、方向与 MAD 零边界
+
+- `|RZ| <= 3.5`：统计正常，不生成统计异常 Issue。
+- `RZ > 3.5`：`STATISTICAL_SPIKE + WARNING`，表示异常增长。
+- `RZ < -3.5`：`STATISTICAL_DROP + WARNING`，表示异常下降或增长显著低于近期模式。
+- `3.5 < |RZ| <= 5.0` 可标识为标准异常幅度，`|RZ| > 5.0` 可标识为高异常幅度；两者 Severity 均保持 WARNING。统计幅度不等于数据错误，不能单独升级为 ERROR。
+- V1.0 不设置统一 minimum absolute delta 阈值；不同短剧与指标量级差异较大，结果保持 WARNING 供人工判断，避免针对模拟数据过拟合。
+- `MAD = 0` 且当前速率等于历史中位数时，视为正常并令 RZ = 0。
+- `MAD = 0` 且当前速率不等于历史中位数时，RZ = NULL，并生成 `Zero-MAD Shift + WARNING`；不得输出无限值或虚构 Z-score。
+
+如果同一指标负增量已触发 CUMULATIVE_REGRESSION，统计检测仍可计算用于解释，但不得再创建内容重复的 STATISTICAL_DROP；统计证据合并到累计下降问题。相同快照、同一统计类型下多个指标命中时，可聚合为一个 Issue 并列出指标证据，避免问题爆炸。
+
+#### 8.4.5 模型版本、重复性与解释信息
+
+上述输入序列、单 DramaPlatform 粒度、28 样本窗口、12 样本下限、24 小时间隔上限、0.6745 公式、3.5 阈值和 MAD 零规则共同构成 `Anomaly Detection Model V1`。未来变更必须形成新模型版本，不得静默覆盖。
+
+相同数据、检测截止点和 Anomaly Model Version 必须产生相同结果，不得使用随机因素。每个统计异常结果逻辑上必须能够说明：指标名称、当前每小时变化速率、历史中位数、MAD、Robust Z、阈值、异常方向、检测时间和模型版本。不得使用“AI 检测到异常”等不准确且不可解释的表述。
+
+### 8.5 Quality Issue 生成、生命周期与去重【质量检测基线】
+
+#### 8.5.1 生成时机与 ImportError 边界
+
+- 手工提交前发现确定非法数据时直接拒绝；未写入数据不生成长期 DataQualityIssue，必要诊断进入技术日志或操作结果。
+- 导入正式写入前发现格式、字段、必填、引用、非法取值、重复或冲突时记录 `ImportError`/导入提示，不生成 DataQualityIssue，也不得表述为已保留正式业务数据。
+- 已进入正式数据后发现累计一致性、历史遗留合法性或统计异常时生成 DataQualityIssue。
+- 后台允许重新扫描正式数据，具体触发与调度机制【待后续设计】。
+
+#### 8.5.2 状态语义与处理限制
+
+- `OPEN`：系统已检测，尚未人工处理。
+- `CONFIRMED`：管理员确认问题真实存在，等待或正在修正/作废。
+- `RESOLVED`：问题已通过修正、作废或其他有效方式解决，且相关规则重新验证通过。
+- `IGNORED`：管理员确认提示可接受、不需要修正，主要适用于 WARNING 或统计异常。
+- 确定非法的 ERROR 不能通过 IGNORED 恢复分析资格，必须修正或作废；WARNING 可以有理由地 IGNORED，数据继续参与分析。
+- 快照修正后必须重新验证相关规则；问题仍存在时，不能仅因用户点击“已处理”而进入 RESOLVED。
+
+#### 8.5.3 去重、重新检测与 Reopen
+
+- 同一业务对象 + 问题类型 + 涉及快照 + 活动状态原则上只保留一个活动 Issue；重复扫描更新其最近检测语义或检测次数，不新增重复活动问题。具体字段留待数据库设计。
+- 同一具体快照的同一问题进入 RESOLVED 或 IGNORED 后，未发生数据变化的自动扫描不得重新打开旧 Issue，也不得立即创建完全相同的新 Issue。
+- 若数据随后被修改并再次违反规则，则创建新的 Issue，以保留清晰审计链；V1.0 不复用或自动 reopen 已关闭 Issue。
+
+### 8.6 自动修正、检测顺序与可追溯性【质量检测基线】
+
+安全自动修正只限确定且无歧义的格式层处理：字符串 Trim、数字千位符转换、空字符串转未知值、明确合法日期格式统一、大小写/空白规范化和明确别名映射。导入报告必须能追溯原始值、修正规则和修正结果；具体存储方式留待导入设计。
+
+禁止根据 Robust Z 或其他统计异常自动改写业务数值，尤其不得将异常值替换为历史 Median。统计异常也不得自动删除或作废快照。
+
+质量检测按以下逻辑顺序执行，前序不满足时不对无效输入继续统计计算：
+
+1. 结构与核心必填信息；
+2. 数据类型与格式；
+3. 引用对象；
+4. 业务取值合法性；
+5. 重复与冲突；
+6. 累计值一致性；
+7. 统计异常。
+
+### 8.7 DataQualityIssue V1.0 类型字典【质量检测基线】
+
+| 类型 | 业务语义 | 默认 Severity |
+| --- | --- | --- |
+| `MISSING_REQUIRED_DATA` | 正式数据缺少形成有效对象的核心信息，或缺少预期分析指标 | 核心缺失 ERROR；互动指标未知 WARNING |
+| `INVALID_NEGATIVE_VALUE` | 累计运营计数小于 0 | ERROR |
+| `INVALID_RANKING` | ranking 非空且不为正整数 | ERROR |
+| `INVALID_TIMESTAMP` | 核心时间无法解释或超过接收时刻 5 分钟 | ERROR |
+| `UNKNOWN_REFERENCE` | 正式数据无法关联必要业务对象 | ERROR |
+| `DUPLICATE_RECORD` | 正式数据存在完全重复业务记录 | ERROR |
+| `CONFLICTING_SNAPSHOT` | 同平台发行关系、同一时刻存在不同指标值 | ERROR |
+| `CUMULATIVE_REGRESSION` | 一个或多个累计指标相对前序有效快照下降 | WARNING |
+| `STATISTICAL_SPIKE` | 每小时增量速率显著高于近期模式 | WARNING |
+| `STATISTICAL_DROP` | 每小时增量速率显著低于近期模式 | WARNING |
+| `OTHER` | 经确认但未被既有类型覆盖的质量问题 | 按确定性与影响判断 |
+
+`Stale` 不作为持久化 DataQualityIssueType。它是依据 `analysis_as_of` 实时计算的 INFO 级 Analysis Quality Flag；否则每次时间推进都可能产生大量无处理价值的 Issue。
+
+### 8.8 数据质量与分析过滤规则表
+
+| 情况 | Severity / 标记 | 正式写入或保留 | 默认参与分析 | 人工处理 |
+| --- | --- | --- | --- | --- |
+| 导入前核心必填、类型、引用或非法值错误 | ImportError | 错误行不写入正式数据 | 否 | 修正文件后重试 |
+| 手工录入确定非法 | 输入拒绝 | 不写入 | 否 | 修正输入 |
+| 历史正式数据负计数、非法 ranking/时间/引用 | ERROR | 保留待修正或作废 | 否 | 必须 |
+| 正式数据重复或冲突快照 | ERROR | 保留待修订，不自动覆盖 | 否 | 必须 |
+| 累计值下降 | WARNING | 保留原始值 | 是，并提示 | 建议确认 |
+| Robust Z 异常或 Zero-MAD Shift | WARNING | 保留原始值 | 是，并提示 | 可确认或忽略 |
+| WARNING 已 IGNORED | WARNING + IGNORED | 保留 | 是 | 已完成 |
+| ERROR 尚未修正或作废 | ERROR | 保留历史 | 否 | 必须修正/作废 |
+| VOID 快照 | 不适用 | 保留历史 | 否 | 已作废 |
+| Stale | INFO Analysis Flag | 保留 | 是，并提示 | 无需创建 Issue |
+| Insufficient History | 分析状态 | 保留 | 业务分析可用；不执行 Robust Z | 无需创建 Issue |
+
+### 8.9 Dashboard 与质量页面统计口径【质量检测基线】
+
+- Dashboard“当前异常数量”统计 Severity 为 WARNING 或 ERROR 且 Status 为 OPEN 或 CONFIRMED 的 DataQualityIssue 数量；RESOLVED、IGNORED、Stale INFO Flag 和 Insufficient History 均不计入。
+- 数据质量列表默认业务排序为 ERROR 优先、WARNING 其次，再按最近检测时间降序；同为统计 WARNING 时可按 `|RZ|` 异常幅度辅助排序。具体 UI 与接口表达后续设计。
 
 ## 9. 数据导入导出
 
@@ -1579,10 +1743,11 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 | TASK-P1-02 | 核心业务规则与对象生命周期设计 V0.1 | Completed |
 | TASK-P1-03 | 非功能需求、系统级约束与 Phase 1 基线收尾 V0.1 | Completed |
 | TASK-P2-01 | 数据分析口径、时间窗口与多平台聚合规则设计 V0.1 | Completed |
+| TASK-P2-02 | 数据异常检测、质量判定与 Robust Z-score 规则设计 V0.1 | Completed |
 
 - 当前 Phase：Phase 2 In Progress。
-- 文档版本：V0.5。
-- 文档状态：Analytics Semantics Baseline Established。
+- 文档版本：V0.6。
+- 文档状态：Anomaly Detection Baseline Established。
 - 项目状态：Waiting for Next Phase 2 Task。
 - 最终 E-R 模型尚未设计、绘制或冻结；数据库概念结构设计、逻辑结构设计和 DB Schema 均未批准或冻结。
 
@@ -1689,6 +1854,26 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 17. **Decision：多 Tag 筛选默认 OR。Reason：**符合普通发现与分析习惯，AND 作为未来高级筛选避免扩大 V1.0。
 18. **Decision：所有分析围绕统一 AnalysisContext。Reason：**明确截止时刻、窗口、粒度、平台、标签、有效性和模型版本，保证跨页面一致与结果可重复。
 
+### ADR-017：数据质量与 Anomaly Detection Model V1【质量检测基线】
+
+1. **Decision：统计异常不等于数据错误。Reason：**偏离近期模式只提供风险线索，不能据此自动删除、作废或修改原始数据。
+2. **Decision：Robust Z 检测每小时增量速率。Reason：**累计原值随时间增长，原始 delta 又受采样间隔影响，按小时标准化更可比。
+3. **Decision：按 DramaPlatform + 单指标独立检测。Reason：**不同短剧和平台的数据量级与行为模式不可混成同一基线。
+4. **Decision：历史窗口采用最近 28 个有效速率样本。Reason：**在默认频率下约覆盖近期 7 天，能避免 90 天旧数据长期主导。
+5. **Decision：最低需要 12 个历史样本。Reason：**约三天默认数据是稳定性与冷启动等待之间的适度下限。
+6. **Decision：相邻快照最大间隔 24 小时。Reason：**过长间隔的平均小时速率可能掩盖中间真实变化，不适合作为当前异常判断。
+7. **Decision：统计异常阈值为 `|RZ| > 3.5`。Reason：**采用常见 Modified Z-score 判定界限并保持模型可解释。
+8. **Decision：统计异常默认最高为 WARNING。Reason：**统计偏离不能单独证明数据错误，只有确定非法或明确冲突默认 ERROR。
+9. **Decision：MAD 为 0 时不虚构无限值。Reason：**当前速率等于中位数时 RZ 为 0，否则 RZ 为 NULL 并产生 Zero-MAD Shift WARNING。
+10. **Decision：负计数、非法排名/时间/引用和正式重复冲突为 ERROR。Reason：**这些违反确定性业务合法性或唯一语义，应默认排除分析。
+11. **Decision：Stale 不持久化为 DataQualityIssue。Reason：**新鲜度随分析时刻变化，持久化会制造大量无处理价值的问题。
+12. **Decision：ranking 不做 Robust Z。Reason：**排名变化受同平台其他作品共同影响，不足以指向本对象数据异常。
+13. **Decision：派生比率暂不做 Robust Z。Reason：**分母变化会引入额外波动，V1.0 聚焦原始累计指标变化速率。
+14. **Decision：确定非法 ERROR 不能靠 IGNORED 恢复分析资格。Reason：**必须修正或作废才能消除业务非法性。
+15. **Decision：WARNING 可以有理由地 IGNORED。Reason：**统计异常或可接受修正可能是真实数据，不应强制改值。
+16. **Decision：同对象、类型、快照只保留一个活动 Issue，数据变更后重犯则新建 Issue。Reason：**避免扫描噪声并保留清晰审计链，不自动 reopen 已关闭问题。
+17. **Decision：Robust Z 不触发自动数值修正。Reason：**统计模型仅检测风险，替换为 Median 会破坏原始观测和可追溯性。
+
 ## 24. Bug 与技术债务
 
 - 当前无已确认的软件 Bug。
@@ -1717,6 +1902,7 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 | 非功能需求与系统级约束 | 已建立 V0.1 基线 |
 | Phase 1 需求完整性 Review | PASS |
 | 数据分析公共口径与 AnalysisContext | 已建立 V0.1 基线 |
+| 数据质量判定与 Anomaly Detection Model V1 | 已建立 V0.1 基线 |
 | E-R 图 | 待完成 |
 | 最终数据库 Schema | 待完成 |
 | 数据字典 | 待完成 |
@@ -1812,3 +1998,14 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - GitHub remote：Not Configured。
 - 当前状态：Completed；Phase 2 In Progress；Waiting for Next Phase 2 Task。
 - Commit：`docs: establish analytics semantics baseline`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
+
+### TASK-P2-02
+
+- 日期：2026-09-07。
+- 任务：数据异常检测、质量判定与 Robust Z-score 规则设计 V0.1。
+- 完成内容：冻结确定性校验、质量等级、累计下降、重复与冲突、每小时增量速率、单 DramaPlatform 检测、28 样本窗口、12 样本下限、24 小时间隔上限、Robust Z 公式与阈值、MAD 零边界、冷启动、Issue 生成/去重/重新发生、ImportError 边界、自动修正边界、检测顺序、分析过滤及 Dashboard 异常统计；建立 Anomaly Detection Model V1 和十七项设计决策。
+- 验证内容：完成 39 项质量与异常规则文档自检，确认 Heat Model V1 与 Potential Model V1 未修改；未执行代码、数据库或算法测试。
+- 未开发内容：未编写 Python、Pandas、NumPy 或异常检测代码，未编写 SQL，未创建数据库、表、字段或 Schema，未绘制 E-R 图，未初始化或开发 FastAPI/Vue/API/UI，未开发导入、生成模拟数据、设计自动结论规则或调度机制，未生成课程设计报告或软著材料，未执行下一 Task。
+- GitHub remote：Not Configured。
+- 当前状态：Completed；Phase 2 In Progress；Waiting for Next Phase 2 Task。
+- Commit：`docs: establish anomaly detection baseline`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
