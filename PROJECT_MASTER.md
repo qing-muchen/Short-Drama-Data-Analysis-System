@@ -9,10 +9,10 @@
 | 中文名称 | 短剧数据管理与分析系统 |
 | 英文名称 | Short Drama Data Management and Analysis System |
 | 软件版本 | V1.0 |
-| 文档版本 | V1.8 |
+| 文档版本 | V1.9 |
 | 当前 Phase | Phase 3 - In Progress |
-| 当前 Task | TASK-P3-06R-FIX |
-| 文档状态 | Database DDL Compatibility Fix Applied |
+| 当前 Task | TASK-P3-07-PREP |
+| 文档状态 | Database Validation Test Script Synced |
 | 下一阶段状态 | Waiting for TASK-P3-07 Retry |
 | 最近更新日期 | 2026-09-07 |
 
@@ -22,7 +22,7 @@
 - 【待后续设计】：需求方向明确，但具体技术设计尚未确定。
 - 【未来扩展】：不属于 V1.0 开发范围。
 
-本文档记录真实的软件工程设计与开发状态，不是课程设计报告正文。当前数据库概念模型、关系模型、逐表 3NF Review、MySQL Schema V1 及 DDL/Migration V1 已建立基线；DBVAL-P3-07-001 的保留关键字冲突已完成实现级修复，但数据库验证仍须由 TASK-P3-07 Retry 从空库重新执行。
+本文档记录真实的软件工程设计与开发状态，不是课程设计报告正文。当前数据库概念模型、关系模型、逐表 3NF Review、MySQL Schema V1 及 DDL/Migration V1 已建立基线；DBVAL-P3-07-001 的实现与验证测试脚本引用均已同步修复，但数据库验证仍须由 TASK-P3-07 Retry 从空库重新执行。
 
 ## 1. 项目定义
 
@@ -2628,6 +2628,13 @@ Migration 假定 `001_create_database.sql` 已创建目标库，V001～V006 分�
 - 不变范围：未改变表数量、实体或关系设计、外键、约束语义、Snapshot 模型、3NF 结论及 Schema 设计原则。
 - 验证边界：本修复 Task 只完成静态兼容性与 DDL/Migration 一致性检查，未执行数据库初始化或约束测试，未生成 PASS 结果。`database/tests/validation_report.md` 继续作为首次失败的历史证据；完整结果必须由 TASK-P3-07 Retry 重新验证。
 
+#### DBVAL-P3-07-001 Test Script Sync Resolution【TASK-P3-07-PREP】
+
+- 同步内容：将 `database/tests/constraint_test.sql` 中 `import_errors.row_number` 的唯一旧引用更新为 `source_row_number`。
+- 一致性：测试脚本字段引用现与 DDL 005、Migration V004、DDL 007 和 Migration V006 一致。
+- 不变范围：测试数量仍为 32 项；测试目标、测试逻辑和预期结果均未改变；DDL、Migration 与 Schema 设计未修改。
+- 验证边界：本 Task 未执行数据库初始化或测试脚本，未产生新的 PASS/FAIL 结果；DBVAL-P3-07-001 的数据库级关闭仍以 TASK-P3-07 Retry 为准。
+
 ## 12. 系统架构
 
 ### 12.1 总体架构【已冻结】
@@ -3002,12 +3009,13 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 | TASK-P3-06R | 数据库 DDL 与 Migration 实现 V0.1 | Completed |
 | TASK-P3-07 | 数据库初始化验证与约束测试 V0.1 | Failed — DBVAL-P3-07-001 |
 | TASK-P3-06R-FIX | 数据库 DDL 兼容性修复 V0.1 | Completed — Pending TASK-P3-07 Retry |
+| TASK-P3-07-PREP | 数据库验证测试脚本同步修复 V0.1 | Completed — Pending TASK-P3-07 Retry |
 
 - 当前 Phase：Phase 3 In Progress。
-- 文档版本：V1.8。
-- 文档状态：Database DDL Compatibility Fix Applied。
+- 文档版本：V1.9。
+- 文档状态：Database Validation Test Script Synced。
 - 项目状态：Waiting for TASK-P3-07 Retry。
-- TASK-P3-07 的首次验证仍为失败历史；TASK-P3-06R-FIX 已将保留关键字字段统一改为 `source_row_number` 并静态确认 DDL/Migration 同步。完整数据库初始化、约束和索引测试尚未重跑，禁止进入 Phase 3 Final Review。
+- TASK-P3-07 的首次验证仍为失败历史；DDL、Migration 和 32 项约束测试脚本现已统一使用 `source_row_number`。完整数据库初始化、约束和索引测试尚未重跑，禁止进入 Phase 3 Final Review。
 
 ## 23. 设计决策记录
 
@@ -3267,6 +3275,7 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - Snapshot 有效唯一性与保留 VOID 修订历史之间的 Schema 问题已由 TASK-P3-05 的“观测槽 + 不可变修订记录”方案关闭；实现与事务验证仍待后续 Task。
 - TASK-P3-07 首次前置检查因 DDL/Migration 不存在而停止；TASK-P3-06R 已补齐文件，实际数据库初始化与约束结果仍需重新执行 TASK-P3-07。
 - 【DBVAL-P3-07-001 / Fix Applied, Pending Retry】Migration V004 与对应 DDL 005 的 MySQL 8.0 保留关键字冲突已由 TASK-P3-06R-FIX 通过重命名为 `source_row_number` 修复；数据库级关闭仍以 TASK-P3-07 Retry 的空库验证结果为准。
+- DBVAL-P3-07-001 的 `constraint_test.sql` 旧字段引用已由 TASK-P3-07-PREP 同步完成；未执行测试，仍等待 TASK-P3-07 Retry。
 - 所有标记为【待后续设计】的事项属于计划内设计工作，不得误报为已实现功能或当前 Bug。
 
 ## 25. 最终报告 / 软著素材索引
@@ -3539,3 +3548,14 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - GitHub remote：以本 Task 实际检查结果为准。
 - 当前状态：Completed；Phase 3 In Progress；Waiting for TASK-P3-07 Retry。
 - Commit：`fix(database): resolve mysql reserved keyword conflict`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
+
+### TASK-P3-07-PREP
+
+- 日期：2026-09-07。
+- 任务：数据库验证测试脚本同步修复 V0.1。
+- 完成内容：将 `database/tests/constraint_test.sql` 中导入错误行号字段由 `row_number` 同步为 `source_row_number`。
+- 静态检查：确认旧字段引用为 0；与 DDL/Migration 字段、CHECK 和索引引用一致；32 项测试数量、测试目标、测试逻辑和预期结果保持不变。
+- 未执行内容：未修改 DDL、Migration 或 Schema 设计；未执行数据库初始化或约束测试，未生成新的测试 PASS 结果，未进入后端开发。
+- GitHub remote：以本 Task 实际检查结果为准。
+- 当前状态：Completed；Phase 3 In Progress；Waiting for TASK-P3-07 Retry。
+- Commit：`fix(database): sync constraint tests with schema`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。

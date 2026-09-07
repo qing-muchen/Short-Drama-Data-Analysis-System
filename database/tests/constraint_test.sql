@@ -85,7 +85,7 @@ INSERT INTO import_jobs (
   2, 1, 1, 1
 );
 SET @test_import_job_id = LAST_INSERT_ID();
-INSERT INTO import_errors (import_job_id, row_number, error_code, error_message)
+INSERT INTO import_errors (import_job_id, source_row_number, error_code, error_message)
 VALUES (@test_import_job_id, 2, 'TEST_ERROR', 'Constraint test error');
 
 INSERT INTO drama_metric_snapshots (
