@@ -31,7 +31,7 @@ CREATE TABLE import_jobs (
 CREATE TABLE import_errors (
   import_error_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   import_job_id BIGINT UNSIGNED NOT NULL,
-  row_number BIGINT UNSIGNED NULL,
+  source_row_number BIGINT UNSIGNED NULL,
   column_name VARCHAR(128) NULL,
   error_code VARCHAR(64) NOT NULL,
   error_message VARCHAR(1000) NOT NULL,
@@ -39,7 +39,7 @@ CREATE TABLE import_errors (
   created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   PRIMARY KEY (import_error_id),
   CONSTRAINT fk_import_errors_job FOREIGN KEY (import_job_id) REFERENCES import_jobs (import_job_id) ON DELETE RESTRICT ON UPDATE RESTRICT,
-  CONSTRAINT chk_import_errors_row CHECK (row_number IS NULL OR row_number > 0),
+  CONSTRAINT chk_import_errors_row CHECK (source_row_number IS NULL OR source_row_number > 0),
   CONSTRAINT chk_import_errors_code CHECK (CHAR_LENGTH(TRIM(error_code)) > 0),
   CONSTRAINT chk_import_errors_message CHECK (CHAR_LENGTH(TRIM(error_message)) > 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

@@ -24,7 +24,7 @@ CREATE INDEX idx_snapshot_revisions_user_changed ON drama_metric_snapshot_revisi
 CREATE INDEX idx_import_jobs_status_created ON import_jobs (status, created_at);
 CREATE INDEX idx_import_jobs_user_created ON import_jobs (initiated_by_user_id, created_at);
 CREATE INDEX idx_import_jobs_file_hash ON import_jobs (file_hash);
-CREATE INDEX idx_import_errors_job_row ON import_errors (import_job_id, row_number);
+CREATE INDEX idx_import_errors_job_row ON import_errors (import_job_id, source_row_number);
 CREATE INDEX idx_import_errors_job_code ON import_errors (import_job_id, error_code);
 
 CREATE INDEX idx_quality_status_severity_detected ON data_quality_issues (status, severity, last_detected_at);

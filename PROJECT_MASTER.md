@@ -9,11 +9,11 @@
 | 中文名称 | 短剧数据管理与分析系统 |
 | 英文名称 | Short Drama Data Management and Analysis System |
 | 软件版本 | V1.0 |
-| 文档版本 | V1.7 |
+| 文档版本 | V1.8 |
 | 当前 Phase | Phase 3 - In Progress |
-| 当前 Task | TASK-P3-07 |
-| 文档状态 | Database Validation Failed |
-| 下一阶段状态 | Waiting for Database DDL Repair Task |
+| 当前 Task | TASK-P3-06R-FIX |
+| 文档状态 | Database DDL Compatibility Fix Applied |
+| 下一阶段状态 | Waiting for TASK-P3-07 Retry |
 | 最近更新日期 | 2026-09-07 |
 
 状态标签：
@@ -22,7 +22,7 @@
 - 【待后续设计】：需求方向明确，但具体技术设计尚未确定。
 - 【未来扩展】：不属于 V1.0 开发范围。
 
-本文档记录真实的软件工程设计与开发状态，不是课程设计报告正文。当前数据库概念模型、关系模型、逐表 3NF Review、MySQL Schema V1 及 DDL/Migration V1 已建立基线；TASK-P3-07 实际执行发现 V004 阻塞性语法问题，数据库验证未完成。
+本文档记录真实的软件工程设计与开发状态，不是课程设计报告正文。当前数据库概念模型、关系模型、逐表 3NF Review、MySQL Schema V1 及 DDL/Migration V1 已建立基线；DBVAL-P3-07-001 的保留关键字冲突已完成实现级修复，但数据库验证仍须由 TASK-P3-07 Retry 从空库重新执行。
 
 ## 1. 项目定义
 
@@ -2462,7 +2462,7 @@ P3-04 的冲突采用“稳定观测槽 + 不可变修订记录”两表方案�
 | 表名 | 用途与字段规格 | 主键 / 业务唯一 | 外键 | 主要约束与索引需求 | 3NF |
 | --- | --- | --- | --- | --- | --- |
 | `import_jobs` | `import_job_id BIGINT UNSIGNED`；`initiated_by_user_id`；`import_type VARCHAR(32)`；`status VARCHAR(32)`；`original_filename VARCHAR(255)`；`file_format VARCHAR(16)`；`file_hash CHAR(64)` 可空；total/valid/error/imported 行数均为 `BIGINT UNSIGNED`；`started_at`、`finished_at` 可空；创建/更新时间 | PK `import_job_id`；文件 Hash 不唯一，允许修正后重试 | FK → users | 类型限 `MASTER_DATA/SNAPSHOT`；格式限 `CSV/XLSX`；状态限 `PENDING_VALIDATION/VALIDATION_FAILED/READY/IMPORTING/COMPLETED/COMPLETED_WITH_ERRORS/FAILED`；行数非负且彼此满足任务结果语义；索引 `(status, created_at)`、`(initiated_by_user_id, created_at)`、file_hash | PASS |
-| `import_errors` | `import_error_id BIGINT UNSIGNED`；`import_job_id`；`row_number BIGINT UNSIGNED` 可空；`column_name VARCHAR(128)` 可空；`error_code VARCHAR(64)`；`error_message VARCHAR(1000)`；`raw_value TEXT` 可空；`created_at DATETIME(6)` | PK `import_error_id`；错误允许同位置多规则，不设业务唯一 | FK → import_jobs | error_code/message 非空；row_number 非空时 >0；索引 `(import_job_id, row_number)`、`(import_job_id, error_code)` | PASS |
+| `import_errors` | `import_error_id BIGINT UNSIGNED`；`import_job_id`；`source_row_number BIGINT UNSIGNED` 可空；`column_name VARCHAR(128)` 可空；`error_code VARCHAR(64)`；`error_message VARCHAR(1000)`；`raw_value TEXT` 可空；`created_at DATETIME(6)` | PK `import_error_id`；错误允许同位置多规则，不设业务唯一 | FK → import_jobs | error_code/message 非空；source_row_number 非空时 >0；索引 `(import_job_id, source_row_number)`、`(import_job_id, error_code)` | PASS |
 
 ImportJob 生命周期与 P1-02 的两阶段导入一致：校验阶段不写正式业务表；用户确认后的有效集合在单事务内全部提交或回滚。`COMPLETED_WITH_ERRORS` 只表示文件错误行被排除后，有效集合完整提交，不表示正式事务部分提交。
 
@@ -2510,7 +2510,7 @@ V1.0 同样选择“固定目标集合的多个可空真实外键”。一条日
 2. 所有外键列必须具有可用索引；复合关系 UNIQUE 已覆盖首列时，仍为反向查询端建立以 Actor/Director/Company/Tag/Platform 开头的索引。
 3. 列表检索使用状态、名称和业务时间组合：Drama `(status, premiere_date)`，主数据 `(name, status)`，DramaPlatform `(platform_id, status, online_at)`。
 4. Snapshot 观测槽使用 `(drama_platform_id, snapshot_time)` 唯一索引支持 as-of 和时间范围；Revision 使用 `(snapshot_id, version_no)`、`(snapshot_id, changed_at)` 支持版本与审计。
-5. ImportJob 使用 `(status, created_at)`、`(initiated_by_user_id, created_at)`；ImportError 使用 `(import_job_id, row_number/error_code)`。
+5. ImportJob 使用 `(status, created_at)`、`(initiated_by_user_id, created_at)`；ImportError 使用 `(import_job_id, source_row_number/error_code)`。
 6. DataQualityIssue 使用 `(status, severity, last_detected_at)` 和各目标 ID + issue_type + status；OperationLog 使用用户/操作类型/目标 + occurred_at。
 7. 索引只服务已冻结查询、约束和审计需求。后续必须用约 10 万快照的真实执行计划验证，禁止为猜测场景建立大量重复索引。
 
@@ -2619,6 +2619,14 @@ Migration 假定 `001_create_database.sql` 已创建目标库，V001～V006 分�
 `row_number` 在 MySQL 8.0 中是保留关键字，V004 与对应 DDL 005 在 `import_errors` 中未转义该标识符，导致 Migration 无法继续。本 Task 根据禁止事项仅记录问题，不修改 DDL、Schema、业务规则或 3NF 结论。
 
 详细证据见 `database/tests/validation_report.md`。必须由获授权的 DDL Repair Task 同步修复 DDL 005 与 Migration V004，随后从新空库重新执行完整 TASK-P3-07；在此之前不得标记 `Database Validation Completed`，也不得进入 Phase 3 Final Review。
+
+#### DBVAL-P3-07-001 Resolution【TASK-P3-06R-FIX】
+
+- 问题：MySQL 8.0.45 将 `row_number` 识别为保留关键字，导致 `import_errors` 建表语句出现 1064 语法错误。
+- 原因：DDL 字段命名未在物理实现阶段避开 MySQL 8.x 保留关键字。
+- 修复：将导入源文件行号统一重命名为 `source_row_number`，同步更新 DDL 005、Migration V004、DDL 007 和 Migration V006 中的字段、CHECK 引用与索引引用；字段业务含义保持为“导入源文件中的错误行号”。
+- 不变范围：未改变表数量、实体或关系设计、外键、约束语义、Snapshot 模型、3NF 结论及 Schema 设计原则。
+- 验证边界：本修复 Task 只完成静态兼容性与 DDL/Migration 一致性检查，未执行数据库初始化或约束测试，未生成 PASS 结果。`database/tests/validation_report.md` 继续作为首次失败的历史证据；完整结果必须由 TASK-P3-07 Retry 重新验证。
 
 ## 12. 系统架构
 
@@ -2993,12 +3001,13 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 | TASK-P3-05 | MySQL Schema 设计 V0.1 | Completed |
 | TASK-P3-06R | 数据库 DDL 与 Migration 实现 V0.1 | Completed |
 | TASK-P3-07 | 数据库初始化验证与约束测试 V0.1 | Failed — DBVAL-P3-07-001 |
+| TASK-P3-06R-FIX | 数据库 DDL 兼容性修复 V0.1 | Completed — Pending TASK-P3-07 Retry |
 
 - 当前 Phase：Phase 3 In Progress。
-- 文档版本：V1.7。
-- 文档状态：Database Validation Failed。
-- 项目状态：Waiting for Database DDL Repair Task。
-- TASK-P3-07 已在隔离 MySQL 8.0.45 空实例执行：V001～V003 PASS，V004 因 `row_number` 保留关键字语法错误 FAIL；完整约束和索引测试未执行，禁止进入 Phase 3 Final Review。
+- 文档版本：V1.8。
+- 文档状态：Database DDL Compatibility Fix Applied。
+- 项目状态：Waiting for TASK-P3-07 Retry。
+- TASK-P3-07 的首次验证仍为失败历史；TASK-P3-06R-FIX 已将保留关键字字段统一改为 `source_row_number` 并静态确认 DDL/Migration 同步。完整数据库初始化、约束和索引测试尚未重跑，禁止进入 Phase 3 Final Review。
 
 ## 23. 设计决策记录
 
@@ -3257,7 +3266,7 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - README 的 Phase 1 Completed 状态已由 TASK-P2-06 同步为 Phase 2 Completed。
 - Snapshot 有效唯一性与保留 VOID 修订历史之间的 Schema 问题已由 TASK-P3-05 的“观测槽 + 不可变修订记录”方案关闭；实现与事务验证仍待后续 Task。
 - TASK-P3-07 首次前置检查因 DDL/Migration 不存在而停止；TASK-P3-06R 已补齐文件，实际数据库初始化与约束结果仍需重新执行 TASK-P3-07。
-- 【DBVAL-P3-07-001 / Blocking】Migration V004 和对应 DDL 005 未转义 MySQL 8.0 保留关键字 `row_number`，导致 `import_errors` 创建时报 1064；本验证 Task 未获授权修改 DDL，必须由后续 Repair Task 处理并重新执行空库验证。
+- 【DBVAL-P3-07-001 / Fix Applied, Pending Retry】Migration V004 与对应 DDL 005 的 MySQL 8.0 保留关键字冲突已由 TASK-P3-06R-FIX 通过重命名为 `source_row_number` 修复；数据库级关闭仍以 TASK-P3-07 Retry 的空库验证结果为准。
 - 所有标记为【待后续设计】的事项属于计划内设计工作，不得误报为已实现功能或当前 Bug。
 
 ## 25. 最终报告 / 软著素材索引
@@ -3290,7 +3299,7 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 | E-R 图 | 待完成 |
 | MySQL Schema Design V1 | 已建立 V0.1 物理设计基线，18 张物理表 |
 | Database DDL & Migration Baseline V1 | 已建立；7 个 DDL、6 个 Migration，均覆盖 18 张物理表 |
-| Database Validation Report | FAILED；V001～V003 PASS，V004 被 DBVAL-P3-07-001 阻塞 |
+| Database Validation Report | 首次验证 FAILED；DBVAL-P3-07-001 已完成实现级修复，等待 TASK-P3-07 Retry |
 | 数据字典 | 已纳入 MySQL Schema Design V1 字段规格；正式实现字典待 DDL/Migration Task |
 | 3NF Review | 设计级 PASS；实现后数据库级验证待完成 |
 | 主键 / 外键 / 完整性设计 | 已建立 V1 基线，实际约束待实现验证 |
@@ -3517,3 +3526,16 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - GitHub remote：Not Configured。
 - 当前状态：Failed；Phase 3 In Progress；Waiting for Database DDL Repair Task。
 - Commit：`test(database): validate mysql schema constraints`（本次失败验证证据提交，Commit Hash 以 Git 历史记录为准）。
+
+### TASK-P3-06R-FIX
+
+- 日期：2026-09-07。
+- 任务：数据库 DDL 兼容性修复 V0.1。
+- 问题定位：MySQL 8.0.45 中 `row_number` 为保留关键字，阻塞 DDL 005 与 Migration V004 创建 `import_errors`。
+- 完成内容：将字段统一改为 `source_row_number`，同步修复 DDL 005、Migration V004 以及 DDL 007、Migration V006 的 CHECK 和索引引用；字段业务含义不变。
+- 一致性检查：确认 DDL 002～007 与 Migration V001～V006 仍保持逐组逻辑一致，DDL/Migration 中不存在未转义的独立 `row_number` 标识符。
+- 未执行内容：未运行 MySQL、数据库初始化或约束测试，未生成测试 PASS；未修改表数量、外键、约束语义、Snapshot 模型、实体、E-R、3NF 或 Schema 设计原则，未进入后端开发。
+- 待复验事项：`database/tests/constraint_test.sql` 属于本 Task 禁止修改范围，其中旧字段引用须由 TASK-P3-07 Retry 在执行前同步；完整空库验证仍为必需。
+- GitHub remote：以本 Task 实际检查结果为准。
+- 当前状态：Completed；Phase 3 In Progress；Waiting for TASK-P3-07 Retry。
+- Commit：`fix(database): resolve mysql reserved keyword conflict`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
