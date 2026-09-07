@@ -9,10 +9,10 @@
 | 中文名称 | 短剧数据管理与分析系统 |
 | 英文名称 | Short Drama Data Management and Analysis System |
 | 软件版本 | V1.0 |
-| 文档版本 | V1.3 |
+| 文档版本 | V1.4 |
 | 当前 Phase | Phase 3 - In Progress |
-| 当前 Task | TASK-P3-03 |
-| 文档状态 | Relational Model Baseline Established |
+| 当前 Task | TASK-P3-04 |
+| 文档状态 | 3NF Review Baseline Established |
 | 下一阶段状态 | Waiting for Next Phase 3 Task |
 | 最近更新日期 | 2026-09-07 |
 
@@ -1261,6 +1261,138 @@ Actor、Director 允许重名；Company 名称可能重名或改名；Tag 仅规
 7. 记录 INSERT、UPDATE、DELETE 异常风险和整改结论。
 
 Relational Model Baseline V1 不包含 MySQL 类型、索引、DDL、ORM、Migration 或最终 Schema，不能据此宣称数据库已实现。
+
+### 6.20 Table-level 3NF Review Catalog V1【规范化审查基线】
+
+#### 6.20.1 Review 方法与结论等级
+
+本 Review 对 Relational Model Catalog V1 的 17 个逻辑关系模式逐项检查：
+
+- **1NF：**业务信息是否保持原子语义，多值演员、平台、标签、错误列表等是否已拆为独立关系。
+- **2NF：**存在复合候选键时，非主业务信息是否完全依赖完整候选键，而非其真子集。
+- **3NF：**非主业务信息是否只依赖候选键，不通过其他非主信息形成不必要的传递依赖。
+
+结论等级：`PASS` 表示当前逻辑信息边界满足目标；`PASS*` 表示逻辑边界通过，但最终稳定主键实现仍待 Schema Task；`CONDITIONAL` 表示 Review 已完成并识别阻塞最终 3NF 确认的设计问题，在问题解决前不得冻结物理 Schema。
+
+表中的“属性”是已冻结业务信息组，不是最终列清单，不包含数据库类型、默认值或索引。
+
+#### 6.20.2 逐关系 3NF Review Catalog
+
+| 关系名称 | 候选键 | 主属性 | 非主属性依赖分析 | 1NF 检查 | 2NF 检查 | 3NF 检查 | 结果 | 存在风险 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `User` | username；内部稳定身份待选 | username；若采用内部身份则其亦为候选主属性 | 用户资料、固定角色语义、账户状态直接依赖用户候选身份；角色分类不决定其他用户资料 | PASS：账号、角色、状态均为单值语义 | PASS：当前业务候选键非复合 | PASS：V1 固定角色无独立角色资料，不产生角色→描述的传递依赖 | PASS | 若未来角色可维护并带独立资料，必须重新评估 Role 分离 |
+| `Drama` | drama_code；内部稳定身份待选 | drama_code；未来内部候选身份 | 短剧基本资料和生命周期直接依赖作品身份；平台、演员、标签及统计不属于本关系 | PASS：不保存列表或复合多值 | PASS：候选身份非复合 | PASS：不保存公司/平台描述或派生统计 | PASS | 禁止未来为页面便利加入平台列表、演员列表、标签列表或 Heat |
+| `Actor` | 无自然候选键；稳定内部身份待选 | 未来稳定 Actor 身份 | 演员基础资料与状态直接依赖 Actor 身份；角色、作品数、平均 Heat 不属于 Actor | PASS：演员资料保持原子 | PASS*：稳定身份为单一决定因素 | PASS*：不保存关系信息或作品统计 | PASS* | 姓名可重名，不能误设为唯一决定因素 |
+| `Director` | 无自然候选键；稳定内部身份待选 | 未来稳定 Director 身份 | 导演基础资料与状态直接依赖 Director 身份；作品列表、作品数、平均表现不属于本关系 | PASS | PASS* | PASS* | PASS* | 姓名可重名；禁止复制作品统计 |
+| `Company` | 无绝对自然候选键；稳定内部身份待选 | 未来稳定 Company 身份 | 公司资料与状态依赖 Company 身份；某作品的参与类型依赖 DramaCompany | PASS | PASS* | PASS*：不保存 relation type 或作品统计 | PASS* | 公司名称仅为强去重线索，不可草率充当绝对键 |
+| `Platform` | platform_name；内部稳定身份待选 | platform_name；未来内部候选身份 | 平台资料和启停状态直接依赖平台身份；发行信息属于 DramaPlatform | PASS | PASS | PASS：不保存具体作品发行信息或平台聚合结果 | PASS | 名称修改与引用稳定性需在主键策略中权衡 |
+| `Tag` | 稳定内部身份待选；有效名称仅条件唯一 | 未来稳定 Tag 身份 | 标签名称与状态依赖 Tag 身份；作品数、tag_heat 等分析结果不属于 Tag | PASS | PASS* | PASS*：不保存作品列表或统计结果 | PASS* | 条件唯一名称不能直接视为全生命周期候选键 |
+| `DramaActor` | (Drama 身份, Actor 身份) | Drama 身份、Actor 身份 | role name、ActorRoleType、billing order 均依赖“该演员在该短剧中的参与”完整组合；不存在 Actor→RoleType | PASS：一条关系只表达一个主要参演关系 | PASS：关系信息不依赖任一键真子集 | PASS：演员/短剧自身资料均未复制 | PASS | 一人分饰多角若未来启用需重新定义候选键 |
+| `DramaDirector` | (Drama 身份, Director 身份) | Drama 身份、Director 身份 | V1 只表达该导演参与该短剧的关系事实，不包含导演单方资料 | PASS | PASS：不存在依赖单一端点的非主信息 | PASS | PASS | 未来若增加导演角色，必须确认其依赖完整关系 |
+| `DramaCompany` | (Drama 身份, Company 身份, RelationType) | Drama 身份、Company 身份、RelationType | 任何关系补充信息必须依赖“作品+公司+参与类型”完整组合；RelationType 参与唯一性 | PASS：每条仅表达一种参与类型 | PASS：不得将只依赖 Drama+Company 的信息重复到每种类型 | PASS：公司资料和作品资料均通过引用获得 | PASS | 同公司多类型合法；忽略 RelationType 会错误合并关系 |
+| `DramaTag` | (Drama 身份, Tag 身份) | Drama 身份、Tag 身份 | 仅表达标签分配事实；tag_heat、tag_count、标签名称均不依赖完整关系或属于分析/Tag | PASS | PASS：纯关系无部分依赖 | PASS：无非主传递依赖 | PASS | 禁止为报表加入标签统计结果 |
+| `DramaPlatform` | (Drama 身份, Platform 身份) | Drama 身份、Platform 身份 | 平台侧发行标识、上线语义、页面地址和发行状态依赖完整作品-平台组合；平台资料只依赖 Platform | PASS：每条表达一个 V1 发行关系 | PASS：发行信息不依赖单一端点 | PASS：不重复平台名称或短剧资料 | PASS | 若未来支持多发行周期，候选键及依赖需重新 Review |
+| `DramaMetricSnapshot` | 当前有效业务语义为 (DramaPlatform, SnapshotTime)；历史行候选键未决 | 当前业务组合；历史修订身份待定 | 原始累计指标、平台内 ranking 与有效性语义应依赖一个明确历史 Snapshot 身份；Drama/Platform 名称及 Heat/Potential 不属于本关系 | PASS：每项原始指标为原子值，不保存实体列表 | CONDITIONAL：历史行候选键未定，无法最终排除对键真子集的依赖 | CONDITIONAL：版本/有效记录模型未定，无法最终证明全部事实只依赖唯一候选键 | CONDITIONAL | 有效唯一性与 VOID/修订历史冲突必须先解决；禁止保存名称和派生指标 |
+| `ImportJob` | 稳定 Job 身份待实现 | Job 身份 | 发起用户引用、任务类型、状态、范围、过程和结果依赖一次 Job；用户资料不依赖 Job | PASS：错误集合不嵌入 Job | PASS*：单一 Job 身份决定任务信息 | PASS*：不复制用户资料，错误详情独立 | PASS* | 最终主键策略待定；不可把错误列表作为单值内容 |
+| `ImportError` | 稳定 Error 身份；任务内候选组合待审查 | Error 身份 | 错误位置、规则、原始/处理语义依赖 Error 身份；任务概览只通过 ImportJob 引用取得 | PASS：每条表达一个可定位错误 | PASS*：采用稳定 Error 身份时无部分依赖 | PASS*：不复制 Job 状态、文件概览或用户资料 | PASS* | 若采用复合键，需确保错误详情依赖完整组合 |
+| `DataQualityIssue` | 稳定 Issue 身份；活动去重组合不是永久候选键 | Issue 身份 | 类型、Severity、Status、证据和处理语义依赖 Issue；目标对象资料不得复制 | PASS：每条表达一个主要问题；多 Evidence 的原子边界后续确认 | PASS*：稳定 Issue 身份为决定因素 | CONDITIONAL：通用目标引用方案未定，必须避免类型与目标描述造成传递依赖或失去参照完整性 | CONDITIONAL | 需在规范化目标关联与多对象治理之间选择可靠方案 |
+| `OperationLog` | 稳定 Log 身份 | Log 身份 | 操作用户引用、主要目标、动作、时间和摘要依赖审计事件；用户资料和目标快照不属于日志 | PASS：一条 Log 表达一个主要审计事件 | PASS*：稳定事件身份为决定因素 | CONDITIONAL：通用目标引用方案未定；完整 before/after 内容不得复制目标实体形成替代快照 | CONDITIONAL | 需选择可维护参照完整性的目标模型，并控制结构化摘要边界 |
+
+### 6.21 核心关系模式 Review 结论【规范化审查基线】
+
+#### 6.21.1 User 与角色
+
+V1 角色仅为 ADMINISTRATOR/USER 两类固定分类，没有独立维护、描述层级或角色生命周期，因此角色值直接描述 User，不产生“角色值 → 角色名称/权限集合 → 用户”的传递依赖。若未来角色具有独立资料或动态权限，必须重新识别 Role 及权限关系，不能继续向 User 堆叠角色元数据。
+
+#### 6.21.2 Drama 与主数据
+
+Drama、Actor、Director、Company、Platform、Tag 均只保存各自概念范围内的基础资料和状态。Drama 的平台、演员、导演、公司、标签通过独立关系获得；Actor/Director/Company/Tag 不保存作品数量、平均 Heat、Potential 或热门作品等动态统计。该边界消除了列表型非原子值和由分析结果引起的传递依赖。
+
+Platform 名称具业务唯一性，Actor/Director 姓名允许重名，Company 名称不是绝对唯一，Tag 名称只在有效状态下条件唯一。最终主键选择不能用“名称看似唯一”替代已冻结的真实业务语义。
+
+### 6.22 关系实体 Review 结论【规范化审查基线】
+
+- DramaActor：角色类型、主要角色和排位只依赖 Drama+Actor；`Actor → role_type` 是明确禁止的错误依赖。
+- DramaDirector：当前是纯关系，不复制导演资料；满足完整组合依赖。
+- DramaCompany：RelationType 是候选键组成语义，同一公司多参与类型合法；任何仅依赖 Drama+Company 的信息不得按每种类型重复。
+- DramaTag：保持纯关联，不保存 tag_heat、tag_count 或标签名称。
+- DramaPlatform：发行信息依赖 Drama+Platform；Platform 自身资料与 Drama 自身资料不得重复进入关系。
+
+上述五个关系模式在当前业务范围内 1NF、2NF、3NF 均 PASS。是否增加代理主键不改变其业务候选键和完整依赖要求。
+
+### 6.23 DramaMetricSnapshot 专项 3NF Review【CONDITIONAL】
+
+#### 6.23.1 允许进入事实关系的业务信息
+
+Snapshot 只承载某 DramaPlatform 在一个观测时刻的原始累计 Play/Like/Comment/Favorite/Share、平台内 Ranking，以及支持有效/作废与修订审计所必需的事实语义。每项指标保持原子值，累计值不跨时间求和。
+
+#### 6.23.2 明确禁止的冗余
+
+- 不保存 Drama 名称、Drama 业务资料或演员/标签列表；
+- 不保存 Platform 名称或平台主数据；
+- 不保存 HeatScore、PotentialScore、互动率、Growth、Insight 或其他动态派生结果；
+- 不用 Snapshot 替代 DataQualityIssue 或 OperationLog 的生命周期。
+
+#### 6.23.3 唯一性与版本风险
+
+当前有效业务事实要求 `(DramaPlatform, SnapshotTime)` 唯一；但保留 VOID 原记录并允许正确修订后，该组合可能对应多个历史行。由于历史行候选键尚未冻结，2NF 和 3NF 只能标记 CONDITIONAL，不能以业务有效唯一性假装已解决历史身份。
+
+后续 Schema 设计前必须从以下概念候选方向中择一并重新 Review：区分稳定历史行与当前有效业务身份的版本模型；将观测事实与修订事件分离；或其他同时满足有效唯一、历史保留、参照完整性和 3NF 的方案。本 Task 不选择、不实现，也不定义任何字段或约束。
+
+### 6.24 治理与审计关系 Review【规范化审查基线】
+
+#### 6.24.1 ImportJob 与 ImportError
+
+ImportJob 仅保存任务级语义并引用发起 User，不复制 username 或用户完整资料；ImportError 仅保存单个错误明细并引用 ImportJob，不复制任务状态、任务概览或用户资料。一对多拆分防止错误列表破坏 1NF，也避免任务信息在每个错误上重复。
+
+#### 6.24.2 DataQualityIssue 目标引用候选
+
+DataQualityIssue 自身以稳定 Issue 身份决定类型、Severity、Status、Evidence 和处理语义。目标关联仍需在后续选择：
+
+1. 为不同受治理实体建立类型明确的关联关系；
+2. 引入具真实业务必要性的统一“受治理对象”概念后再关联；
+3. 采用通用对象类型+对象身份引用。
+
+第 3 种方向虽然表达灵活，但可能无法建立真实参照完整性，并可能诱发目标描述冗余，不应未经专项论证采用。无论选择哪种方案，Issue 中都不得复制目标对象完整资料；Evidence 若包含多项可查询结构，必须在下一阶段确认其原子性和依赖边界。
+
+#### 6.24.3 OperationLog 目标引用候选
+
+OperationLog 以稳定事件身份决定操作用户、主要目标、动作、时间、结果和必要摘要。目标关联可评估类型明确的关联关系、统一可审计对象概念或通用对象引用；同样不得以灵活为由放弃参照完整性。日志不复制用户完整信息，不保存目标对象完整快照，完整 before/after 的必要性与规范化边界继续待审计专项设计。
+
+### 6.25 3NF Review Summary
+
+| 关系模式 | 1NF | 2NF | 3NF | 结果 |
+| --- | --- | --- | --- | --- |
+| User | PASS | PASS | PASS | PASS |
+| Drama | PASS | PASS | PASS | PASS |
+| Actor | PASS | PASS* | PASS* | PASS* |
+| Director | PASS | PASS* | PASS* | PASS* |
+| Company | PASS | PASS* | PASS* | PASS* |
+| Platform | PASS | PASS | PASS | PASS |
+| Tag | PASS | PASS* | PASS* | PASS* |
+| DramaActor | PASS | PASS | PASS | PASS |
+| DramaDirector | PASS | PASS | PASS | PASS |
+| DramaCompany | PASS | PASS | PASS | PASS |
+| DramaTag | PASS | PASS | PASS | PASS |
+| DramaPlatform | PASS | PASS | PASS | PASS |
+| DramaMetricSnapshot | PASS | CONDITIONAL | CONDITIONAL | CONDITIONAL |
+| ImportJob | PASS | PASS* | PASS* | PASS* |
+| ImportError | PASS | PASS* | PASS* | PASS* |
+| DataQualityIssue | PASS | PASS* | CONDITIONAL | CONDITIONAL |
+| OperationLog | PASS | PASS* | CONDITIONAL | CONDITIONAL |
+
+`PASS*` 不是范式例外：表示逻辑信息依赖已通过，但最终稳定身份/主键仍需物理设计确认。`CONDITIONAL` 表示已有明确未决问题，在问题关闭并重新 Review 前，不得将相应关系标记为最终 3NF PASS 或冻结 DB Schema。
+
+### 6.26 规范化风险与后续整改输入
+
+1. **Snapshot 版本模型：**必须解决当前有效唯一性、VOID 历史与修订身份的冲突。
+2. **DataQualityIssue 目标引用：**必须选择兼顾多对象治理、参照完整性与 3NF 的关联方案。
+3. **OperationLog 目标引用：**必须选择可审计且不复制目标快照的关联方案。
+4. **最终主键策略：**Actor、Director、Company、Tag、ImportJob、ImportError、DataQualityIssue、OperationLog 等稳定内部身份尚未落地。
+5. **索引策略：**本 Task 不设计；后续只能服务已冻结候选键、引用完整性与查询需求，不能改变函数依赖。
+6. **结构化详情：**ImportError Evidence、DataQualityIssue Evidence、OperationLog 摘要或 before/after 若需结构化保存，必须审查原子性、查询需求和是否形成隐藏重复数据。
+
+Table-level 3NF Review 已覆盖全部 17 个逻辑关系模式。当前 14 个模式为 PASS/PASS*，3 个模式因已知目标/版本问题为 CONDITIONAL；这不降低“数据库至少 3NF”的硬性要求，而是阻止在问题未解决时过早宣称 Schema 已冻结。
 
 ## 7. 数据分析指标体系
 
@@ -2636,10 +2768,11 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 | TASK-P3-01 | 数据库实体识别与概念模型设计 V0.1 | Completed |
 | TASK-P3-02 | E-R 模型设计 V0.1 | Completed |
 | TASK-P3-03 | 关系模式转换与规范化分析 V0.1 | Completed |
+| TASK-P3-04 | 逐表 3NF Review V0.1 | Completed |
 
 - 当前 Phase：Phase 3 In Progress。
-- 文档版本：V1.3。
-- 文档状态：Relational Model Baseline Established。
+- 文档版本：V1.4。
+- 文档状态：3NF Review Baseline Established。
 - 项目状态：Waiting for Next Phase 3 Task。
 - 最终 E-R 模型尚未设计、绘制或冻结；数据库概念结构设计、逻辑结构设计和 DB Schema 均未批准或冻结。
 
@@ -2856,6 +2989,17 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 7. **Decision：DataQualityIssue 与 OperationLog 的通用目标引用保持待设计。Reason：**需要同时满足多对象治理、真实参照完整性和 3NF，不能在本 Task 猜测物理方案。
 8. **Decision：Relational Model Catalog V1 进入逐关系 3NF Review。Reason：**本轮只完成转换和初步依赖分析，TASK-P3-04 才能形成逐关系规范化结论。
 
+### ADR-025：Table-level 3NF Review Catalog V1【规范化审查基线】
+
+1. **Decision：全部 17 个逻辑关系模式继续以至少 3NF 为硬性目标。Reason：**性能或开发便利不能覆盖范式要求，未决关系不得提前冻结 Schema。
+2. **Decision：原始事实与派生指标保持分离。Reason：**Heat、Potential、Growth、互动率和 Insight 随 AnalysisContext 计算，进入 Snapshot 会产生冗余与更新异常。
+3. **Decision：统计结果不进入主数据。Reason：**作品数量、平均 Heat 和热门作品依赖关系集合与分析时点，不依赖 Actor、Director、Company 或 Tag 单一身份。
+4. **Decision：关系信息只依赖完整关系候选键。Reason：**角色、公司参与类型和发行信息属于关系模式，不能错放到端点实体。
+5. **Decision：Snapshot 标记 CONDITIONAL。Reason：**历史行候选键和当前有效唯一性尚未统一，不能在版本模型确定前证明最终 2NF/3NF。
+6. **Decision：ImportJob、ImportError、DataQualityIssue、OperationLog 保持独立。Reason：**任务、错误、质量问题与审计事件的决定因素和生命周期不同。
+7. **Decision：DataQualityIssue 与 OperationLog 标记 CONDITIONAL。Reason：**通用目标引用方案尚未确定，必须先保证真实参照完整性且不复制目标资料。
+8. **Decision：PASS* 仅表示逻辑依赖通过。Reason：**无自然候选键的关系仍需后续稳定主键实现确认，PASS* 不代表允许缺少主键。
+
 ## 24. Bug 与技术债务
 
 - 当前无已确认的软件 Bug。
@@ -2892,6 +3036,7 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 | Entity Catalog V1 与概念实体分类 | 已建立 V0.1 基线，17 个概念实体 |
 | ER Relationship Catalog V1 | 已建立 V0.1 基线，基数与参与约束已明确 |
 | Relational Model Catalog V1 | 已建立 V0.1 基线，17 个逻辑关系模式待逐项 3NF Review |
+| Table-level 3NF Review Catalog V1 | 已完成；14 个 PASS/PASS*，3 个 CONDITIONAL |
 | E-R 图 | 待完成 |
 | 最终数据库 Schema | 待完成 |
 | 数据字典 | 待完成 |
@@ -3075,3 +3220,14 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - GitHub remote：Not Configured。
 - 当前状态：Completed；Phase 3 In Progress；Waiting for Next Phase 3 Task。
 - Commit：`docs: establish relational model baseline`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
+
+### TASK-P3-04
+
+- 日期：2026-09-07。
+- 任务：逐表 3NF Review V0.1。
+- 完成内容：对 User、Drama、五类主数据、五类关系、DramaMetricSnapshot、ImportJob、ImportError、DataQualityIssue、OperationLog 共 17 个逻辑关系模式逐项审查候选键、主属性、非主依赖、1NF、2NF、3NF 和风险；建立 Table-level 3NF Review Catalog V1 与 Summary；确认 14 个关系 PASS/PASS*，将 Snapshot、DataQualityIssue、OperationLog 三个未决关系标为 CONDITIONAL；专项记录派生指标、统计结果、关系信息归属和反规范化风险，并形成八项设计决策。
+- 验证内容：完成 11 项逐关系 3NF 自检，确认全部关系均已 Review，Snapshot 与治理目标风险未被掩盖，并保持至少 3NF 的后续硬性验收要求；未执行数据库或代码测试。
+- 未开发内容：未编写 SQL/DDL，未创建数据库、表、MySQL Schema、索引、View、ORM 或 Migration，未定义字段类型，未开发 API、Vue、FastAPI 或其他代码，未开始 MySQL Schema 设计，未执行下一 Task。
+- GitHub remote：Not Configured。
+- 当前状态：Completed；Phase 3 In Progress；Waiting for Next Phase 3 Task。
+- Commit：`docs: complete 3nf review baseline`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
