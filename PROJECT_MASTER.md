@@ -9,10 +9,10 @@
 | 中文名称 | 短剧数据管理与分析系统 |
 | 英文名称 | Short Drama Data Management and Analysis System |
 | 软件版本 | V1.0 |
-| 文档版本 | V1.1 |
+| 文档版本 | V1.2 |
 | 当前 Phase | Phase 3 - In Progress |
-| 当前 Task | TASK-P3-01 |
-| 文档状态 | Conceptual Data Model Baseline Established |
+| 当前 Task | TASK-P3-02 |
+| 文档状态 | ER Model Baseline Established |
 | 下一阶段状态 | Waiting for Next Phase 3 Task |
 | 最近更新日期 | 2026-09-07 |
 
@@ -1054,6 +1054,78 @@ Audit: OperationLog
 6. 是否存在经审查确有必要但当前目录未覆盖的辅助概念。
 
 本 Task 未绘制或冻结最终 E-R 图，未设计数据库字段、类型、键、索引、表、SQL、Schema、ORM 或 Migration。任何后续概念变化都必须说明其独立业务价值，不得为了增加表数量机械拆分。
+
+### 6.7 E-R Model V0.1 设计原则与基数记法【概念模型基线】
+
+本节在 Entity Catalog V1 上冻结实体间的业务关系、基数、参与约束与关系语义，不将概念模型转换为关系模式。基数记法：`0..1` 表示可选且至多一个，`1` 表示必须且恰好一个，`0..N` 表示可选的多个，`1..N` 表示至少一个。
+
+- 关系实体一旦存在，必须完整参与其两端核心实体，不能形成缺少任一端的悬空关系。
+- 核心实体或主数据可以先独立存在：Drama 可暂缺演员、导演、公司、标签和平台；Actor、Director、Company、Platform、Tag 也可暂未被作品引用。
+- 历史事实和治理明细的从属关系采用总参与：Snapshot 必须属于一个 DramaPlatform，ImportError 必须属于一个 ImportJob。
+- “业务对象目标”是对 Entity Catalog V1 中可被治理或审计对象的概念统称，不是新增实体，也不预设多态字段或物理实现。
+
+### 6.8 ER Relationship Catalog V1【概念模型基线】
+
+| Entity A | Relationship | Entity B | Cardinality | Optionality / 参与约束 | Meaning / 关系语义 |
+| --- | --- | --- | --- | --- | --- |
+| `Drama` | 由 `DramaActor` 表达参演 | `Actor` | M:N（`0..N : 0..N`） | Drama 与 Actor 两端均可暂时无关系；每个 DramaActor 必须且只关联一个 Drama 和一个 Actor | 演员可参演多部短剧，短剧可有多名演员；角色与排位语义归属 DramaActor |
+| `Drama` | 由 `DramaDirector` 表达执导 | `Director` | M:N（`0..N : 0..N`） | 两端可暂时无关系；每个 DramaDirector 必须且只关联一个 Drama 和一个 Director | 支持一剧多导演和导演多作品，不退化为 Drama 的单导演属性 |
+| `Drama` | 由 `DramaCompany` 表达参与 | `Company` | M:N（`0..N : 0..N`） | 两端可暂时无关系；每个 DramaCompany 必须且只关联一个 Drama 和一个 Company | 公司可参与多部作品；同一公司对同一作品可有多个不同参与类型 |
+| `Drama` | 由 `DramaTag` 表达标签归属 | `Tag` | M:N（`0..N : 0..N`） | 两端可暂时无关系；每个 DramaTag 必须且只关联一个 Drama 和一个 Tag | 短剧可有多个标签，标签可归属多部短剧；单个组合不得重复 |
+| `Drama` | 拥有发行关系 | `DramaPlatform` | 1:N（`1 : 0..N`） | Drama 可无发行关系；每个 DramaPlatform 必须且只属于一个 Drama | DRAFT 可先保存；发行关系不是 Drama 的多值平台属性 |
+| `Platform` | 承载发行关系 | `DramaPlatform` | 1:N（`1 : 0..N`） | Platform 可尚无作品；每个 DramaPlatform 必须且只属于一个 Platform | Platform 是平台主数据，DramaPlatform 是某作品在平台上的发行事实关系 |
+| `DramaPlatform` | 拥有历史快照 | `DramaMetricSnapshot` | 1:N（`1 : 0..N`） | PLANNED 或新建关系可无快照；每个 Snapshot 必须且只属于一个 DramaPlatform | Snapshot 是发行关系下的时点历史事实，禁止脱离平台上下文 |
+| `User` | 发起 | `ImportJob` | 1:N（`1 : 0..N`） | User 可从未导入；每个 ImportJob 必须有且只有一个发起用户 | 识别导入责任主体并支持治理审计 |
+| `ImportJob` | 包含 | `ImportError` | 1:N（`1 : 0..N`） | 成功任务可无错误；每个 ImportError 必须且只属于一个 ImportJob | 一次任务可产生多个写入前错误，错误不能脱离任务存在 |
+| `ImportJob` | 形成正式快照 | `DramaMetricSnapshot` | 1:N（`1 : 0..N`），Snapshot 侧 `0..1` | 失败或基础资料任务可不产生 Snapshot；手工快照可无 ImportJob 来源 | 为批量导入的正式 Snapshot 提供可选来源追溯，不把 ImportError 与正式事实混合 |
+| `DramaMetricSnapshot` | 作为主要质量目标 | `DataQualityIssue` | 1:N（Snapshot `0..N`，Issue 侧 `0..1`） | Snapshot 可无 Issue；以 Snapshot 为目标的 Issue 必须关联一个 Snapshot | 累计下降、统计异常、非法历史值等质量问题通常指向具体快照 |
+| `其他受治理业务对象` | 作为替代质量目标 | `DataQualityIssue` | 1:N（对象 `0..N`，Issue 侧 `0..1`） | 与 Snapshot 目标互斥；每个 Issue 在两类目标中必须且只选择一个主要目标 | 允许未来对 DramaPlatform 或主数据产生正式质量问题；“其他对象”不是新实体 |
+| `User` | 执行并产生 | `OperationLog` | 1:N（`1 : 0..N`） | User 可无操作日志；V1 每条 OperationLog 必须有且只有一个操作用户 | 回答“谁执行了操作”；密码、Token、Secret 不进入日志 |
+| `被审计业务对象` | 被操作日志指向 | `OperationLog` | 1:N（对象 `0..N`，Log 侧 `1`） | 对象可无日志；每条 Log 必须指向一个主要业务目标 | 目标可为 User、主数据、关系、Snapshot、ImportJob 或 DataQualityIssue；抽象不代表新增实体 |
+
+关系目录中的基数是概念业务约束，不是外键、连接列、候选键或 ON DELETE 定义。OperationLog 的“执行用户”和“被审计目标”是两个不同角色；用户管理事件中目标也可以是另一个 User。
+
+### 6.9 关系属性归属【概念模型基线】
+
+| 关系/实体 | 概念上归属的业务信息 | 归属理由 |
+| --- | --- | --- |
+| `DramaActor` | 主要角色名称、ActorRoleType、展示/排位顺序 | 这些信息取决于“某演员参与某短剧”，不属于 Actor 或 Drama 单方资料 |
+| `DramaDirector` | V1 仅表达导演参与关系 | 当前没有独立 director role 需求，不为对称性增加无意义关系信息 |
+| `DramaCompany` | CompanyRelationType | 参与类型取决于“某公司参与某短剧”，同一公司可在同一作品承担多个类型 |
+| `DramaTag` | 标签分配关系本身 | V1 没有额外标签关系信息；不得把标签列表存回 Drama |
+| `DramaPlatform` | 平台侧发行标识、上线时间、页面地址、发行状态等发行语义 | 信息取决于某 Drama 在某 Platform 的上线关系，不属于 Platform 主数据 |
+| `DramaMetricSnapshot` | 观测时刻的原始运营事实、排名及有效/作废语义 | 时点事实依赖具体 DramaPlatform 与观测时刻，不是发行关系当前属性 |
+| `ImportError` | 写入前错误的来源位置、规则与结果语义 | 错误属于某次 ImportJob 的具体明细，不应堆入任务概览 |
+| `DataQualityIssue` | 问题类型、严重等级、处理状态、证据与处理语义 | 正式数据质量问题具有独立生命周期，不应污染被治理对象 |
+| `OperationLog` | 操作事件、时间、结果和必要摘要 | 审计信息属于操作事件，不属于操作用户或目标对象自身 |
+
+本表只冻结信息依赖与归属方向，不定义字段名称、数量、NULL、类型或存储结构。关系信息必须完全依赖对应关系语义，为后续 2NF/3NF Review 提供输入。
+
+### 6.10 参与约束与业务规则汇总【概念模型基线】
+
+1. Drama 新建时对 Actor、Director、Company、Tag、DramaPlatform 均为可选参与；缺失可触发完整性提醒，但不阻止先保存基础资料。
+2. Actor、Director、Company、Platform、Tag 可独立存在且暂无 Drama 关系；停用后不得新建关系，既有关系和历史分析保留。
+3. DramaActor、DramaDirector、DramaCompany、DramaTag 和 DramaPlatform 对两端实体均为总参与，任何关系实例都不能缺少端点。
+4. 同一 Drama + Actor、Drama + Director、Drama + Tag 不重复；DramaCompany 以参与类型区分可并存关系；DramaPlatform 的 V1 同一 Drama + Platform 只有一条发行关系。这里只确认业务语义，不设计候选键。
+5. DramaPlatform 可有零个 Snapshot；每个 Snapshot 必须且只属于一个 DramaPlatform。
+6. ImportJob 可有零个 ImportError 和零个正式 Snapshot；每个 ImportError 必须属于一个 ImportJob，手工 Snapshot 可没有 ImportJob 来源。
+7. 每个 DataQualityIssue 必须且只指向一个主要受治理对象；Snapshot 是 V1 主要目标，其他对象目标的具体建模方式待后续设计。
+8. 每个 OperationLog 必须关联一个操作用户和一个主要被审计目标；批量导入操作以 ImportJob 作为主要目标，避免一条日志同时承担无限多目标关系。
+
+### 6.11 Snapshot 修订问题【Phase 3/4 必须解决】
+
+本 Task 继续保留第 18.6 节问题：同一 DramaPlatform + snapshot_time 原则上只能存在一个有效 Snapshot，但错误 Snapshot 作废后必须保留且允许新增正确版本。ER Relationship Catalog V1 只确认 DramaPlatform 1:N Snapshot 及 Snapshot 历史事实身份，不选择版本实体、修订自关联、当前有效记录或其他解决方案。
+
+该问题必须在后续概念/逻辑设计中同时满足有效唯一业务语义、VOID 历史、审计追溯和至少 3NF。本 Task 未解决、未弱化，也未转化为字段、键或 Schema 设计。
+
+### 6.12 E-R Baseline V0.1 的 3NF 后续输入
+
+- 多对多关系通过关系实体表达，关系业务信息归属于完整关系语义，避免放入任一端造成重复。
+- Snapshot 与 DramaPlatform、Platform、Drama 分离，避免在历史事实中重复可关联获得的名称与主数据。
+- ImportJob、ImportError、DataQualityIssue、OperationLog 分离，避免把过程概览、错误明细、质量生命周期和审计事件混成单一对象。
+- 后续关系模式转换必须逐项验证候选键、完全函数依赖与传递依赖；本 Task 不预先给出任何关系模式。
+
+`ER Relationship Catalog V1` 已完成概念关系、基数、参与约束与语义冻结，但不是最终 E-R 图文件，也不代表 Logical Schema、字段或 MySQL Schema 已设计。
 
 ## 7. 数据分析指标体系
 
@@ -2427,10 +2499,11 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 | TASK-P2-05 | 分析指标体系最终冻结 V0.1 | Completed |
 | TASK-P2-06 | Phase 2 Review 与分析设计基线冻结 V1.0 | Completed |
 | TASK-P3-01 | 数据库实体识别与概念模型设计 V0.1 | Completed |
+| TASK-P3-02 | E-R 模型设计 V0.1 | Completed |
 
 - 当前 Phase：Phase 3 In Progress。
-- 文档版本：V1.1。
-- 文档状态：Conceptual Data Model Baseline Established。
+- 文档版本：V1.2。
+- 文档状态：ER Model Baseline Established。
 - 项目状态：Waiting for Next Phase 3 Task。
 - 最终 E-R 模型尚未设计、绘制或冻结；数据库概念结构设计、逻辑结构设计和 DB Schema 均未批准或冻结。
 
@@ -2625,6 +2698,17 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 7. **Decision：V1.0 不选择 Role 为独立概念实体。Reason：**角色固定为两类且没有动态维护、独立生命周期或独立分析需求；最终表达方式仍由逻辑设计决定。
 8. **Decision：Entity Catalog V1 确认 17 个概念实体但不等同固定表数量。Reason：**目录按业务独立性识别，后续仍需基数、键与逐项 3NF Review，禁止机械建表。
 
+### ADR-023：ER Relationship Catalog V1【E-R 模型基线】
+
+1. **Decision：Drama 与 Actor、Director、Company、Tag 的 M:N 关系均通过关系实体表达。Reason：**关系需要独立语义、完整参与约束和后续 3NF 归属，不能使用多值属性或单方外观替代。
+2. **Decision：DramaPlatform 保持独立发行关系实体。Reason：**Drama 1:N DramaPlatform 与 Platform 1:N DramaPlatform 同时成立，且 Snapshot 必须基于具体发行上下文。
+3. **Decision：DramaMetricSnapshot 保持独立历史事实实体。Reason：**DramaPlatform 1:N Snapshot 支撑时间序列、as-of、修正、作废和分析过滤。
+4. **Decision：角色、公司参与类型和发行信息归属相应关系实体。Reason：**这些信息依赖两端对象的组合关系，不属于任一端主数据。
+5. **Decision：ImportJob、ImportError、DataQualityIssue 和 OperationLog 保持独立治理/审计关系。Reason：**导入过程、写入前错误、正式数据质量与业务审计的生命周期不同。
+6. **Decision：DataQualityIssue 必须有一个主要受治理目标。Reason：**保证问题证据和处理对象明确；Snapshot 为主要目标，其他对象的物理关联方式后续设计。
+7. **Decision：OperationLog 必须关联操作用户和一个主要目标。Reason：**分别回答“谁操作”和“操作什么”，同时控制批量操作的审计边界。
+8. **Decision：Snapshot 修订冲突继续保持未决。Reason：**本 Task 只冻结 DramaPlatform 1:N Snapshot，不越界选择版本、修订或有效唯一实现。
+
 ## 24. Bug 与技术债务
 
 - 当前无已确认的软件 Bug。
@@ -2659,6 +2743,7 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 | Analytics Metric Dictionary V1.0 | 已建立并冻结 V1.0 基线 |
 | Phase 2 Analytics Design Baseline V1.0 Review | PASS，已冻结 |
 | Entity Catalog V1 与概念实体分类 | 已建立 V0.1 基线，17 个概念实体 |
+| ER Relationship Catalog V1 | 已建立 V0.1 基线，基数与参与约束已明确 |
 | E-R 图 | 待完成 |
 | 最终数据库 Schema | 待完成 |
 | 数据字典 | 待完成 |
@@ -2820,3 +2905,14 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - GitHub remote：Not Configured。
 - 当前状态：Completed；Phase 3 In Progress；Waiting for Next Phase 3 Task。
 - Commit：`docs: establish conceptual entity baseline`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
+
+### TASK-P3-02
+
+- 日期：2026-09-07。
+- 任务：E-R 模型设计 V0.1。
+- 完成内容：基于 Entity Catalog V1 建立 ER Relationship Catalog V1；冻结 Drama 与 Actor/Director/Company/Tag 的 M:N 关系及关系实体、Drama 与 Platform 经 DramaPlatform 形成的两个 1:N、DramaPlatform 1:N Snapshot、User/ImportJob、ImportJob/ImportError、导入来源、DataQualityIssue 目标和 OperationLog 审计关系；明确基数、可选性、总参与、关系属性归属和 3NF 后续输入；继续登记 Snapshot 修订问题并记录八项设计决策。
+- 验证内容：完成 8 项 E-R 概念关系自检，确认实体关系、基数、Snapshot、DramaPlatform 和治理边界完整；未执行数据库或代码测试。
+- 未开发内容：未设计字段、数据类型、主外键、候选键、索引或关系模式，未编写 SQL，未创建数据库、表或 MySQL Schema，未创建最终 E-R 图文件，未编写 ORM、Migration、API，未开发前端、Vue 或 FastAPI，未执行下一 Task。
+- GitHub remote：Not Configured。
+- 当前状态：Completed；Phase 3 In Progress；Waiting for Next Phase 3 Task。
+- Commit：`docs: establish er model baseline`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
