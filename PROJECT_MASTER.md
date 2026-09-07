@@ -9,10 +9,10 @@
 | 中文名称 | 短剧数据管理与分析系统 |
 | 英文名称 | Short Drama Data Management and Analysis System |
 | 软件版本 | V1.0 |
-| 文档版本 | V1.5 |
+| 文档版本 | V1.6 |
 | 当前 Phase | Phase 3 - In Progress |
-| 当前 Task | TASK-P3-05 |
-| 文档状态 | MySQL Schema Baseline Established |
+| 当前 Task | TASK-P3-06R |
+| 文档状态 | Database DDL Baseline Established |
 | 下一阶段状态 | Waiting for Next Phase 3 Task |
 | 最近更新日期 | 2026-09-07 |
 
@@ -22,7 +22,7 @@
 - 【待后续设计】：需求方向明确，但具体技术设计尚未确定。
 - 【未来扩展】：不属于 V1.0 开发范围。
 
-本文档记录真实的软件工程设计与开发状态，不是课程设计报告正文。当前数据库概念模型、关系模型、逐表 3NF Review 与 MySQL Schema V1 已建立设计基线，但尚未生成 DDL、创建数据库或完成实现验证。
+本文档记录真实的软件工程设计与开发状态，不是课程设计报告正文。当前数据库概念模型、关系模型、逐表 3NF Review、MySQL Schema V1 及 DDL/Migration V1 已建立基线；数据库尚未实际初始化，约束和索引仍待 TASK-P3-07 执行验证。
 
 ## 1. 项目定义
 
@@ -2545,6 +2545,55 @@ MySQL Schema Design V1 共 18 张物理表，全部达到 1NF、2NF 和 3NF 的�
 - 未执行：DDL、数据库/表创建、初始化数据、View、Trigger、Stored Procedure、Migration、ORM、API、前后端或测试代码。
 - DDL Task 可统一约束/索引命名、默认时间写入方式和迁移顺序，但不得更改业务键、Snapshot 方案、目标引用方案或删除结果；如发现 MySQL 8.x 实现冲突，必须登记并由项目负责人批准变更。
 
+### 11.25 Database DDL & Migration Baseline V1【物理实现文件基线】
+
+TASK-P3-06R 已把第 11.11～11.24 节冻结设计转换为可执行的 MySQL 8.x SQL 文件。物理实现继续采用冻结的复数表名，共 18 张表；没有新增、删除或合并实体，没有改变 3NF、业务唯一性、状态字典或 ON DELETE 原则。
+
+#### 11.25.1 DDL 文件与空库执行顺序
+
+| 顺序 | 文件 | 职责 |
+| --- | --- | --- |
+| 1 | `database/ddl/001_create_database.sql` | 创建 `short_drama_analysis`，设置 utf8mb4、utf8mb4_0900_ai_ci 与 UTC 会话 |
+| 2 | `database/ddl/002_create_core_tables.sql` | 创建 users、dramas 与五类主数据表 |
+| 3 | `database/ddl/003_create_relation_tables.sql` | 创建四类 M:N 关系表和 drama_platforms |
+| 4 | `database/ddl/004_create_snapshot_tables.sql` | 创建观测槽、不可变修订、同槽当前指针外键及历史保护 Trigger |
+| 5 | `database/ddl/005_create_import_quality_tables.sql` | 创建 ImportJob、ImportError、DataQualityIssue，并补加 Snapshot 导入来源 FK |
+| 6 | `database/ddl/006_create_operation_log.sql` | 创建固定目标真实外键的 OperationLog 及只追加保护 Trigger |
+| 7 | `database/ddl/007_create_indexes.sql` | 创建列表、as-of、治理与审计查询索引 |
+
+数据库创建文件只负责空库入口；其余文件按编号单向执行，面向空数据库，不作为可重复回滚脚本。文件中不包含真实账号、密码、Token、初始化用户或模拟业务数据。
+
+#### 11.25.2 Migration 文件与等价性
+
+Migration 采用六段顺序文件：
+
+```text
+V001__create_core_tables.sql
+V002__create_relation_tables.sql
+V003__create_snapshot_tables.sql
+V004__create_import_quality_tables.sql
+V005__create_operation_log.sql
+V006__create_indexes.sql
+```
+
+Migration 假定 `001_create_database.sql` 已创建目标库，V001～V006 分别与 DDL 002～007 的有效 SQL 内容一致。静态规范化比较结果为 6/6 MATCH；不得同时对同一空库重复执行 DDL 002～007 和 Migration V001～V006。
+
+#### 11.25.3 约束与循环依赖实现
+
+- 两条执行路径均创建 18 张表、39 个真实 FOREIGN KEY；全部明确使用 ON DELETE RESTRICT 和 ON UPDATE RESTRICT。
+- 共定义 58 个命名 CHECK，覆盖 User/Drama/主数据/关系/发行/ImportJob/DataQualityIssue 状态和类型，以及正值、必填组合与互斥目标。
+- Snapshot 不新增冗余 status：`current_revision_id` 是否为空表达当前有效/VOID，`revision_action` CHECK 冻结 `INITIAL/CORRECTION/VOID`。
+- Snapshot 槽先创建可空 current_revision_id，Revision 创建后再补加 `(snapshot_id, current_revision_id)` 复合真实外键；该引用保证当前修订属于同一槽，单值指针和 UNIQUE 保证单一当前修订。
+- ImportJob 在 Snapshot 之后创建，因此 `source_import_job_id` 列随槽建立，真实 FK 在 V004/DDL 005 创建 ImportJob 后补加。
+- Snapshot Revision 使用 BEFORE UPDATE/DELETE Trigger 阻止覆盖或删除历史；OperationLog 使用相同方向的 Trigger 保持只追加审计。Trigger 是对已冻结不可变规则的数据库实现，不改变表设计。
+- DataQualityIssue 的三个目标和 OperationLog 的固定目标集合均为真实 FK，并由 CHECK 保证恰好一个主要目标。
+
+#### 11.25.4 约束测试脚本边界
+
+`database/tests/constraint_test.sql` 已建立 32 个静态测试项，覆盖业务 UNIQUE、非法状态、孤立引用、RESTRICT 删除、Snapshot 槽/版本/同槽当前指针、CORRECTION、VOID、修订删除、DataQualityIssue 单目标与 OperationLog 操作者/单目标。脚本使用事务回滚业务夹具，并以临时 MEMORY 表汇总 PASS/FAIL。
+
+根据 TASK-P3-06R 要求，本 Task 只编写、不执行测试。当前“数据库物理实现完成”仅指 DDL、Migration 和测试文件已就绪；不得宣称数据库已初始化、DDL 已实际通过 MySQL 或约束测试已 PASS。上述结果必须由后续 TASK-P3-07 在空库环境中验证并记录实际证据。
+
 ## 12. 系统架构
 
 ### 12.1 总体架构【已冻结】
@@ -2916,12 +2965,13 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 | TASK-P3-03 | 关系模式转换与规范化分析 V0.1 | Completed |
 | TASK-P3-04 | 逐表 3NF Review V0.1 | Completed |
 | TASK-P3-05 | MySQL Schema 设计 V0.1 | Completed |
+| TASK-P3-06R | 数据库 DDL 与 Migration 实现 V0.1 | Completed |
 
 - 当前 Phase：Phase 3 In Progress。
-- 文档版本：V1.5。
-- 文档状态：MySQL Schema Baseline Established。
+- 文档版本：V1.6。
+- 文档状态：Database DDL Baseline Established。
 - 项目状态：Waiting for Next Phase 3 Task。
-- MySQL Schema Design V1 已冻结设计基线；尚未生成 SQL/DDL、创建数据库或表、实现 View/Migration/ORM，也未执行数据库约束和性能测试。
+- Database DDL & Migration Baseline V1 已建立；SQL 文件已生成但尚未对 MySQL 空库执行，数据库、表、View、ORM 和初始化数据均未实际创建，约束及索引待 TASK-P3-07 验证。
 
 ## 23. 设计决策记录
 
@@ -3162,6 +3212,15 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 11. **Decision：逻辑索引按唯一性、外键、as-of、列表和审计查询规划。Reason：**覆盖当前 10 万级数据需求，同时将具体执行计划验证留给实现测试，避免过度索引。
 12. **Decision：P3-04 三个 CONDITIONAL 全部关闭并复核为 3NF PASS。Reason：**Snapshot 已拆分版本职责，Quality/Audit 已选择固定真实目标引用，三者均不复制目标资料或形成传递依赖。
 
+### ADR-027：Database DDL & Migration Baseline V1【数据库实现文件基线】
+
+1. **Decision：DDL 拆为数据库、核心、关系、Snapshot、治理、审计、索引七段。Reason：**顺序直接对应依赖层次，便于空库定位失败阶段和独立复核。
+2. **Decision：Migration 使用 V001～V006，并假定数据库入口已执行。Reason：**数据库创建属于部署前置，六段 Migration 与 DDL 002～007 保持一一等价。
+3. **Decision：循环引用通过延后补加真实外键解决。Reason：**Snapshot 当前指针和 ImportJob 来源跨越建表顺序，延后 ALTER 可保持全部真实 FK 而不引入逻辑外键。
+4. **Decision：Snapshot Revision 与 OperationLog 使用不可变 Trigger。Reason：**单靠 RESTRICT 不能阻止没有下游引用的叶子历史被更新或删除，Trigger 直接实现冻结的只追加规则。
+5. **Decision：约束测试脚本本 Task 只创建、不执行。Reason：**P3-06R 负责恢复实现前置，空库初始化和实际 PASS/FAIL 证据仍属于 TASK-P3-07。
+6. **Decision：物理命名继续使用 MySQL Schema V1 的复数形式。Reason：**实现必须服从 V1.5 唯一设计真源，不能因任务描述中的概念名单改变已冻结表名。
+
 ## 24. Bug 与技术债务
 
 - 当前无已确认的软件 Bug。
@@ -3170,6 +3229,7 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - README 阶段状态过时事项已由 TASK-P1-03 同步解决。
 - README 的 Phase 1 Completed 状态已由 TASK-P2-06 同步为 Phase 2 Completed。
 - Snapshot 有效唯一性与保留 VOID 修订历史之间的 Schema 问题已由 TASK-P3-05 的“观测槽 + 不可变修订记录”方案关闭；实现与事务验证仍待后续 Task。
+- TASK-P3-07 首次前置检查因 DDL/Migration 不存在而停止；TASK-P3-06R 已补齐文件，实际数据库初始化与约束结果仍需重新执行 TASK-P3-07。
 - 所有标记为【待后续设计】的事项属于计划内设计工作，不得误报为已实现功能或当前 Bug。
 
 ## 25. 最终报告 / 软著素材索引
@@ -3201,13 +3261,14 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 | Table-level 3NF Review Catalog V1 | 已完成；P3-04 的 3 个 CONDITIONAL 已在 P3-05 关闭 |
 | E-R 图 | 待完成 |
 | MySQL Schema Design V1 | 已建立 V0.1 物理设计基线，18 张物理表 |
+| Database DDL & Migration Baseline V1 | 已建立；7 个 DDL、6 个 Migration，均覆盖 18 张物理表 |
 | 数据字典 | 已纳入 MySQL Schema Design V1 字段规格；正式实现字典待 DDL/Migration Task |
 | 3NF Review | 设计级 PASS；实现后数据库级验证待完成 |
 | 主键 / 外键 / 完整性设计 | 已建立 V1 基线，实际约束待实现验证 |
 | 索引 | 已完成逻辑规划，实际索引与执行计划验证待完成 |
 | View | 已完成候选规划，尚未创建 |
 | Transaction 设计与验证 | 待完成 |
-| SQL / Migration | 待完成 |
+| SQL / Migration | 已完成 V1 基线文件，尚未执行空库验证 |
 | Git Commit | 持续保留 |
 | 测试记录 | 待后续 Task 产生 |
 | Bug 修复记录 | 待后续 Task 产生 |
@@ -3404,3 +3465,14 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - GitHub remote：Not Configured。
 - 当前状态：Completed；Phase 3 In Progress；Waiting for Next Phase 3 Task。
 - Commit：`docs: establish mysql schema baseline`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
+
+### TASK-P3-06R
+
+- 日期：2026-09-07。
+- 任务：数据库 DDL 与 Migration 实现 V0.1。
+- 完成内容：创建 database/ddl、database/migrations、database/tests；按依赖顺序建立 7 个 DDL 文件和等价的 V001～V006 Migration，覆盖 18 张物理表、39 个真实 RESTRICT 外键、58 个 CHECK、Snapshot/OperationLog 不可变 Trigger 与查询索引；建立 32 项 constraint_test.sql，补齐 TASK-P3-07 缺失的物理实现前置。
+- 验证内容：静态确认 DDL 与 Migration 均创建 18 张同名表，六组有效 SQL 逐组规范化比较 6/6 MATCH，39/39 外键明确 ON DELETE RESTRICT；检查文件序号、约束覆盖和测试用例范围。遵照任务要求未连接数据库、未执行 DDL/Migration 或 constraint_test.sql。
+- 未开发内容：未创建或初始化真实数据库，未执行约束/索引测试，未创建业务或模拟数据，未修改实体、E-R、3NF 或 MySQL Schema 原则，未创建 ORM、后端、API、Vue 页面或其他业务代码，未执行下一 Task。
+- GitHub remote：Not Configured。
+- 当前状态：Completed；Phase 3 In Progress；Waiting for Next Phase 3 Task。
+- Commit：`feat(database): create mysql ddl and migration baseline`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
