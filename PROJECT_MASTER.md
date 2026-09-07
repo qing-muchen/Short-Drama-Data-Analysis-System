@@ -9,11 +9,11 @@
 | 中文名称 | 短剧数据管理与分析系统 |
 | 英文名称 | Short Drama Data Management and Analysis System |
 | 软件版本 | V1.0 |
-| 文档版本 | V1.9 |
+| 文档版本 | V2.0 |
 | 当前 Phase | Phase 3 - In Progress |
-| 当前 Task | TASK-P3-07-PREP |
-| 文档状态 | Database Validation Test Script Synced |
-| 下一阶段状态 | Waiting for TASK-P3-07 Retry |
+| 当前 Task | TASK-P3-07 Retry |
+| 文档状态 | Database Validation Completed |
+| 下一阶段状态 | Waiting for Phase 3 Final Review |
 | 最近更新日期 | 2026-09-07 |
 
 状态标签：
@@ -22,7 +22,7 @@
 - 【待后续设计】：需求方向明确，但具体技术设计尚未确定。
 - 【未来扩展】：不属于 V1.0 开发范围。
 
-本文档记录真实的软件工程设计与开发状态，不是课程设计报告正文。当前数据库概念模型、关系模型、逐表 3NF Review、MySQL Schema V1 及 DDL/Migration V1 已建立基线；DBVAL-P3-07-001 的实现与验证测试脚本引用均已同步修复，但数据库验证仍须由 TASK-P3-07 Retry 从空库重新执行。
+本文档记录真实的软件工程设计与开发状态，不是课程设计报告正文。当前数据库概念模型、关系模型、逐表 3NF Review、MySQL Schema V1 及 DDL/Migration V1 已建立基线；TASK-P3-07 Retry 已在隔离 MySQL 8.0.45 空实例完成数据库初始化、结构与约束验证，Database Validation 已完成。
 
 ## 1. 项目定义
 
@@ -2635,6 +2635,28 @@ Migration 假定 `001_create_database.sql` 已创建目标库，V001～V006 分�
 - 不变范围：测试数量仍为 32 项；测试目标、测试逻辑和预期结果均未改变；DDL、Migration 与 Schema 设计未修改。
 - 验证边界：本 Task 未执行数据库初始化或测试脚本，未产生新的 PASS/FAIL 结果；DBVAL-P3-07-001 的数据库级关闭仍以 TASK-P3-07 Retry 为准。
 
+### 11.27 Database Validation Retry Report【TASK-P3-07 Retry】
+
+验证时间为 2026-09-07 20:33:42（Asia/Shanghai）。验证在 MySQL Community Server 8.0.45 的隔离临时实例中执行，使用专属数据目录与 Named Pipe；执行前 `short_drama_analysis` 不存在。完成后实例正常关闭，已验证路径的临时目录被删除，未连接或修改用户已有数据库。
+
+| 验证项 | 实际结果 | 状态 |
+| --- | --- | --- |
+| MySQL 环境 | 8.0.45；InnoDB；utf8mb4；utf8mb4_0900_ai_ci | PASS |
+| 数据库入口 | `001_create_database.sql`，exit 0 | PASS |
+| Migration 顺序 | V001 → V002 → V003 → V004 → V005 → V006，全部 exit 0 | PASS |
+| 物理表 | 18/18 | PASS |
+| BIGINT UNSIGNED AUTO_INCREMENT 主键 | 18/18 | PASS |
+| 外键 / RESTRICT | 39/39，且 39/39 为 RESTRICT | PASS |
+| CHECK | 58 个已建立；非法状态/值用例均被拒绝 | PASS |
+| constraint_test.sql | 32/32 PASS，0 FAIL；事务夹具回滚后无残留 | PASS |
+| Snapshot | Slot、INITIAL、CORRECTION、VOID、当前指针、历史保留均符合设计 | PASS |
+| DataQualityIssue | 无目标/多目标被拒绝，单目标被接受 | PASS |
+| OperationLog | 无操作者/无目标/多目标被拒绝，合法日志被接受 | PASS |
+| 关键索引 | Snapshot、Quality、Import、Operation 四类索引均存在 | PASS |
+| 3NF 物理一致性 | 18 表实现未引入设计外的冗余分析字段 | PASS |
+
+DBVAL-P3-07-001 已关闭：`source_row_number` 在 V004 中成功执行，首次失败不可复现。完整实际证据见 `database/tests/validation_report.md`。本结果只完成 Phase 3 数据库验证，不代表 Phase 3 已结束，也不授权进入 Phase 4。
+
 ## 12. 系统架构
 
 ### 12.1 总体架构【已冻结】
@@ -3007,15 +3029,15 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 | TASK-P3-04 | 逐表 3NF Review V0.1 | Completed |
 | TASK-P3-05 | MySQL Schema 设计 V0.1 | Completed |
 | TASK-P3-06R | 数据库 DDL 与 Migration 实现 V0.1 | Completed |
-| TASK-P3-07 | 数据库初始化验证与约束测试 V0.1 | Failed — DBVAL-P3-07-001 |
-| TASK-P3-06R-FIX | 数据库 DDL 兼容性修复 V0.1 | Completed — Pending TASK-P3-07 Retry |
-| TASK-P3-07-PREP | 数据库验证测试脚本同步修复 V0.1 | Completed — Pending TASK-P3-07 Retry |
+| TASK-P3-07 | 数据库初始化验证与约束测试 V0.1 | Completed — Retry 32/32 PASS |
+| TASK-P3-06R-FIX | 数据库 DDL 兼容性修复 V0.1 | Completed |
+| TASK-P3-07-PREP | 数据库验证测试脚本同步修复 V0.1 | Completed |
 
 - 当前 Phase：Phase 3 In Progress。
-- 文档版本：V1.9。
-- 文档状态：Database Validation Test Script Synced。
-- 项目状态：Waiting for TASK-P3-07 Retry。
-- TASK-P3-07 的首次验证仍为失败历史；DDL、Migration 和 32 项约束测试脚本现已统一使用 `source_row_number`。完整数据库初始化、约束和索引测试尚未重跑，禁止进入 Phase 3 Final Review。
+- 文档版本：V2.0。
+- 文档状态：Database Validation Completed。
+- 项目状态：Waiting for Phase 3 Final Review。
+- TASK-P3-07 Retry 已在隔离 MySQL 8.0.45 空实例通过 V001～V006、18 表结构、39 个 RESTRICT 外键、58 个 CHECK、关键索引及 32/32 约束测试；Phase 3 仍为 In Progress，未进入 Phase 4。
 
 ## 23. 设计决策记录
 
@@ -3274,8 +3296,7 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - README 的 Phase 1 Completed 状态已由 TASK-P2-06 同步为 Phase 2 Completed。
 - Snapshot 有效唯一性与保留 VOID 修订历史之间的 Schema 问题已由 TASK-P3-05 的“观测槽 + 不可变修订记录”方案关闭；实现与事务验证仍待后续 Task。
 - TASK-P3-07 首次前置检查因 DDL/Migration 不存在而停止；TASK-P3-06R 已补齐文件，实际数据库初始化与约束结果仍需重新执行 TASK-P3-07。
-- 【DBVAL-P3-07-001 / Fix Applied, Pending Retry】Migration V004 与对应 DDL 005 的 MySQL 8.0 保留关键字冲突已由 TASK-P3-06R-FIX 通过重命名为 `source_row_number` 修复；数据库级关闭仍以 TASK-P3-07 Retry 的空库验证结果为准。
-- DBVAL-P3-07-001 的 `constraint_test.sql` 旧字段引用已由 TASK-P3-07-PREP 同步完成；未执行测试，仍等待 TASK-P3-07 Retry。
+- 【DBVAL-P3-07-001 / Closed】保留关键字冲突及测试脚本引用已完成修复；TASK-P3-07 Retry 在 MySQL 8.0.45 空实例中确认 V004 与完整 V001～V006 执行成功，32/32 约束测试通过。
 - 所有标记为【待后续设计】的事项属于计划内设计工作，不得误报为已实现功能或当前 Bug。
 
 ## 25. 最终报告 / 软著素材索引
@@ -3308,14 +3329,14 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 | E-R 图 | 待完成 |
 | MySQL Schema Design V1 | 已建立 V0.1 物理设计基线，18 张物理表 |
 | Database DDL & Migration Baseline V1 | 已建立；7 个 DDL、6 个 Migration，均覆盖 18 张物理表 |
-| Database Validation Report | 首次验证 FAILED；DBVAL-P3-07-001 已完成实现级修复，等待 TASK-P3-07 Retry |
+| Database Validation Report | TASK-P3-07 Retry PASS；18/18 表、39/39 RESTRICT FK、58 CHECK、32/32 约束测试通过 |
 | 数据字典 | 已纳入 MySQL Schema Design V1 字段规格；正式实现字典待 DDL/Migration Task |
-| 3NF Review | 设计级 PASS；实现后数据库级验证待完成 |
-| 主键 / 外键 / 完整性设计 | 已建立 V1 基线，实际约束待实现验证 |
-| 索引 | 已完成逻辑规划，实际索引与执行计划验证待完成 |
+| 3NF Review | 设计级 PASS；18 表物理实现一致性验证 PASS |
+| 主键 / 外键 / 完整性设计 | 已建立 V1 基线；18/18 主键、39/39 外键及约束验证 PASS |
+| 索引 | 已完成逻辑规划；关键结构存在性验证 PASS，10 万级执行计划验证仍待后续性能 Task |
 | View | 已完成候选规划，尚未创建 |
 | Transaction 设计与验证 | 待完成 |
-| SQL / Migration | 已完成 V1 基线文件，尚未执行空库验证 |
+| SQL / Migration | 已完成 V1 基线文件；MySQL 8.0.45 空库 V001～V006 验证 PASS |
 | Git Commit | 持续保留 |
 | 测试记录 | 已新增 `database/tests/validation_report.md`；完整约束测试待修复后重跑 |
 | Bug 修复记录 | 待后续 Task 产生 |
@@ -3559,3 +3580,18 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - GitHub remote：以本 Task 实际检查结果为准。
 - 当前状态：Completed；Phase 3 In Progress；Waiting for TASK-P3-07 Retry。
 - Commit：`fix(database): sync constraint tests with schema`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
+
+### TASK-P3-07 Retry
+
+- 日期：2026-09-07。
+- 任务：数据库初始化验证与约束测试 V0.1（Retry）。
+- 环境：隔离 MySQL Community Server 8.0.45；InnoDB；utf8mb4；utf8mb4_0900_ai_ci；目标 Schema `short_drama_analysis` 在执行前不存在。
+- Migration：数据库入口及 V001～V006 严格顺序执行，全部 exit 0；18/18 张表创建成功。
+- 结构验证：18/18 个 BIGINT UNSIGNED AUTO_INCREMENT 主键、39/39 个真实外键且全部 RESTRICT、58 个 CHECK；Snapshot、Quality、Import、Operation 关键索引存在。
+- 约束验证：执行 `database/tests/constraint_test.sql`，32/32 PASS、0 FAIL；覆盖 UNIQUE、CHECK、FK/RESTRICT、Snapshot、DataQualityIssue 与 OperationLog，事务回滚后测试夹具无残留。
+- 问题状态：DBVAL-P3-07-001 已通过真实空库重试关闭；未发现新的阻塞问题。
+- 隔离清理：MySQL 实例正常关闭，临时目录路径校验通过并完成删除，未修改用户已有数据库。
+- 未执行内容：未修改 DDL、Migration、Schema、业务规则或 3NF 结论；未进入 Phase 4，未开发后端、ORM、API 或 Vue。
+- GitHub remote：以本 Task 实际检查结果为准。
+- 当前状态：Completed；Phase 3 In Progress；Waiting for Phase 3 Final Review。
+- Commit：`test(database): complete schema validation`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
