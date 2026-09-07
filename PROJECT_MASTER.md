@@ -9,10 +9,10 @@
 | 中文名称 | 短剧数据管理与分析系统 |
 | 英文名称 | Short Drama Data Management and Analysis System |
 | 软件版本 | V1.0 |
-| 文档版本 | V1.2 |
+| 文档版本 | V1.3 |
 | 当前 Phase | Phase 3 - In Progress |
-| 当前 Task | TASK-P3-02 |
-| 文档状态 | ER Model Baseline Established |
+| 当前 Task | TASK-P3-03 |
+| 文档状态 | Relational Model Baseline Established |
 | 下一阶段状态 | Waiting for Next Phase 3 Task |
 | 最近更新日期 | 2026-09-07 |
 
@@ -1126,6 +1126,141 @@ Audit: OperationLog
 - 后续关系模式转换必须逐项验证候选键、完全函数依赖与传递依赖；本 Task 不预先给出任何关系模式。
 
 `ER Relationship Catalog V1` 已完成概念关系、基数、参与约束与语义冻结，但不是最终 E-R 图文件，也不代表 Logical Schema、字段或 MySQL Schema 已设计。
+
+### 6.13 关系模式转换原则【关系模型基线】
+
+`Relational Model Baseline V1` 将 Entity Catalog V1 和 ER Relationship Catalog V1 转换为逻辑关系模式目录，用于下一步逐关系 3NF Review。这里的关系模式是关系模型中的逻辑对象，不是已创建的数据库表，也不包含 MySQL 类型、索引、DDL 或最终 Schema。
+
+转换规则：
+
+1. 每个独立实体转换为一个同职责逻辑关系模式。
+2. 1:N 关系由 N 端保存对 1 端逻辑身份的引用；引用的物理列、类型和约束后续确定。
+3. M:N 关系转换为独立关系模式，同时引用两端逻辑身份。
+4. 关系业务信息只归属于对应关系模式，不能复制到任一端主数据。
+5. 历史事实、治理明细和审计事件分别保留独立关系，不能为减少关系数量而合并。
+6. 本节区分“候选键/业务唯一性”和“最终主键”。是否采用代理主键、复合主键或其他实现，留待 Schema 设计；无稳定自然候选键的关系必须保留独立行身份需求。
+
+### 6.14 Relational Model Catalog V1【关系模型基线】
+
+| 逻辑关系模式 | 来源实体/关系 | 主键候选分析 | 外键/逻辑引用来源 | 说明 |
+| --- | --- | --- | --- | --- |
+| `User` | User | `username` 是业务候选键；是否另设稳定内部身份留待 Schema 设计 | 无必需上游引用 | 身份与状态只依赖用户身份；V1 固定角色语义属于 User，不单独转换 Role |
+| `Drama` | Drama | `drama_code` 是稳定业务候选键；数据库主键是否采用内部身份后续决定 | 无必需上游引用 | drama_name 不唯一；作品资料与生命周期归属于 Drama |
+| `Actor` | Actor | 姓名不唯一，无已冻结自然候选键；需要稳定内部身份，具体实现后续决定 | 无必需上游引用 | 演员资料不得包含作品列表或关系角色信息 |
+| `Director` | Director | 姓名不唯一，无已冻结自然候选键；需要稳定内部身份，具体实现后续决定 | 无必需上游引用 | 导演资料不得包含作品列表 |
+| `Company` | Company | 名称仅是强去重线索，不是绝对候选键；需要稳定内部身份 | 无必需上游引用 | 公司资料不得保存其在具体作品中的参与类型 |
+| `Platform` | Platform | `platform_name` 是 V1 业务候选键；最终主键选择后续决定 | 无必需上游引用 | 平台资料与发行关系分离 |
+| `Tag` | Tag | 有效标签标准化名称具有条件唯一性，但不是跨全部生命周期的无条件候选键；需要稳定身份 | 无必需上游引用 | 标签资料不得保存作品列表或统计结果 |
+| `DramaActor` | Drama–Actor M:N | `(Drama 身份, Actor 身份)` 是 V1 业务候选键；代理键是否需要后续决定 | 引用 Drama、Actor | 主要角色、ActorRoleType、排位等关系信息完全依赖该组合 |
+| `DramaDirector` | Drama–Director M:N | `(Drama 身份, Director 身份)` 是业务候选键 | 引用 Drama、Director | V1 不区分导演角色，关系不得重复 |
+| `DramaCompany` | Drama–Company M:N | `(Drama 身份, Company 身份, CompanyRelationType)` 是业务候选键 | 引用 Drama、Company | 参与类型属于候选键语义；同公司可对同作品存在多个不同类型 |
+| `DramaTag` | Drama–Tag M:N | `(Drama 身份, Tag 身份)` 是业务候选键 | 引用 Drama、Tag | 只表达标签分配，不保存 Tag 或 Drama 的单方资料 |
+| `DramaPlatform` | Drama/Platform 两个 1:N | `(Drama 身份, Platform 身份)` 是 V1 业务候选键 | 引用 Drama、Platform | 发行信息依赖该组合；V1 不建立同平台多发行周期 |
+| `DramaMetricSnapshot` | DramaPlatform–Snapshot 1:N | `(DramaPlatform 身份, SnapshotTime)` 只表达“一个有效业务快照”语义，不能直接作为保留多修订历史后的无条件候选键；最终行身份待专项解决 | 引用 DramaPlatform；导入来源可选引用 ImportJob | 时点原始事实、有效/作废和修订必须可共存，禁止冗余 Drama/Platform 描述 |
+| `ImportJob` | User–ImportJob 1:N | 无已冻结自然候选键；需要稳定任务身份 | 引用发起 User | 任务身份决定导入类型、状态、范围和结果等任务级信息 |
+| `ImportError` | ImportJob–ImportError 1:N | 无已冻结通用自然候选键；需要稳定错误身份，任务内位置/规则组合仅作后续候选审查 | 引用 ImportJob | 错误明细依赖具体 ImportJob 与错误身份，不复制任务级信息 |
+| `DataQualityIssue` | 受治理对象–Issue 1:N | 无跨生命周期稳定自然候选键；需要稳定 Issue 身份；活动去重组合不是关闭后重发场景的永久候选键 | 必须引用一个主要受治理目标；目标实现待专项设计 | Issue 身份决定类型、Severity、Status、证据与处理语义；不与 ImportError 合并 |
+| `OperationLog` | User/业务对象–Log | 用户、时间、目标和操作组合不能保证唯一；需要稳定事件身份 | 引用操作 User，并引用一个主要被审计目标；目标实现待专项设计 | 事件身份决定审计事实；不复制完整目标对象资料或敏感凭证 |
+
+目录确认 17 个逻辑关系模式，与 Entity Catalog V1 一一对应，但不承诺最终物理表必然保持一一对应。任何后续合并、拆分或增加都必须通过业务独立性和 3NF Review。
+
+### 6.15 主键候选与业务身份分析【关系模型基线】
+
+#### 6.15.1 业务候选键明确的关系
+
+- User：`username` 在全系统业务唯一且 V1 不允许修改，可作为业务候选键；是否用作引用主键不在本 Task 决定。
+- Drama：稳定 `drama_code` 可区分同名作品，是业务候选键；业务编码与数据库内部主键是两个概念。
+- Platform：`platform_name` 在 V1 业务范围内唯一，可作为业务候选键；名称修正与内部引用稳定性需在 Schema 设计权衡。
+- DramaActor、DramaDirector、DramaCompany、DramaTag、DramaPlatform：使用第 6.14 节列出的端点逻辑身份组合表达业务唯一性。
+
+#### 6.15.2 无可靠自然候选键的关系
+
+Actor、Director 允许重名；Company 名称可能重名或改名；Tag 仅规定有效状态下名称不重复；ImportJob、ImportError、DataQualityIssue、OperationLog 都需要在重复发生或历史保留中保持独立身份。这些关系需要稳定行身份，但代理主键名称、生成方式和类型留待后续 Schema 设计。
+
+#### 6.15.3 候选键与最终主键边界
+
+业务候选键必须继续作为唯一性输入，即使未来选择代理主键，也不能因此取消 `(Drama, Actor)`、`(Drama, Company, RelationType)`、`(Drama, Tag)`、`(Drama, Platform)` 等业务重复控制。相反，业务可读编码也不应未经审查直接承担所有参照关系。最终主键选择、候选键约束与可变业务值策略在后续 Task 冻结。
+
+### 6.16 外键来源与参照方向分析【关系模型基线】
+
+以下只说明逻辑引用方向，不定义列名、类型、约束名称或删除动作：
+
+| N 端/从属关系 | 引用的 1 端/主体关系 | 参与语义 |
+| --- | --- | --- |
+| DramaActor | Drama、Actor | 两个引用均必需 |
+| DramaDirector | Drama、Director | 两个引用均必需 |
+| DramaCompany | Drama、Company | 两个引用均必需，参与类型共同决定业务唯一性 |
+| DramaTag | Drama、Tag | 两个引用均必需 |
+| DramaPlatform | Drama、Platform | 两个引用均必需 |
+| DramaMetricSnapshot | DramaPlatform | 必需；Snapshot 不得脱离发行关系 |
+| ImportJob | User | 必需；标识导入发起人 |
+| ImportError | ImportJob | 必需；错误不得脱离任务 |
+| DramaMetricSnapshot | ImportJob | 可选；手工录入无导入来源 |
+| DataQualityIssue | 一个主要受治理对象 | 必需；具体目标引用模型后续决定 |
+| OperationLog | User | 必需；标识操作人 |
+| OperationLog | 一个主要被审计对象 | 必需；具体目标引用模型后续决定 |
+
+最终必须建立真实参照完整性；但外键落点、目标抽象实现和 ON DELETE 行为均不在本 Task 冻结。
+
+### 6.17 函数依赖初步分析【关系模型基线】
+
+以下使用“决定”表示逻辑函数依赖，属性组仅描述已有业务信息，不是最终字段清单：
+
+| 关系模式 | 候选决定因素 | 决定的业务信息组 | 初步规范化结论 |
+| --- | --- | --- | --- |
+| User | username 或未来选定稳定身份 | 用户自身资料、角色语义、账户状态 | 不得把操作日志或其他用户资料嵌入 User |
+| Drama | drama_code 或未来选定稳定身份 | 短剧自身资料与生命周期 | 平台、演员、导演、公司、标签均不依赖 Drama 单方键，必须分离 |
+| Actor / Director / Company / Platform / Tag | 各自稳定身份 | 各自主数据资料与状态 | 作品关系和聚合统计不属于主数据函数依赖范围 |
+| DramaActor | (Drama, Actor) | 主要角色、ActorRoleType、排位关系信息 | 关系信息依赖完整组合，不得仅依赖 Drama 或 Actor |
+| DramaDirector | (Drama, Director) | V1 导演参与关系事实 | 不保存 Drama 或 Director 的描述资料 |
+| DramaCompany | (Drama, Company, RelationType) | 该参与类型下的其他关系信息 | RelationType 是区分并存关系的必要决定因素 |
+| DramaTag | (Drama, Tag) | 标签分配关系事实 | 不保存标签名称或作品统计 |
+| DramaPlatform | (Drama, Platform) | V1 发行关系信息 | 发行状态和上线语义依赖完整组合，不属于 Platform 单方资料 |
+| ImportJob | 稳定 Job 身份 | 任务级状态、范围、过程和结果 | ImportError 明细不依赖 Job 单方身份之外的错误身份，必须分离 |
+| ImportError | 稳定 Error 身份 | 错误位置、规则、原始/处理结果语义 | 任务概览通过引用获得，不复制到每条 Error |
+| DataQualityIssue | 稳定 Issue 身份 | 问题类型、Severity、Status、证据和处理语义 | 目标对象资料不复制进 Issue；目标引用模型待定 |
+| OperationLog | 稳定 Log 身份 | 操作人、目标、动作、时间、结果摘要 | 用户与目标完整资料均由引用取得 |
+
+#### 6.17.1 Snapshot 函数依赖冲突
+
+在只看当前有效业务状态时，理想依赖为：
+
+```text
+(DramaPlatform, SnapshotTime) → 当时的一组运营事实
+```
+
+但保留错误 Snapshot、VOID 历史和正确修订后，同一 DramaPlatform 与 SnapshotTime 可能对应多个历史版本，因此该组合不能同时无条件决定历史关系中的唯一运营事实。若忽略这一点直接作为全关系候选键，将无法保存修订；若不保留有效唯一语义，又可能出现多个并行有效事实。
+
+本 Task 不选择 Snapshot 版本、修订自关联、当前有效关系或其他方案。后续必须先明确“历史行身份”和“当前有效业务唯一性”的分层，再完成函数依赖与候选键冻结。
+
+### 6.18 初步规范化检查与反规范化风险【关系模型基线】
+
+| 风险检查 | 结论 | 规范化要求 |
+| --- | --- | --- |
+| Drama 保存平台信息 | 禁止 | 平台发行归 DramaPlatform，平台资料归 Platform |
+| Drama 保存演员列表 | 禁止 | 参演归 DramaActor，保持原子性与 M:N |
+| Snapshot 重复 Drama/Platform 信息 | 禁止 | Snapshot 只引用 DramaPlatform，名称和资料通过关系取得 |
+| Company 保存作品参与类型 | 禁止 | RelationType 归 DramaCompany，不属于 Company 单方属性 |
+| Tag 保存作品统计 | 禁止 | 作品数量、平均 Heat 等由 DramaTag 与分析动态计算 |
+| Snapshot 保存 Heat/Potential/互动率等派生值 | 基础事实关系中禁止 | 派生指标动态计算；未来缓存必须进入独立结果/汇总层并带范围与版本 |
+| ImportError 复制 ImportJob 概览 | 禁止 | 任务级信息只保留在 ImportJob，错误通过引用归属任务 |
+| DataQualityIssue/OperationLog 复制目标完整资料 | 禁止 | 只保留必要治理/审计语义并引用目标，避免传递依赖 |
+
+初步结论：除 Snapshot 修订候选键、通用质量目标和通用审计目标仍需后续专项设计外，目录中的关系分离方向未发现明确 1NF、2NF 或 3NF 冲突。该结论不是逐表 3NF Review；TASK-P3-04 必须对每个关系逐项验证候选键、部分依赖、传递依赖和更新异常。
+
+### 6.19 TASK-P3-04 规范化输入
+
+下一 Task 至少需要：
+
+1. 逐关系确认最终候选键集合与主属性；
+2. 审查每个非主业务信息是否完全依赖完整候选键；
+3. 审查非主信息之间是否存在传递依赖；
+4. 验证 M:N 关系信息未错放到端点实体；
+5. 专项处理 Snapshot 历史修订与有效唯一性的依赖模型；
+6. 评估 DataQualityIssue 和 OperationLog 目标引用设计对参照完整性与 3NF 的影响；
+7. 记录 INSERT、UPDATE、DELETE 异常风险和整改结论。
+
+Relational Model Baseline V1 不包含 MySQL 类型、索引、DDL、ORM、Migration 或最终 Schema，不能据此宣称数据库已实现。
 
 ## 7. 数据分析指标体系
 
@@ -2500,10 +2635,11 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 | TASK-P2-06 | Phase 2 Review 与分析设计基线冻结 V1.0 | Completed |
 | TASK-P3-01 | 数据库实体识别与概念模型设计 V0.1 | Completed |
 | TASK-P3-02 | E-R 模型设计 V0.1 | Completed |
+| TASK-P3-03 | 关系模式转换与规范化分析 V0.1 | Completed |
 
 - 当前 Phase：Phase 3 In Progress。
-- 文档版本：V1.2。
-- 文档状态：ER Model Baseline Established。
+- 文档版本：V1.3。
+- 文档状态：Relational Model Baseline Established。
 - 项目状态：Waiting for Next Phase 3 Task。
 - 最终 E-R 模型尚未设计、绘制或冻结；数据库概念结构设计、逻辑结构设计和 DB Schema 均未批准或冻结。
 
@@ -2709,6 +2845,17 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 7. **Decision：OperationLog 必须关联操作用户和一个主要目标。Reason：**分别回答“谁操作”和“操作什么”，同时控制批量操作的审计边界。
 8. **Decision：Snapshot 修订冲突继续保持未决。Reason：**本 Task 只冻结 DramaPlatform 1:N Snapshot，不越界选择版本、修订或有效唯一实现。
 
+### ADR-024：Relational Model Baseline V1【关系模型基线】
+
+1. **Decision：独立实体各自转换为逻辑关系，1:N 引用放在 N 端。Reason：**遵循 E-R 到关系模型的标准转换并保留参照方向。
+2. **Decision：所有 M:N 关系转换为独立关系模式。Reason：**DramaActor、DramaDirector、DramaCompany、DramaTag 需要表达组合唯一性和关系业务语义。
+3. **Decision：关系业务信息只归属关系模式。Reason：**角色、参与类型与发行信息依赖完整关系组合，放入任一端会造成更新异常和依赖错误。
+4. **Decision：业务候选键与最终数据库主键分开分析。Reason：**代理主键选择不能取消业务唯一性，业务编码也不应未经审查承担全部引用职责。
+5. **Decision：Snapshot 暂不冻结最终候选键。Reason：**有效业务唯一性与保留 VOID/修订历史形成函数依赖冲突，必须在后续专项解决。
+6. **Decision：不提前反规范化。Reason：**Drama 不存平台/演员列表，Snapshot 不存可关联描述或派生指标，Company/Tag 不存关系或统计结果。
+7. **Decision：DataQualityIssue 与 OperationLog 的通用目标引用保持待设计。Reason：**需要同时满足多对象治理、真实参照完整性和 3NF，不能在本 Task 猜测物理方案。
+8. **Decision：Relational Model Catalog V1 进入逐关系 3NF Review。Reason：**本轮只完成转换和初步依赖分析，TASK-P3-04 才能形成逐关系规范化结论。
+
 ## 24. Bug 与技术债务
 
 - 当前无已确认的软件 Bug。
@@ -2744,6 +2891,7 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 | Phase 2 Analytics Design Baseline V1.0 Review | PASS，已冻结 |
 | Entity Catalog V1 与概念实体分类 | 已建立 V0.1 基线，17 个概念实体 |
 | ER Relationship Catalog V1 | 已建立 V0.1 基线，基数与参与约束已明确 |
+| Relational Model Catalog V1 | 已建立 V0.1 基线，17 个逻辑关系模式待逐项 3NF Review |
 | E-R 图 | 待完成 |
 | 最终数据库 Schema | 待完成 |
 | 数据字典 | 待完成 |
@@ -2916,3 +3064,14 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - GitHub remote：Not Configured。
 - 当前状态：Completed；Phase 3 In Progress；Waiting for Next Phase 3 Task。
 - Commit：`docs: establish er model baseline`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
+
+### TASK-P3-03
+
+- 日期：2026-09-07。
+- 任务：关系模式转换与规范化分析 V0.1。
+- 完成内容：建立 Relational Model Baseline V1 与 17 项 Relational Model Catalog；完成实体、1:N、M:N 和关系信息归属转换；分析 User/Drama/主数据/关系模式/Snapshot/Import/Quality/Audit 的业务候选键与逻辑引用来源；形成核心函数依赖、Snapshot 依赖冲突、反规范化风险和 TASK-P3-04 逐关系 3NF Review 输入；记录八项设计决策。
+- 验证内容：完成 11 项关系模型自检，确认 ER 到关系转换、主键候选、外键来源、函数依赖、M:N、Snapshot 和 3NF 后续输入完整；未执行数据库或代码测试。
+- 未开发内容：未定义 MySQL 字段类型、索引或最终主外键，未编写 SQL/DDL，未创建数据库、表、MySQL Schema、View、ORM、Migration、API 或前后端代码，未开始逐表 3NF Review，未执行下一 Task。
+- GitHub remote：Not Configured。
+- 当前状态：Completed；Phase 3 In Progress；Waiting for Next Phase 3 Task。
+- Commit：`docs: establish relational model baseline`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
