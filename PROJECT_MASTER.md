@@ -9,11 +9,11 @@
 | 中文名称 | 短剧数据管理与分析系统 |
 | 英文名称 | Short Drama Data Management and Analysis System |
 | 软件版本 | V1.0 |
-| 文档版本 | V1.0 |
-| 当前 Phase | Phase 2 - Completed |
-| 当前 Task | TASK-P2-06 |
-| 文档状态 | Analytics Design Baseline Frozen |
-| 下一阶段状态 | Waiting for Phase 3 Database Design |
+| 文档版本 | V1.1 |
+| 当前 Phase | Phase 3 - In Progress |
+| 当前 Task | TASK-P3-01 |
+| 文档状态 | Conceptual Data Model Baseline Established |
+| 下一阶段状态 | Waiting for Next Phase 3 Task |
 | 最近更新日期 | 2026-09-07 |
 
 状态标签：
@@ -960,6 +960,100 @@ V1.0 覆盖播放量、点赞量、评论量、收藏量、分享量、热度、
 候选关系或业务过程对象：`DramaActor`、`DramaDirector`、`DramaCompany`、`DramaTag`、`DramaPlatform`、`DramaMetricSnapshot`、`ImportJob`、`ImportError`、`DataQualityIssue`、`OperationLog`。
 
 这些名称仅是候选实体，不是已冻结数据库表。概念结构设计必须重新审查其独立性、合并或拆分需要、业务表达、冗余和至少 3NF 的符合性。禁止为了达到固定表数量而机械建表。
+
+### 6.2 概念实体识别原则【概念模型基线】
+
+一个概念对象只有在具备独立生命周期、独立业务含义、独立维护、独立关联或独立分析价值中的至少一项时，才进入 `Entity Catalog V1`。实体目录用于描述业务世界中需要长期识别的对象及其边界，不等同于最终数据库表数量。
+
+概念分类如下：
+
+- **Identity / Supporting Entity：**为系统身份、权限与业务操作提供主体，例如 User。
+- **Core Business Entity：**承载系统核心业务对象，例如 Drama。
+- **Master Data：**可被独立维护并被多个业务过程引用的基础资料，例如 Actor、Director、Company、Platform、Tag。
+- **Relationship Entity：**表达多个实体之间具有独立业务语义的关系，例如 DramaActor、DramaPlatform。
+- **Historical Fact Entity：**记录不可被当前值覆盖的时点事实，例如 DramaMetricSnapshot。
+- **Governance Entity：**记录导入、错误和正式数据质量治理过程。
+- **Audit Entity：**独立保存重要业务操作审计事实。
+
+分类描述概念职责，不决定物理表、字段、键、类型、索引或 ORM 实现。V1.0 固定角色种类仍属于 User 的身份/权限语义；`Role` 因没有独立维护、动态生命周期或分析需求，本轮不选为独立概念实体。其最终表达方式留待逻辑设计，不得由此推导具体字段。
+
+### 6.3 Entity Catalog V1【概念模型基线】
+
+| Entity | Category | Purpose / 业务职责 | 为什么独立存在 | 生命周期 | 历史事实 | 参与分析 | 停用/替代操作 | 审计要求 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `User` | Identity / Supporting | 表示系统登录与操作主体，承载管理员或普通用户业务身份 | 具有独立账户生命周期并关联权限与审计 | 管理员创建 → 启用 ⇄ 禁用 | 否；身份主数据 | 不进入运营分析；可用于审计筛选 | 可禁用，不常规物理删除 | 创建、状态、密码安全事件需审计 |
+| `Drama` | Core Business | 表示被管理、发行和分析的短剧作品 | 是所有发行、人员、标签和运营分析的核心主体 | DRAFT → SERIALIZING / COMPLETED ⇄ INACTIVE | 否；核心业务对象 | 是，核心分析粒度 | 可停用/归档，历史保留 | 新增、关键修改、停用需审计 |
+| `Actor` | Master Data | 表示可独立维护并参与多部短剧的演员 | 可重名但身份独立，具有作品关联和主体分析价值 | 创建 → ACTIVE ⇄ INACTIVE | 否；基础主数据 | 是，按关联作品统计 | 可停用/归档 | 维护和状态变化需审计 |
+| `Director` | Master Data | 表示可独立维护并参与多部短剧的导演 | 支持一剧多导演及导演关联分析 | 创建 → ACTIVE ⇄ INACTIVE | 否；基础主数据 | 是，按关联作品统计 | 可停用/归档 | 维护和状态变化需审计 |
+| `Company` | Master Data | 表示出品、制作、发行等业务参与主体 | 一家公司可参与多部作品并承担多种类型 | 创建 → ACTIVE ⇄ INACTIVE | 否；基础主数据 | 是，按作品和参与类型统计 | 可停用/归档 | 维护和状态变化需审计 |
+| `Platform` | Master Data | 表示平台自身资料与可用状态 | 被多个发行关系引用，并具有平台级分析价值 | 创建 → ACTIVE ⇄ INACTIVE | 否；基础主数据 | 是，平台级分析 | 可停用；历史发行和快照保留 | 维护和状态变化需审计 |
+| `Tag` | Master Data | 表示可复用的扁平题材/标签 | 被多部短剧共享，并支持标签筛选与分析 | 新增 → ACTIVE ⇄ INACTIVE | 否；基础主数据 | 是，标签归属分析 | 可停用；历史关系保留 | 维护和状态变化需审计 |
+| `DramaActor` | Relationship | 表示演员参与某短剧及其主要参演语义 | Drama 与 Actor 为 M:N，参演信息依赖该关系而非任一端 | 建立 → 修改 → 解除 | 否；业务关系 | 是，演员作品归属 | 解除关系，不视为实体停用 | 建立、修改、解除需审计 |
+| `DramaDirector` | Relationship | 表示导演参与某短剧 | Drama 与 Director 为 M:N，支持一剧多导演 | 建立 → 解除 | 否；业务关系 | 是，导演作品归属 | 解除关系 | 建立、解除需审计 |
+| `DramaCompany` | Relationship | 表示公司以特定参与类型加入某短剧 | Drama 与 Company 为 M:N，同一组合可存在不同参与类型 | 按参与类型建立 → 修改/解除 | 否；业务关系 | 是，公司及类型分析 | 按参与类型解除 | 建立、修改、解除需审计 |
+| `DramaTag` | Relationship | 表示短剧被分配某一标签 | Drama 与 Tag 为 M:N，同一标签需复用于多个作品 | 分配 → 移除 | 否；分类关系 | 是，标签分析归属 | 移除关系 | 分配、移除需审计 |
+| `DramaPlatform` | Relationship / Release Context | 表示某短剧在某平台的一条 V1 发行关系 | Platform 资料与实际上线事实不同；它还是快照的直接业务上下文 | PLANNED → ONLINE → OFFLINE，可按规则恢复 | 否；需历史保留的发行关系 | 是，平台级与 Overall 聚合入口 | 置为 OFFLINE，不删除历史 | 建立、修改、状态变化需审计 |
+| `DramaMetricSnapshot`（Snapshot） | Historical Fact | 表示某 DramaPlatform 在特定观测时刻的一组原始累计运营事实 | 具有时间序列、as-of、VALID/VOID、修正、作废和过滤语义，当前值不能替代历史 | 记录为 VALID → 修正或 VOID；原事实保留 | 是，核心历史事实 | 是，所有趋势、Growth、Heat、Potential 和异常的事实来源 | 不停用；可修正或作废，不常规物理删除 | 新增、修正、作废必须审计 |
+| `ImportJob` | Governance / Process | 表示一次可追溯的数据导入过程 | 具有独立七状态生命周期、确认边界和结果摘要 | 待校验 → 校验失败/待确认 → 导入中 → 完成/失败 | 是，导入过程记录 | 不进入运营表现分析；可用于治理统计 | 保留终态 | 确认、执行与结果需审计 |
+| `ImportError` | Governance / Detail | 表示 ImportJob 在正式写入前发现的行/内容错误 | 一个任务可有多个独立错误，需查询、导出和定位来源 | 随 ImportJob 产生并长期保留 | 是，导入错误历史 | 否；用于导入质量报告 | 不停用；随任务保留 | 通过任务与导入行为追溯 |
+| `DataQualityIssue` | Governance / Quality | 表示正式业务数据进入系统后发现的质量问题 | 具有独立 Severity、Status、来源、证据与处理生命周期 | OPEN → CONFIRMED → RESOLVED，或 IGNORED | 是，质量治理记录 | 是，质量统计、过滤和 Insight | 解决/忽略，不物理删除 | 确认、修正、忽略和解决需审计 |
+| `OperationLog` | Audit | 表示谁在何时对何业务对象执行了重要操作 | 审计目的、保留要求和敏感信息边界独立于业务对象 | 事件产生 → 只读保留 | 是，操作审计事实 | 不进入作品运营分析；用于审计查询 | 不停用、不常规删除 | 自身即审计记录，须防篡改并排除敏感凭证 |
+
+Entity Catalog V1 共确认 17 个概念实体：1 个身份辅助实体、1 个核心业务实体、5 个主数据实体、5 个关系实体、1 个历史事实实体、3 个治理实体和 1 个审计实体。
+
+### 6.4 关键实体与边界专项确认【概念模型基线】
+
+#### 6.4.1 Snapshot 独立实体
+
+`DramaMetricSnapshot` 必须作为独立历史事实实体。它表达 DramaPlatform 在某个观测时刻的原始运营事实，支持任意合理采样时间、90 天及更长时间序列、latest valid as-of、相邻和窗口基准、VALID/VOID、修正、作废、质量过滤与审计。若仅在 Drama 或 DramaPlatform 保存“最新值”，历史趋势、Growth、异常检测和修订追溯均无法成立。
+
+Snapshot 的版本/修订与有效唯一性冲突继续是 Phase 3/4 待解决问题；本 Task 只确认独立性与概念职责，不决定任何字段、键或实现结构。
+
+#### 6.4.2 DramaPlatform 独立关系实体
+
+`Platform` 只表示平台自身资料；`DramaPlatform` 表示某 Drama 在某 Platform 的实际发行/上线关系，两者生命周期和职责不同。DramaPlatform 具有 PLANNED、ONLINE、OFFLINE 的发行语义，是平台内 ranking、运营快照和跨平台聚合的直接上下文，因此必须独立建模为概念关系实体，不能作为 Platform 属性，也不能被 Snapshot 中重复的平台/短剧描述替代。
+
+#### 6.4.3 多对多关系实体化
+
+- Drama–Actor：必须由 DramaActor 表达，因为关系具有角色与排位等独立业务语义。
+- Drama–Director：必须由 DramaDirector 表达，以支持一剧多导演和导演多作品；不因当前附加信息较少而退化为 Drama 的单导演属性。
+- Drama–Company：必须由 DramaCompany 表达，以支持同一公司对同一作品承担多个参与类型。
+- Drama–Tag：必须由 DramaTag 表达，以支持短剧多标签、标签多短剧和按标签分析。
+
+上述均为概念关系实体。是否以独立代理身份或复合业务身份实现、如何保存解除历史，留待逻辑设计与 3NF Review。
+
+#### 6.4.4 Import、Quality 与 Audit 分离
+
+- ImportJob 管理一次导入过程；ImportError 记录该过程正式写入前的错误明细，两者构成导入治理主从概念，但职责不能合并。
+- DataQualityIssue 管理已进入正式数据后的长期质量发现和处理，不能与 ImportError 混合，否则会破坏写入前错误与正式数据治理的生命周期边界。
+- OperationLog 独立记录重要业务操作审计，不代替技术日志、ImportError 或 DataQualityIssue，也不得保存密码、Hash、Token 或 Secret。
+
+### 6.5 主数据、关系、事实与治理分离【概念模型基线】
+
+```text
+Identity / Supporting: User
+Core Business: Drama
+Master Data: Actor, Director, Company, Platform, Tag
+Relationship: DramaActor, DramaDirector, DramaCompany, DramaTag, DramaPlatform
+Historical Fact: DramaMetricSnapshot
+Governance: ImportJob, ImportError, DataQualityIssue
+Audit: OperationLog
+```
+
+主数据描述可复用对象，关系实体描述对象间业务语义，Snapshot 描述不可由当前值覆盖的时点事实，治理与审计实体描述数据如何进入、被发现问题以及被谁处理。该分离为后续至少 3NF 的概念与逻辑设计提供边界：不得在 Snapshot 重复保存可关联得到的名称，不得在关系中复制只依赖某一端的主数据属性，也不得把派生指标冒充原始事实。
+
+### 6.6 下一步概念设计输入【Phase 3】
+
+后续 Phase 3 Task 可基于 Entity Catalog V1 继续审查：
+
+1. 17 个已识别概念实体之间的业务联系与基数；
+2. 每个关系的必选/可选参与语义；
+3. Snapshot、ImportError、DataQualityIssue、OperationLog 与其业务对象的概念关联；
+4. 关系解除、对象停用和历史事实保留在概念层的表达；
+5. Snapshot 修订、作废与一个有效快照语义的概念方案；
+6. 是否存在经审查确有必要但当前目录未覆盖的辅助概念。
+
+本 Task 未绘制或冻结最终 E-R 图，未设计数据库字段、类型、键、索引、表、SQL、Schema、ORM 或 Migration。任何后续概念变化都必须说明其独立业务价值，不得为了增加表数量机械拆分。
 
 ## 7. 数据分析指标体系
 
@@ -2298,7 +2392,7 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 | Phase 0 | 项目初始化和设计基线 | Completed |
 | Phase 1 | 需求与功能模块正式冻结 | Completed |
 | Phase 2 | 数据分析规则细化 | Completed |
-| Phase 3 | 数据库概念结构设计 | Waiting |
+| Phase 3 | 数据库概念结构设计 | In Progress |
 | Phase 4 | 数据库逻辑结构与 3NF Review | Waiting |
 | Phase 5 | MySQL Schema 实现 | Waiting |
 | Phase 6 | 模拟数据系统 | Waiting |
@@ -2332,11 +2426,12 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 | TASK-P2-04 | 模拟数据生成规范设计 V0.1 | Completed |
 | TASK-P2-05 | 分析指标体系最终冻结 V0.1 | Completed |
 | TASK-P2-06 | Phase 2 Review 与分析设计基线冻结 V1.0 | Completed |
+| TASK-P3-01 | 数据库实体识别与概念模型设计 V0.1 | Completed |
 
-- 当前 Phase：Phase 2 Completed。
-- 文档版本：V1.0。
-- 文档状态：Analytics Design Baseline Frozen。
-- 项目状态：Waiting for Phase 3 Database Design。
+- 当前 Phase：Phase 3 In Progress。
+- 文档版本：V1.1。
+- 文档状态：Conceptual Data Model Baseline Established。
+- 项目状态：Waiting for Next Phase 3 Task。
 - 最终 E-R 模型尚未设计、绘制或冻结；数据库概念结构设计、逻辑结构设计和 DB Schema 均未批准或冻结。
 
 ## 23. 设计决策记录
@@ -2519,6 +2614,17 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 3. **Decision：Phase 2 输出作为 Phase 3 输入而非最终 Schema。Reason：**分析事实、历史、约束和查询需求可指导概念设计，但实体取舍、键、字段、类型和索引仍需数据库阶段审查。
 4. **Decision：Snapshot 修订一致性继续保持未决。Reason：**必须在 Phase 3/4 同时满足有效唯一语义、VOID 历史、审计与至少 3NF，本 Task 不越界选定结构。
 
+### ADR-022：Entity Catalog V1【概念模型基线】
+
+1. **Decision：DramaMetricSnapshot 独立建模为历史事实实体。Reason：**时间序列、as-of、VALID/VOID、修正、作废、Growth 和异常检测均要求保留每次时点事实。
+2. **Decision：DramaPlatform 独立建模为发行关系实体。Reason：**平台资料与某短剧的实际上线关系具有不同职责和生命周期，后者还是快照的业务上下文。
+3. **Decision：DramaActor、DramaDirector、DramaCompany、DramaTag 均实体化为概念关系。Reason：**四组关系均为 M:N，并分别支撑关系语义、多导演、多参与类型或多标签分析。
+4. **Decision：ImportJob、ImportError 与 DataQualityIssue 分离。Reason：**导入过程、写入前错误和正式数据质量问题具有不同发生阶段、生命周期和查询目的。
+5. **Decision：OperationLog 作为独立审计实体。Reason：**业务审计需要跨对象长期保留，不能依赖被审计对象、技术日志或质量记录代替。
+6. **Decision：Master Data、Relationship、Historical Fact、Governance 与 Audit 分离。Reason：**明确依赖边界可避免名称冗余、关系属性错放和事实覆盖，为至少 3NF 的后续设计提供输入。
+7. **Decision：V1.0 不选择 Role 为独立概念实体。Reason：**角色固定为两类且没有动态维护、独立生命周期或独立分析需求；最终表达方式仍由逻辑设计决定。
+8. **Decision：Entity Catalog V1 确认 17 个概念实体但不等同固定表数量。Reason：**目录按业务独立性识别，后续仍需基数、键与逐项 3NF Review，禁止机械建表。
+
 ## 24. Bug 与技术债务
 
 - 当前无已确认的软件 Bug。
@@ -2552,6 +2658,7 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 | Simulation Dataset V1 生成规范 | 已建立 V0.1 基线 |
 | Analytics Metric Dictionary V1.0 | 已建立并冻结 V1.0 基线 |
 | Phase 2 Analytics Design Baseline V1.0 Review | PASS，已冻结 |
+| Entity Catalog V1 与概念实体分类 | 已建立 V0.1 基线，17 个概念实体 |
 | E-R 图 | 待完成 |
 | 最终数据库 Schema | 待完成 |
 | 数据字典 | 待完成 |
@@ -2702,3 +2809,14 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - GitHub remote：Not Configured。
 - 当前状态：Completed；Phase 2 Completed；Waiting for Phase 3 Database Design。
 - Commit：`docs: freeze phase 2 analytics baseline`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
+
+### TASK-P3-01
+
+- 日期：2026-09-07。
+- 任务：数据库实体识别与概念模型设计 V0.1。
+- 完成内容：依据独立生命周期、业务含义、维护、关联或分析价值，建立 Entity Catalog V1；确认 User、Drama、五类主数据、五类关系、DramaMetricSnapshot 历史事实、三类治理对象和 OperationLog 审计对象共 17 个概念实体；完成 Snapshot、DramaPlatform、多对多关系、Import/Quality/Audit 边界专项分析；明确 Role 暂不作为独立概念实体，并形成后续概念设计输入及八项设计决策。
+- 验证内容：完成 9 项概念实体自检，确认主数据、业务对象、关系、历史事实、治理与审计边界清晰，并保留至少 3NF 后续审查输入；未执行数据库或代码测试。
+- 未开发内容：未设计字段、数据类型、主外键、候选键或索引，未编写 SQL，未创建数据库、表或 Schema，未绘制最终 E-R 图或创建 E-R 文件，未编写 ORM Model、Migration、API，未初始化或开发 Vue/FastAPI，未执行下一 Task。
+- GitHub remote：Not Configured。
+- 当前状态：Completed；Phase 3 In Progress；Waiting for Next Phase 3 Task。
+- Commit：`docs: establish conceptual entity baseline`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
