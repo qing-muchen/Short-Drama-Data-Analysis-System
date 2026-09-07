@@ -9,10 +9,10 @@
 | 中文名称 | 短剧数据管理与分析系统 |
 | 英文名称 | Short Drama Data Management and Analysis System |
 | 软件版本 | V1.0 |
-| 文档版本 | V0.7 |
+| 文档版本 | V0.8 |
 | 当前 Phase | Phase 2 - In Progress |
-| 当前 Task | TASK-P2-03 |
-| 文档状态 | Insight Generation Baseline Established |
+| 当前 Task | TASK-P2-04 |
+| 文档状态 | Simulation Data Specification Established |
 | 下一阶段状态 | Waiting for Next Phase 2 Task |
 | 最近更新日期 | 2026-09-07 |
 
@@ -1562,11 +1562,177 @@ V1.0 支持 CSV 和 Excel，计划支持短剧列表、查询结果、排行结�
 
 ## 10. 模拟数据规范
 
-### 10.1 生成原则【已冻结】
+### 10.1 Simulation Dataset V1 定位与生成原则【模拟数据规范基线】
 
-模拟运营指标不得彼此完全独立随机，应体现合理业务关联，例如点赞、评论、收藏和分享数量由播放量与相应比率共同影响。
+`Simulation Dataset V1` 是接近真实短剧运营场景、可重复且带有受控验证案例的数据规范，不是彼此独立的随机测试值。它为后续 MySQL 初始化数据、开发展示、Dashboard、Heat/Potential/Growth 验证、异常检测、数据质量以及导入导出测试提供统一数据基础，但本节不生成任何数据文件、脚本或 SQL。
 
-必须主动设计爆款短剧、普通短剧、潜力短剧、衰退短剧和异常短剧五类数据行为，用于验证分析算法能否识别不同数据模式，而不是只生成数量足够但没有业务意义的数据。
+- 基础数据必须先满足 Phase 1 生命周期、业务唯一性与关系规则；业务非法数据只能通过明确命名的异常注入层产生。
+- 运营指标必须遵守 Phase 2 的 AnalysisContext、as-of、Growth、Heat、Potential、Quality 和 Insight 规则，不为得到预期分数而修改冻结模型。
+- 模拟运营指标不得完全独立随机。互动指标应由播放规模、作品互动倾向、平台差异、生命周期和有限自然波动共同影响。
+- 模拟数据只是未来企业数据源的替代；不得为了方便生成而增加模拟专用业务字段、改变业务语义或让系统依赖模拟来源。
+
+### 10.2 V1.0 基准数据规模【模拟数据规范基线】
+
+| 对象 | Simulation Dataset V1 规模 | 分布要求 |
+| --- | --- | --- |
+| Drama | 100 部 | 固定基准规模，不扩展为百万级场景 |
+| Actor | 400 人，允许在 300～500 范围内调整 | 少量高频、大量参演 1～2 部作品 |
+| Director | 100 人，允许在 80～150 范围内调整 | 大多数参与 1 部，少量多作品 |
+| Company | 70 家，允许在 50～100 范围内调整 | 少量高频公司，覆盖多种参与类型 |
+| Platform | 8 个，允许后续同版本最多调整至 10 个 | 2 个热门、4 个普通、2 个小型平台 |
+| Tag | 24 个，允许在 20～30 范围内调整 | 多标签且呈热门与长尾分布 |
+| DramaPlatform | 约 205～215 条 | 非 DRAFT Drama 每部 1～3 个平台，平均约 2.2 个 |
+| DramaMetricSnapshot | 基准目标约 70,000～80,000 条 | 90 天、每日 4 次，符合既有 7 万～10 万规模 |
+
+估算口径：95 部具有发行历史的 Drama × 平均约 2.2 个 DramaPlatform × 90 天 × 4 次/日，理论满覆盖约 75,240 条快照。实际生成允许因上线时间、下线时间和固定质量案例在 70,000～80,000 条内波动，但不得依靠复制同一快照凑数。
+
+关系数量目标：DramaTag 约 250～350 条、DramaActor 约 700～900 条、DramaDirector 约 110～120 条、DramaCompany 约 200～300 条。它们是生成规模目标，不是数据库表或键设计。
+
+### 10.3 Drama 分层、生命周期与增长场景【模拟数据规范基线】
+
+#### 10.3.1 长尾表现分层
+
+100 部 Drama 按市场长尾结构分层：
+
+- 头部作品约 10%：高播放、高互动，通常具有较高 Heat，但允许部分作品增长放缓。
+- 中腰部作品约 30%：中等规模和正常增长，其中应包含一部分高增长潜力作品。
+- 长尾作品约 60%：播放和互动规模较低，包含稳定低增长、低迷和少量停用作品。
+
+分层影响生成参数区间而不是直接写死最终 Heat/Potential。不同层之间允许合理重叠，避免形成一眼可由固定阈值识别的机械数据。
+
+#### 10.3.2 DramaStatus 分布
+
+| DramaStatus | 数量 | 快照要求 |
+| --- | ---: | --- |
+| `DRAFT` | 5 | 不建立在线运营快照 |
+| `SERIALIZING` | 25 | 存在当前运营数据 |
+| `COMPLETED` | 60 | 保留完整或主要历史运营数据 |
+| `INACTIVE` | 10 | 保留停用前历史，默认当前榜单排除 |
+
+DRAFT 可以先具备基础关系资料，但不得伪造上线后的运营表现。INACTIVE 数据用于验证历史可查询、当前默认排除和 Stale 等规则。
+
+#### 10.3.3 增长曲线分布
+
+在具有运营数据的作品中，按近似比例生成四类基础曲线：
+
+| 曲线 | 比例目标 | 业务表现 |
+| --- | ---: | --- |
+| 爆发型 | 15% | 上线初期较低，随后在明确阶段快速增加，再进入较平稳阶段 |
+| 稳定型 | 45% | 每期增量存在自然波动，但长期持续增长 |
+| 衰退型 | 20% | 前期增量较高，后期新增速度逐步放缓 |
+| 低迷型 | 20% | 长期新增量较低，仅有小幅自然波动 |
+
+“衰退型”表示新增速度和增长率趋缓，不表示累计计数自然下降。正常基础曲线中的累计播放、点赞、评论、收藏和分享必须非下降；累计下降只能由受控异常注入产生。
+
+### 10.4 关系分布【模拟数据规范基线】
+
+#### 10.4.1 平台与发行关系
+
+- 8 个基准平台分为 2 个热门平台、4 个普通平台、2 个小型平台；Drama 数量、播放规模与互动特征不得完全相同。
+- 热门、普通、小型平台分别承载约 40%、45%、15% 的 DramaPlatform 关系，允许小幅波动；同一 Drama 的平台选择不得机械固定。
+- 每部非 DRAFT Drama 至少 1 个、最多 3 个平台，平均约 2.2 个；必须包含单平台和多平台作品，以验证 DramaPlatform 与 Drama Overall 聚合。
+- 各平台独立生成平台内 ranking；ranking 不跨平台比较。部分平台可不提供 ranking，此时使用 NULL，不得填 0。
+
+#### 10.4.2 标签关系
+
+- 每部 Drama 分配 2～4 个 Tag，平均约 3 个；同一 Drama + Tag 不重复。
+- 约 20% 的热门 Tag 覆盖较多作品，其余标签形成中低频长尾；不得让全部标签作品数近似相同。
+- 必须生成跨标签重叠组合，以验证多 Tag OR 筛选、Tag 内 DISTINCT Drama 和不同标签数量不可横向求和的规则。
+
+#### 10.4.3 演员关系
+
+- 每部 Drama 目标关联 6～10 名演员；约 10% 的演员为高频演员、参与 4～8 部作品，大多数演员参与 1～2 部作品，其余参与 2～4 部。
+- DramaActor 的角色类型比例目标为：`LEAD` 15%、`SUPPORTING` 60%、`GUEST` 15%、`OTHER` 10%，允许因每剧至少一名主演而小幅偏移。
+- 同一 Drama + Actor 只生成一条主要参演关系；billing order 原则上不重复，角色信息不得复制为 Actor 自身属性。
+
+#### 10.4.4 导演与公司关系
+
+- 约 85% 的 Drama 配置 1 名导演，约 15% 配置 2 名导演；同一 Drama + Director 不重复，少量导演参与多部作品。
+- 每部 Drama 关联 1～3 家不同公司并形成 2～4 个参与类型关系。CompanyRelationType 目标占比为：PRODUCER 25%、PRODUCTION 30%、DISTRIBUTOR 20%、CO_PRODUCTION 15%、OTHER 10%。
+- 约 5%～10% 的 Drama 应存在同一 Company 同时承担两个不同 relation type 的案例，以验证多参与类型规则；同一 Drama + Company + relation type 不重复。
+
+### 10.5 时间与指标生成模型【模拟数据规范基线】
+
+#### 10.5.1 时间模型
+
+- 基准历史跨度为连续 90 个自然日，每日固定 4 个业务采样时点：08:00、12:00、18:00、22:00（Asia/Shanghai）。后端持久化或交换时按已冻结规则转换为 UTC。
+- `Simulation Dataset V1` 的正式生成清单必须固定一个 `simulation_as_of`；同一版本的 90 日范围以该截止时刻回推，不随每次执行的系统当前时间漂移。
+- DramaPlatform 只在其上线后且未超过下线边界的业务时段生成快照；不得为 DRAFT 或尚未上线关系补造运营数据。
+- 固定时点是 V1 模拟策略，不得推导为数据库只能保存这些时间；异常未来时间只能存在于独立测试注入案例。
+
+#### 10.5.2 累计与互动指标
+
+- `play_count`、`like_count`、`comment_count`、`favorite_count`、`share_count` 均按累计整数语义生成。正常曲线先生成非负播放增量，再依据作品、平台和阶段的互动倾向生成相应互动增量并累计。
+- 同一作品不同平台允许具有不同播放规模、互动率和增长节奏，但保持可解释的相关性；不得复制完全相同的跨平台序列。
+- 高互动作品的 like/play、comment/play、favorite/play、share/play 通常高于低互动作品，但必须保留适度自然波动和分布重叠，不使用“高播放必然高互动”的绝对规则。
+- 正常数据不得大量随机下降、出现负数或把未知互动指标写成 0。未知值使用 NULL，并只通过明确质量测试场景产生。
+- ranking 按每个平台同一采样时点内的业务对象独立形成，数值为正整数或 NULL；不得用跨平台 Heat 排名冒充原始平台 ranking。
+
+### 10.6 Heat、Potential 与 Insight 验证目标【模拟数据规范基线】
+
+- 在依照 Heat Model V1 实际计算后，目标形成明显但非绝对隔离的分布：头部对象主要位于 80～100，中腰部主要位于 40～80，长尾主要位于 0～40。该区间是验收目标，不得直接写入 HeatScore 或反向修改模型权重。
+- 必须让不同 Heat 层之间存在少量交叠，以验证排名基于真实计算而非预设类别标签。
+- 至少设计约 10～15 部来自中腰部或长尾的高增长潜力作品：7D 增长明显且互动质量较高，但当前累计规模不必进入 Heat 头部。
+- 至少设计约 5～10 部 Heat 较高但近期增长放缓的作品，以验证“当前热度较高，但近期增长趋缓”等冲突合并结论。
+- Potential 分布必须有清晰层次，不能与 Heat 简单等同；最终资格、分值和结论仍由冻结 Potential Model V1 与 Insight Rule Set V1 计算确定。
+
+### 10.7 受控异常与数据质量分布【模拟数据规范基线】
+
+#### 10.7.1 异常注入总体原则
+
+- 先生成满足业务规则的 Clean Base，再按固定案例清单叠加异常；任何异常必须记录逻辑案例编号、目标对象、目标时刻、异常类型、预期 Severity/处理结果和期望检测规则。
+- 基准数据中正常快照占比必须不低于 95%；受控异常影响的快照或导入行目标为 1%～3%，上限 5%。不得随机污染大量记录，也不得让多个异常无记录地叠加在同一行。
+- 累计下降、统计异常增长等可保留型案例进入质量测试正式数据；重复、冲突、非法 ranking、非法未来时间等确定性 ERROR 优先进入独立导入/校验测试输入，不得混入干净开发基线冒充合法数据。
+- 每种异常至少准备两个固定案例，并同时保留一个相邻正常对照对象，便于验证真阳性、未误报和修正/作废后的结果。
+
+#### 10.7.2 固定异常案例集合
+
+| 异常类型 | 注入方向 | 预期验证 |
+| --- | --- | --- |
+| 累计下降 | 某平台关系的一个或多个累计指标低于前序有效快照 | CUMULATIVE_REGRESSION + WARNING，原值保留 |
+| 异常增长 | 单指标每小时增量显著偏离自身历史窗口 | STATISTICAL_SPIKE + WARNING，验证 Robust Z |
+| 缺失互动指标 | comment/like/favorite/share 中受控少量 NULL | 导入错误或正式数据完整性 WARNING，派生值不可伪造 |
+| 重复快照 | 同 DramaPlatform、同时间、相同指标 | 导入重复提示或正式 DUPLICATE_RECORD |
+| 冲突快照 | 同 DramaPlatform、同时间、不同指标 | Conflict ImportError 或正式 CONFLICTING_SNAPSHOT |
+| 非法 ranking | ranking 为 0 或负数 | INVALID_RANKING + ERROR / 导入拒绝 |
+| 未来时间 | 超过接收时刻允许偏差的 snapshot time | INVALID_TIMESTAMP + ERROR / 导入拒绝 |
+
+统计异常案例必须先满足第 8.4 节的最低 12 个历史速率样本、28 样本窗口和 24 小时间隔上限；不得通过修改 Anomaly Detection Model V1 阈值来迁就模拟结果。
+
+#### 10.7.3 质量、缺失与 Stale 分布
+
+- 以固定质量案例数量计，目标分布为 INFO 45%～55%、WARNING 35%～45%、ERROR 5%～15%；这不是强制每条快照产生 Issue，大部分数据仍无质量问题。
+- ERROR 必须极少且集中在专用校验/导入测试集或明确历史遗留案例；开发展示基线不得充斥确定非法数据。
+- 未知互动指标目标控制在相关测试快照的 0.2%～0.5%，使用 NULL 而不是 0。标准模板导入中的缺失按 ImportError 处理；正式数据兼容性案例按第 8.3.2 节传播 WARNING 和不可计算结果。
+- 约 3%～5% 的当前可分析 DramaPlatform 可停止在 `analysis_as_of` 前超过 24 小时，用于触发 Stale 提示；其他平台保持 Fresh。Stale 不生成 DataQualityIssue。
+- 应同时包含 `Insufficient History` 的新上线对象，但其不计入 DataQualityIssue；质量分布统计必须区分 Issue 与实时 Analysis Quality Flag。
+
+### 10.8 可重复性与数据版本【模拟数据规范基线】
+
+- V1.0 默认固定随机种子为 `20260907`。所有伪随机选择必须从同一明确种子体系派生，禁止使用未记录的系统随机状态。
+- 同一 `Simulation Dataset Version + seed + simulation_as_of + generation profile` 必须生成相同实体、关系、快照和异常案例；记录顺序也必须采用稳定业务标识排序，不能依赖偶然的数据库自增顺序。
+- 正式数据清单逻辑上必须记录 Dataset Version、seed、simulation_as_of、生成规范版本、profile 和异常案例清单；具体文件格式留待生成 Task。
+- 当前版本命名为 `Simulation Dataset V1`。未来规模、分布、曲线或异常规则发生实质变化时建立 V2 或后续版本，不得覆盖 V1 后仍沿用同一版本名。
+- 模拟数据生成若有实现修复但不改变业务结果，也必须记录实现版本或修订说明，以保证测试证据可追溯。
+
+### 10.9 数据用途 Profile 分离【模拟数据规范基线】
+
+| Profile | 用途 | 数据特点 |
+| --- | --- | --- |
+| Development / Demo | 页面、Dashboard、常规分析展示 | 100 部 Drama 基准，主要为正常数据，含少量可解释 WARNING/Stale 案例 |
+| Quality / Test | 导入、校验、异常检测、修正与作废测试 | 复用稳定基础对象，单独叠加覆盖全部异常类型的固定案例，不作为演示主数据 |
+| Performance | 10 万级分页、Dashboard、Heat 与趋势性能测试 | 保持同一业务分布与模型语义，扩展规模，不依赖异常数量制造数据量 |
+
+三类 Profile 不得混成一份无法判断预期结果的数据。测试报告必须记录所用 Dataset Version、profile、seed、数据量和 simulation_as_of。
+
+### 10.10 10 万级性能扩展与企业替换【模拟数据规范基线】
+
+- Performance Profile 的最低目标为 100,000 条有效运营快照，推荐控制在 100,000～120,000 条，满足第 18.12 节性能测试要求。
+- 优先在不改变单条业务语义的前提下，将历史跨度从基准 90 天确定性扩展至约 120 天，或按同一分布扩充 Drama/DramaPlatform；所选方式必须在 profile 清单中记录，且不得修改 Development / Demo 基准数据。
+- 扩展后仍使用每日 4 次的默认采样策略、相同长尾比例、关系约束、增长曲线、质量过滤和固定 seed 派生规则；不得简单复制主键、业务编码或完全相同快照。
+- 企业数据接入时，以 Adapter / ETL / Import 将真实字段映射到相同业务语义；替换数据源不应要求改变 Drama、DramaPlatform、Snapshot 或分析规则。模拟场景标签和异常案例元信息不得成为生产业务模型的必填内容。
+
+本规范不决定数据文件格式、生成脚本结构、数据库字段类型、SQL INSERT、Schema 或最终 E-R；这些只可在后续明确 Task 中处理。
 
 ## 11. 数据库设计原则
 
@@ -1885,10 +2051,11 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 | TASK-P2-01 | 数据分析口径、时间窗口与多平台聚合规则设计 V0.1 | Completed |
 | TASK-P2-02 | 数据异常检测、质量判定与 Robust Z-score 规则设计 V0.1 | Completed |
 | TASK-P2-03 | 自动分析结论规则设计 V0.1 | Completed |
+| TASK-P2-04 | 模拟数据生成规范设计 V0.1 | Completed |
 
 - 当前 Phase：Phase 2 In Progress。
-- 文档版本：V0.7。
-- 文档状态：Insight Generation Baseline Established。
+- 文档版本：V0.8。
+- 文档状态：Simulation Data Specification Established。
 - 项目状态：Waiting for Next Phase 2 Task。
 - 最终 E-R 模型尚未设计、绘制或冻结；数据库概念结构设计、逻辑结构设计和 DB Schema 均未批准或冻结。
 
@@ -2035,6 +2202,21 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 16. **Decision：Potential 前 10% 还需 Growth7D > 20% 才称为高增长潜力。Reason：**避免仅因互动质量较高、但近期无明显增长的对象被过度解读。
 17. **Decision：同一对象的高 Heat 与下降 Growth 合并表达。Reason：**二者描述不同维度，可以同时成立；合并能保留证据并避免孤立文字看似矛盾。
 
+### ADR-019：Simulation Dataset V1【模拟数据规范基线】
+
+1. **Decision：模拟数据采用业务场景模拟而非独立随机值。Reason：**只有具备关系、生命周期、增长和互动逻辑的数据才能真实验证 Dashboard 与分析链路。
+2. **Decision：V1 基准固定为 100 部 Drama。Reason：**该规模与课程项目、本地 MySQL 和既有 7 万～10 万快照目标匹配。
+3. **Decision：作品表现采用 10% 头部、30% 中腰部、60% 长尾分布。Reason：**长尾结构比均匀数据更接近运营场景，也能验证 Heat 区分度。
+4. **Decision：非 DRAFT Drama 发行 1～3 个平台，平均约 2.2 个。Reason：**同时覆盖单平台和多平台聚合，且将快照规模控制在目标范围。
+5. **Decision：每部 Drama 分配 2～4 个标签并形成热门/长尾 Tag。Reason：**验证多标签 OR、去重和不可横向求和规则，避免一对一假数据。
+6. **Decision：每日固定 08:00、12:00、18:00、22:00 四个 Asia/Shanghai 采样时点。Reason：**延续已冻结模拟频率并保证时间序列可对齐，持久化按 UTC 转换。
+7. **Decision：采用爆发、稳定、衰退、低迷四类增长曲线。Reason：**覆盖增长、放缓和低活跃场景，同时保持正常累计指标非下降。
+8. **Decision：异常在 Clean Base 后按固定案例清单受控注入。Reason：**使每个异常可追踪、可复现、可验证，并避免大面积随机污染。
+9. **Decision：默认固定 seed 为 20260907。Reason：**相同版本、截止时刻与 Profile 可以生成一致结果，支持回归测试和审计。
+10. **Decision：建立 Simulation Dataset V1 版本管理。Reason：**规模、分布或异常规则变化必须形成新版本，不能静默覆盖既有测试基线。
+11. **Decision：Development、Quality/Test、Performance 三类 Profile 分离。Reason：**展示、错误覆盖和性能压测目标不同，混用会使期望结果与质量比例失去解释性。
+12. **Decision：性能数据独立扩展至 100,000～120,000 条快照。Reason：**满足 10 万级性能验收，同时不篡改 100 部 Drama 的演示基准。
+
 ## 24. Bug 与技术债务
 
 - 当前无已确认的软件 Bug。
@@ -2065,6 +2247,7 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 | 数据分析公共口径与 AnalysisContext | 已建立 V0.1 基线 |
 | 数据质量判定与 Anomaly Detection Model V1 | 已建立 V0.1 基线 |
 | Insight Engine V1 与自动分析结论规则 | 已建立 V0.1 基线 |
+| Simulation Dataset V1 生成规范 | 已建立 V0.1 基线 |
 | E-R 图 | 待完成 |
 | 最终数据库 Schema | 待完成 |
 | 数据字典 | 待完成 |
@@ -2182,3 +2365,14 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - GitHub remote：Not Configured。
 - 当前状态：Completed；Phase 2 In Progress；Waiting for Next Phase 2 Task。
 - Commit：`docs: establish insight generation baseline`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
+
+### TASK-P2-04
+
+- 日期：2026-09-07。
+- 任务：模拟数据生成规范设计 V0.1。
+- 完成内容：冻结 100 部 Drama 与关联实体规模、长尾及生命周期比例、多平台/多标签/演员/导演/公司关系分布、90 天每日四次时间模型、四类增长曲线、累计与互动指标生成原则、Heat/Potential 验证目标、固定异常案例与质量分布、Stale/NULL 规则、固定 seed、Simulation Dataset V1 版本、三类用途 Profile、10 万级性能扩展和企业数据替换原则；记录十二项设计决策。
+- 验证内容：完成 23 项模拟数据规范文档自检，确认 Heat Model V1、Potential Model V1 与 Anomaly Detection Model V1 未修改；未生成数据或执行代码、数据库、算法及性能测试。
+- 未开发内容：未创建 JSON、CSV 或 Excel 数据，未编写 Python 生成脚本或 SQL INSERT，未创建数据库、Schema、表或字段，未设计最终 E-R，未初始化前后端，未生成课程设计报告或软著材料，未执行下一 Task。
+- GitHub remote：Not Configured。
+- 当前状态：Completed；Phase 2 In Progress；Waiting for Next Phase 2 Task。
+- Commit：`docs: establish simulation data specification`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
