@@ -9,10 +9,10 @@
 | 中文名称 | 短剧数据管理与分析系统 |
 | 英文名称 | Short Drama Data Management and Analysis System |
 | 软件版本 | V1.0 |
-| 文档版本 | V0.8 |
+| 文档版本 | V0.9 |
 | 当前 Phase | Phase 2 - In Progress |
-| 当前 Task | TASK-P2-04 |
-| 文档状态 | Simulation Data Specification Established |
+| 当前 Task | TASK-P2-05 |
+| 文档状态 | Analytics Metric Baseline Established |
 | 下一阶段状态 | Waiting for Next Phase 2 Task |
 | 最近更新日期 | 2026-09-07 |
 
@@ -1351,6 +1351,181 @@ Growth Insight 默认使用播放量 `Growth7D` 作为主评价指标，24H 与 
 
 本表只定义业务规则，不是模板代码、Prompt、API、数据库枚举或 Schema。
 
+### 7.17 Analytics Metric Dictionary V1.0【分析指标基线】
+
+#### 7.17.1 定位、分类与使用规则
+
+`Analytics Metric Dictionary V1.0`（简称 `Metric Dictionary V1`）是 Dashboard、分析中心、导出、异常检测与 Insight Engine 共同遵守的指标语义真源。它定义指标名称、中文含义、类型、来源、计算逻辑、使用场景、模型参与关系和 NULL 语义，不代表数据库字段、数据类型、View、API 或持久化方案。
+
+V1.0 指标分为八类：
+
+1. `RAW_OPERATIONAL`：原始运营指标；
+2. `ENGAGEMENT`：互动指标；
+3. `GROWTH`：增长指标；
+4. `RANKING`：排名指标；
+5. `HEAT`：热度指标；
+6. `POTENTIAL`：潜力指标；
+7. `QUALITY`：质量指标；
+8. `INSIGHT`：分析结论指标/元数据。
+
+所有指标必须绑定明确 `AnalysisContext` 和对象粒度，遵守第 7.7～7.16 节口径。原始事实与派生结果必须区分；相同英文名称在不同页面不得拥有不同计算含义。
+
+#### 7.17.2 Raw Operational Metrics
+
+这些指标来自某一 DramaPlatform 在 SnapshotTime 的运营快照。累计指标是时点事实，禁止跨时间直接求和。
+
+| 指标（English Name） | 中文含义 | 类型 | 数据来源 | 计算逻辑 | 使用场景 | 参与模型 | 允许为空 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `PlayCount` | 累计播放量 | 原始累计事实 | 运营快照 | 平台在该时刻展示的累计播放计数 | 规模、比率、增长、趋势 | Heat、Potential 的 Growth/比率基础、Anomaly | 有效快照核心值不可空 |
+| `LikeCount` | 累计点赞量 | 原始累计事实 | 运营快照 | 平台在该时刻展示的累计点赞计数 | 互动、趋势、质量 | Heat、QualityEngagement、Anomaly | 可未知；标准 V1 数据要求提供 |
+| `CommentCount` | 累计评论量 | 原始累计事实 | 运营快照 | 平台在该时刻展示的累计评论计数 | 互动、趋势、质量 | Heat、QualityEngagement、Anomaly | 可未知；标准 V1 数据要求提供 |
+| `FavoriteCount` | 累计收藏量 | 原始累计事实 | 运营快照 | 平台在该时刻展示的累计收藏计数 | 互动、趋势、质量 | Heat、Potential、Anomaly | 可未知；标准 V1 数据要求提供 |
+| `ShareCount` | 累计分享量 | 原始累计事实 | 运营快照 | 平台在该时刻展示的累计分享计数 | 互动、趋势、质量 | Heat、Potential、Anomaly | 可未知；标准 V1 数据要求提供 |
+| `PlatformRanking` | 平台内原始排名 | 原始排名事实 | 运营快照 | 平台在该时刻提供的排名，正整数且越小越靠前 | 单平台排名及趋势 | 不进入 Heat/Potential/Anomaly | 是；NULL 表示无排名 |
+| `SnapshotTime` | 快照观测时间 | 原始时间事实 | 运营快照 | 指标对应的业务观测时刻 | as-of、窗口基准、趋势、异常序列 | 所有时间口径与 Anomaly | 有效快照不可空 |
+
+同一 DramaPlatform 的累计指标正常情况下当前值不低于历史值；下降按第 8 节产生质量问题，保留原始观测，不得自动替换为历史最大值。
+
+#### 7.17.3 Engagement Metrics
+
+| 指标（English Name） | 中文含义 | 类型 | 数据来源 | 计算逻辑 | 使用场景 | 参与模型 | 允许为空 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `LikeRate` | 点赞率 | 派生比率 | LikeCount、PlayCount | LikeCount / PlayCount | 互动分析、详情、导出 | 不直接进入 Heat/Potential | 是；分母为 0 或输入未知 |
+| `CommentRate` | 评论率 | 派生比率 | CommentCount、PlayCount | CommentCount / PlayCount | 互动分析、详情、导出 | 不直接进入 Heat/Potential | 是；分母为 0 或输入未知 |
+| `FavoriteRate` | 收藏率 | 派生比率 | FavoriteCount、PlayCount | FavoriteCount / PlayCount | 互动与潜力分析 | Potential | 是；分母为 0 或输入未知 |
+| `ShareRate` | 分享率 | 派生比率 | ShareCount、PlayCount | ShareCount / PlayCount | 互动与潜力分析 | Potential | 是；分母为 0 或输入未知 |
+| `EngagementRate` | 综合互动率 | 派生比率 | Like、Comment、Favorite、Share、Play | (LikeCount + CommentCount + FavoriteCount + ShareCount) / PlayCount | Dashboard、互动分析、对象对比 | 不直接进入 Heat/Potential | 是；分母为 0 或任一必要输入未知 |
+| `QualityEngagement` | 质量互动率 | 派生比率 | Like、Comment、Play | (LikeCount + CommentCount) / PlayCount | 潜力分析中的互动质量 | Potential | 是；分母为 0 或输入未知 |
+
+所有互动率在 `PlayCount = 0` 时返回 NULL，禁止除零或填 0。Drama Overall、Platform、Tag 或主体聚合比率必须先聚合原始分子与分母再计算，不得简单平均下级对象的比率。
+
+#### 7.17.4 Growth 与 DeltaRate Metrics
+
+| 指标（English Name） | 中文含义 | 类型 | 数据来源 | 计算逻辑 | 使用场景 | 参与模型 | 允许为空 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `AdjacentGrowth` | 相邻快照增长率 | 派生增长 | 当前与最近前序有效快照 | (Current - Previous) / Previous | 明细变化、趋势解释 | 不进入 Potential | 是；无前序或基准为 0 |
+| `Growth24H` | 24 小时增长率 | 派生窗口增长 | as-of 当前值与 24H 合格基准 | 按 7.7.6 节容差选择基准后计算 Growth | 短期增长分析 | Insight 辅助证据 | 是；无合格基准或基准为 0 |
+| `Growth7D` | 7 日增长率 | 派生窗口增长 | as-of 当前值与 7D 合格基准 | 按 7.7.6 节可比较平台集合计算 Growth | Dashboard、潜力与增长分析 | Potential、Insight | 是；无合格基准或基准为 0 |
+| `Growth30D` | 30 日增长率 | 派生窗口增长 | as-of 当前值与 30D 合格基准 | 按 7.7.6 节容差选择基准后计算 Growth | 中期趋势分析 | Insight 辅助证据 | 是；无合格基准或基准为 0 |
+| `DeltaRate(X)` | 指标每小时增量速率 | 派生异常检测输入 | 当前与前序有效快照、间隔小时 | (CurrentValue - PreviousValue) / elapsed_hours | Robust Z 统计异常检测 | Anomaly Detection Model V1 | 是；间隔无效、超过 24h 或无前序 |
+
+Growth 面向业务时间窗口表现，以比例解释对象变化；DeltaRate 面向单 DramaPlatform、单指标的统计异常基线，以每小时绝对增量速率消除采样间隔影响。两者不得互换、混用或共用同一标签。
+
+#### 7.17.5 Ranking Metrics
+
+| 指标（English Name） | 中文含义 | 类型 | 数据来源 | 计算逻辑 | 使用场景 | 参与模型 | 允许为空 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `PlatformRanking` | 平台内原始排名 | 原始排名 | 运营快照 | 沿用平台语境，越小越靠前 | 单平台榜单与排名趋势 | 否 | 是 |
+| `PlatformRankingChange` | 平台排名变化 | 派生排名变化 | 当前与历史 PlatformRanking | PreviousRanking - CurrentRanking；正值表示名次改善 | 单平台排名趋势 | 不参与异常检测 | 是；任一排名未知 |
+| `HeatRank` | Heat 排名 | 派生系统排名 | 同一 AnalysisContext 的 HeatScore | 按 7.8 节稳定排序 | Heat 榜单、Dashboard、Insight | Insight | 是；Heat 不可计算 |
+| `PotentialRank` | Potential 排名 | 派生系统排名 | 同一合格集合的 PotentialScore | 按 7.9 节稳定排序 | Potential 榜单、Dashboard、Insight | Insight | 是；Potential 不可计算 |
+
+PlatformRanking 及其变化只在平台上下文中解释，禁止跨平台求和、求平均或直接形成 Overall 排名；排名变化只展示趋势，不进入 Robust Z 异常检测。
+
+#### 7.17.6 Heat Metrics
+
+| 指标（English Name） | 中文含义 | 类型 | 数据来源 | 计算逻辑 | 使用场景 | 参与模型 | 允许为空 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `PlatformHeatScore` | 平台级综合热度 | 模型派生分数 | DramaPlatform as-of 五项累计指标 | 当前平台范围 Candidate Set 中按 Heat Model V1 计算 | 平台内表现、跨平台共同基准对比 | Heat Model V1、Insight | 是；必要输入或候选集合不合格 |
+| `DramaOverallHeatScore` | 短剧整体综合热度 | 模型派生分数 | Drama Overall 聚合五项累计指标 | 各平台先取 as-of，再聚合原始值并按 Heat Model V1 计算 | Overall 排名、Dashboard、主体/标签分析 | Heat Model V1、Insight | 是；必要输入或候选集合不合格 |
+
+Heat Model V1 继续使用已冻结输入与权重：PlayCount 0.40、LikeCount 0.20、CommentCount 0.15、FavoriteCount 0.15、ShareCount 0.10。本节只登记指标，不修改公式、权重、Min-Max、候选集合或 tie-breaker。Heat 仅表示当前累计规模综合表现，不表示增长速度或未来潜力。
+
+#### 7.17.7 Potential Metrics
+
+| 指标（English Name） | 中文含义 | 类型 | 数据来源 | 计算逻辑 | 使用场景 | 参与模型 | 允许为空 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `PlatformPotentialScore` | 平台级增长潜力信号 | 模型派生分数 | 平台级 Growth7D、QualityEngagement、FavoriteRate、ShareRate | 合格 Candidate Set 内按 Potential Model V1 计算 | 平台级潜力排行与 Insight | Potential Model V1、Insight | 是；任一资格条件不满足 |
+| `DramaOverallPotentialScore` | 短剧整体增长潜力信号 | 模型派生分数 | Overall 可比较平台集合的增长与互动指标 | 按 7.7.6、7.9 节聚合并计算 | Overall 潜力排行、Dashboard、Insight | Potential Model V1、Insight | 是；任一资格条件不满足 |
+
+Potential Model V1 继续使用已冻结权重：Growth7D 0.45、QualityEngagement 0.25、FavoriteRate 0.20、ShareRate 0.10。本节不修改资格、标准化、排序或权重。Potential 较高只表示当前数据呈现较强增长潜力信号，不是成功预测、观看推荐或投资建议。
+
+#### 7.17.8 Quality Metrics
+
+| 指标（English Name） | 中文含义 | 类型 | 数据来源 | 计算逻辑 | 使用场景 | 参与模型 | 允许为空 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `FreshnessFlag` | 数据新鲜度标记 | 质量标记 | 最新有效快照与 analysis_as_of | 间隔 <=24h 为 FRESH，>24h 为 STALE | 页面、导出、Insight 提示 | 不参与评分模型 | 当前数据不可用时可空 |
+| `QualityStatus` | 分析对象质量状态 | 汇总质量标记 | 当前有效性与活动 Issue | 无不可用问题为 NORMAL；含 WARNING 为 WARNING；含未解决不可用 ERROR 为 ERROR | 分析过滤、列表提示 | 有效性过滤、Insight | 对象已形成时不可空；无可分析对象时为 NULL |
+| `QualityIssueCount` | 当前质量问题数量 | 质量计数 | DataQualityIssue | 当前 AnalysisContext 内活动 Issue 数量 | Dashboard、质量分析 | Insight Evidence | 不可空，可为 0 |
+| `WarningCount` | 当前警告数量 | 质量计数 | WARNING Issue | 当前范围 OPEN/CONFIRMED WARNING 数量 | Dashboard、风险提示 | Insight Evidence | 不可空，可为 0 |
+| `ErrorCount` | 当前错误数量 | 质量计数 | ERROR Issue | 当前范围 OPEN/CONFIRMED ERROR 数量 | Dashboard、过滤说明 | Insight Evidence | 不可空，可为 0 |
+| `InsufficientHistoryFlag` | 历史样本不足标记 | 分析质量标记 | Growth/Anomaly 基准检查 | 缺少窗口基准或异常检测历史样本时为 TRUE | 空结果、质量说明、Insight | 不进入评分模型 | 不可空，默认 FALSE |
+
+`QualityStatus` 是某分析对象在当前上下文中的质量汇总，不替代 `DataQualityIssueStatus` 的 OPEN、CONFIRMED、RESOLVED、IGNORED 处理生命周期。FreshnessFlag 与 InsufficientHistoryFlag 不是持久 DataQualityIssue；Quality 指标不是业务运营表现指标。
+
+#### 7.17.9 Insight Metrics / Metadata
+
+| 指标（English Name） | 中文含义 | 类型 | 数据来源 | 计算逻辑 | 使用场景 | 参与模型 | 允许为空 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `InsightType` | 结论类别 | 结论元数据 | Insight Rule Set V1 | PERFORMANCE/GROWTH/POTENTIAL/RISK/PLATFORM/TAG/DATA_QUALITY | 结论分类与排序 | Insight Engine V1 | 不可空 |
+| `RuleCode` | 命中规则标识 | 结论元数据 | Insight Rule Set V1 | 唯一标识本次触发规则及版本 | 可解释、测试、审计 | Insight Engine V1 | 不可空 |
+| `Evidence` | 指标证据 | 结论证据 | 指标值、阈值、排名、样本量 | 按 7.15.2 组成 Trigger 的可核验依据 | 结论详情与导出 | Insight Engine V1 | 不可空 |
+| `AnalysisContext` | 结论分析上下文 | 结论上下文 | 当前 AnalysisContext | 记录 as-of、窗口、平台、标签、粒度和有效性策略 | 复现结论 | 所有关联模型 | 不可空 |
+| `MetricDictionaryVersion` | 指标字典版本 | 版本元数据 | 当前指标基线 | V1.0 | 语义追溯 | 所有分析输出 | 不可空 |
+| `HeatModelVersion` | Heat 模型版本 | 版本元数据 | Heat 计算 | 当前 Heat Model V1 | Heat 结果与结论追溯 | Heat、Insight | Heat 未使用时可空 |
+| `PotentialModelVersion` | Potential 模型版本 | 版本元数据 | Potential 计算 | 当前 Potential Model V1 | Potential 结果与结论追溯 | Potential、Insight | Potential 未使用时可空 |
+| `AnomalyModelVersion` | 异常模型版本 | 版本元数据 | 异常检测 | 当前 Anomaly Detection Model V1 | 异常 Evidence 追溯 | Anomaly、Insight | 异常模型未使用时可空 |
+| `InsightRuleSetVersion` | 自动结论规则版本 | 版本元数据 | Insight Engine | 当前 Insight Rule Set V1 | 结论复现与规则升级 | Insight | 不可空 |
+
+上述项目是逻辑分析指标或元数据，不代表必须为每项创建数据库列。
+
+#### 7.17.10 分析对象粒度与聚合原则
+
+| 粒度 | 可用指标方向 | 必须遵守的转换规则 |
+| --- | --- | --- |
+| DramaPlatform | 原始累计、互动率、Growth、DeltaRate、PlatformRanking、Platform Heat/Potential、Quality | 同一平台发行关系内按 as-of 与历史有效快照计算 |
+| Drama Overall | 聚合累计、聚合互动率、Overall Growth、Overall Heat/Potential、系统排名、Quality | 各平台先取 as-of；累计求和；比率先聚合分子分母；Growth 只用可比较平台 |
+| Actor | 作品数、作品平均表现、热门作品、Quality 摘要 | 先计算 Drama-level Metrics，再按 DISTINCT Drama 归属，只表达关联统计 |
+| Director | 作品数、作品平均表现、热门作品、Quality 摘要 | 先计算 Drama-level Metrics，多导演可分别归属，不横向求和为唯一作品数 |
+| Company | 参与作品数、按类型表现、平均表现、热门作品 | 整体按 Company + Drama 去重；类型细分可分别归属 |
+| Tag | 作品数、平均播放/互动/Heat/Potential、趋势 | 先形成 Drama Overall，同一 Tag 内按 DISTINCT Drama；多 Tag 不可横向求和 |
+| System / Dashboard | 数量、总体累计/互动、排行、质量与 Insight 摘要 | 完整继承当前权限与 AnalysisContext，不创建隐藏口径 |
+
+任何累计快照不得跨时间相加；任何跨对象比率不得简单平均；PlatformRanking 不得跨平台聚合；Heat/Potential 必须使用当前 Candidate Set；质量计数不得因业务 JOIN 重复计算同一 Issue。
+
+#### 7.17.11 Dashboard 默认指标集合
+
+| Dashboard Metric | 中文含义 | 统一口径 |
+| --- | --- | --- |
+| `TotalDramaCount` | 短剧总数 | 当前权限与状态范围内 DISTINCT Drama 数量 |
+| `PlatformCount` | 平台数量 | 当前范围内 DISTINCT Platform 数量 |
+| `ActorCount` | 演员数量 | 当前范围内 DISTINCT Actor 数量 |
+| `DirectorCount` | 导演数量 | 当前范围内 DISTINCT Director 数量 |
+| `CompanyCount` | 制作公司数量 | 当前范围内 DISTINCT Company 数量 |
+| `HistoricalSnapshotCount` | 历史运营快照记录数 | 当前权限范围内正式保留的快照记录数量；与分析有效快照数概念分开 |
+| `TodayNewSnapshotCount` | 今日新增数据 | 按 Asia/Shanghai 当前自然日进入正式数据区的运营快照数量，不按 SnapshotTime 冒充导入时间 |
+| `CumulativePlayCount` | 当前累计播放量 | 各 DramaPlatform 先取 as-of 最新有效 PlayCount，再求和；不跨时间累加快照 |
+| `OverallEngagementRate` | 总体互动率 | 当前范围先汇总四类互动计数与 PlayCount，再计算 EngagementRate |
+| `TopHeatDrama` | Heat 领先作品 | 当前 Context 下 DramaOverallHeatScore 排名首位对象；无合格对象则 NULL |
+| `TopGrowthDrama` | 7 日增长领先作品 | 当前合格对象中 Growth7D 排名首位，必须显示样本/质量提示 |
+| `HighPotentialDramaCount` | 高增长潜力作品数量 | 满足 7.15.6 节高增长潜力规则的 DISTINCT Drama 数量 |
+| `CurrentQualityIssueCount` | 当前质量问题数量 | WARNING/ERROR 且 OPEN/CONFIRMED 的 Issue 数量，沿用第 8.9 节 |
+
+Dashboard 仍需展示既有 TOP10、近 30 日趋势、题材/平台表现、互动构成和异常趋势；本表冻结默认指标语义，不设计卡片数量、布局或图表。
+
+#### 7.17.12 NULL、版本与变更规则
+
+- NULL 表示未知、无合格基准、不可计算或不适用，不等于业务值 0。Growth 无基准、Ranking 未提供、Heat/Potential 资格不足和比率分母为 0 时必须返回 NULL。
+- 只有计数语义明确为“已统计且数量为零”时才能返回 0，例如当前范围 `WarningCount = 0`；不得用 0 隐藏数据缺失。
+- 指标输出必须携带或可追溯 `Metric Dictionary V1.0`。Heat、Potential、Anomaly 与 Insight 结果还必须关联对应 Model/Rule Set Version。
+- 未来新增指标、改变公式、口径、NULL 语义、粒度或版本关联时，必须建立 `Metric Dictionary V2` 或明确的新版本，不得静默修改 V1.0。
+- 指标展示格式和小数位不改变底层计算值；排序不得使用过早舍入后的展示值。
+
+### 7.18 Metric Dictionary V1 核心指标速查表
+
+| 分类 | 核心指标 | 说明 | 主要用途 |
+| --- | --- | --- | --- |
+| Raw Operational | PlayCount、LikeCount、CommentCount、FavoriteCount、ShareCount、PlatformRanking、SnapshotTime | 平台快照原始事实；累计值不跨时间求和 | 详情、趋势及派生计算 |
+| Engagement | LikeRate、CommentRate、FavoriteRate、ShareRate、EngagementRate、QualityEngagement | 先聚合分子分母，PlayCount=0 时 NULL | 互动与潜力分析 |
+| Growth | AdjacentGrowth、Growth24H、Growth7D、Growth30D、DeltaRate(X) | Growth 面向业务；DeltaRate 面向异常检测 | 趋势、Potential、Anomaly |
+| Ranking | PlatformRanking、PlatformRankingChange、HeatRank、PotentialRank | 平台原始排名不跨平台聚合 | 榜单与排名趋势 |
+| Heat | PlatformHeatScore、DramaOverallHeatScore | 当前累计规模综合表现，不代表增长 | Dashboard、排行、Insight |
+| Potential | PlatformPotentialScore、DramaOverallPotentialScore | 当前增长潜力信号，不是预测 | 潜力排行、Insight |
+| Quality | FreshnessFlag、QualityStatus、QualityIssueCount、WarningCount、ErrorCount、InsufficientHistoryFlag | 分析可用性、质量和新鲜度提示 | 过滤、Dashboard、Insight |
+| Insight | InsightType、RuleCode、Evidence、AnalysisContext、各模型/规则版本 | Trigger-Evidence-Conclusion 的逻辑元数据 | 解释、复现和审计 |
+
+本指标字典不修改 Heat Model V1、Potential Model V1 或 Anomaly Detection Model V1，也不冻结任何实现结构。
+
 ## 8. 数据质量与异常检测
 
 ### 8.1 两层异常检测【已冻结方向】
@@ -2052,10 +2227,11 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 | TASK-P2-02 | 数据异常检测、质量判定与 Robust Z-score 规则设计 V0.1 | Completed |
 | TASK-P2-03 | 自动分析结论规则设计 V0.1 | Completed |
 | TASK-P2-04 | 模拟数据生成规范设计 V0.1 | Completed |
+| TASK-P2-05 | 分析指标体系最终冻结 V0.1 | Completed |
 
-- 当前 Phase：Phase 2 In Progress。
-- 文档版本：V0.8。
-- 文档状态：Simulation Data Specification Established。
+- 当前 Phase：Phase 2 In Progress（准备进入收尾）。
+- 文档版本：V0.9。
+- 文档状态：Analytics Metric Baseline Established。
 - 项目状态：Waiting for Next Phase 2 Task。
 - 最终 E-R 模型尚未设计、绘制或冻结；数据库概念结构设计、逻辑结构设计和 DB Schema 均未批准或冻结。
 
@@ -2217,6 +2393,21 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 11. **Decision：Development、Quality/Test、Performance 三类 Profile 分离。Reason：**展示、错误覆盖和性能压测目标不同，混用会使期望结果与质量比例失去解释性。
 12. **Decision：性能数据独立扩展至 100,000～120,000 条快照。Reason：**满足 10 万级性能验收，同时不篡改 100 部 Drama 的演示基准。
 
+### ADR-020：Analytics Metric Dictionary V1.0【分析指标基线】
+
+1. **Decision：建立统一 Analytics Metric Dictionary。Reason：**Dashboard、分析、导出、异常和 Insight 必须使用相同名称与口径，避免跨模块语义漂移。
+2. **Decision：严格区分原始指标与派生指标。Reason：**快照事实、比率、增长和模型分数具有不同来源与生命周期，不应互相冒充或冗余污染基础数据。
+3. **Decision：Growth 与 DeltaRate 分离。Reason：**Growth 是业务窗口比例，DeltaRate 是单平台每小时增量速率，二者服务不同分析目的。
+4. **Decision：NULL 不等于 0。Reason：**未知、无基准和不可计算与真实零值具有不同业务含义，填 0 会扭曲分析和排行。
+5. **Decision：Heat 不代表增长。Reason：**Heat Model V1 只综合当前累计规模指标，不包含时间变化。
+6. **Decision：Potential 不代表预测。Reason：**Potential 只是当前增长与互动数据呈现的潜力信号，不能保证未来成功。
+7. **Decision：Quality Metrics 独立于运营指标。Reason：**新鲜度、质量状态、问题计数和历史不足用于解释可用性，不描述作品运营表现。
+8. **Decision：Insight 必须关联指标、模型和规则版本。Reason：**Evidence 与版本共同保证结论可解释、可复现且升级不静默覆盖。
+9. **Decision：指标必须声明分析粒度。Reason：**DramaPlatform、Drama Overall、Actor、Director、Company、Tag 和 System 的聚合路径不同，混用会造成重复或失真。
+10. **Decision：指标字典采用版本管理。Reason：**公式、粒度、NULL 或语义变化必须形成新版本，以保护 V1.0 测试和审计基线。
+11. **Decision：Dashboard 总体互动率先聚合原始分子与分母。Reason：**简单平均对象互动率会忽略播放规模差异。
+12. **Decision：Dashboard 历史记录数与分析有效数分开理解。Reason：**保留的 VOID/问题数据具有审计意义，但不能因此参与分析指标。
+
 ## 24. Bug 与技术债务
 
 - 当前无已确认的软件 Bug。
@@ -2248,6 +2439,7 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 | 数据质量判定与 Anomaly Detection Model V1 | 已建立 V0.1 基线 |
 | Insight Engine V1 与自动分析结论规则 | 已建立 V0.1 基线 |
 | Simulation Dataset V1 生成规范 | 已建立 V0.1 基线 |
+| Analytics Metric Dictionary V1.0 | 已建立并冻结 V1.0 基线 |
 | E-R 图 | 待完成 |
 | 最终数据库 Schema | 待完成 |
 | 数据字典 | 待完成 |
@@ -2376,3 +2568,14 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - GitHub remote：Not Configured。
 - 当前状态：Completed；Phase 2 In Progress；Waiting for Next Phase 2 Task。
 - Commit：`docs: establish simulation data specification`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
+
+### TASK-P2-05
+
+- 日期：2026-09-07。
+- 任务：分析指标体系最终冻结 V0.1。
+- 完成内容：建立 Analytics Metric Dictionary V1.0，统一原始运营、互动、增长、排名、Heat、Potential、Quality 与 Insight 八类指标；为核心指标冻结中英文名称、类型、来源、计算逻辑、场景、模型参与、NULL 语义和分析粒度；冻结 Dashboard 默认指标集合、聚合原则及指标/模型版本关联；记录十二项设计决策。
+- 验证内容：完成 20 项指标体系文档自检，确认 as-of 与跨平台聚合规则保持不变，Heat Model V1、Potential Model V1 与 Anomaly Detection Model V1 的公式、权重和规则未修改；未执行代码、数据库或算法测试。
+- 未开发内容：未创建数据库字段、SQL、Schema、View、Migration 或 E-R，未初始化或开发 FastAPI/Vue，未编写指标计算代码，未生成模拟数据、课程设计报告或软著材料，未开始数据库设计，未执行下一 Task。
+- GitHub remote：Not Configured。
+- 当前状态：Completed；Phase 2 In Progress（准备进入收尾）；Waiting for Next Phase 2 Task。
+- Commit：`docs: establish analytics metric dictionary`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
