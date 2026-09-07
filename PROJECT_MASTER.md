@@ -10,10 +10,10 @@
 | 英文名称 | Short Drama Data Management and Analysis System |
 | 软件版本 | V1.0 |
 | 文档版本 | V0.1 |
-| 当前 Phase | Phase 0 - 项目基础初始化 |
-| 当前 Task | TASK-P0-02 |
+| 当前 Phase | Phase 0 - Completed |
+| 当前 Task | TASK-P0-03 |
 | 文档状态 | Requirements Baseline Established |
-| 下一阶段状态 | Waiting for Next Task |
+| 下一阶段状态 | Waiting for Phase 1 Task |
 | 最近更新日期 | 2026-09-07 |
 
 状态标签：
@@ -463,7 +463,7 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 
 | Phase | 内容 | 状态 |
 | --- | --- | --- |
-| Phase 0 | 项目初始化和设计基线 | 当前阶段 |
+| Phase 0 | 项目初始化和设计基线 | Completed |
 | Phase 1 | 需求与功能模块正式冻结 | Waiting |
 | Phase 2 | 数据分析规则细化 | Waiting |
 | Phase 3 | 数据库概念结构设计 | Waiting |
@@ -490,11 +490,12 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 | --- | --- | --- |
 | TASK-P0-01 | 项目工程初始化 | Completed |
 | TASK-P0-02 | 建立并冻结 PROJECT_MASTER.md 项目设计真源 V0.1 | Completed |
+| TASK-P0-03 | 同步项目说明并完成 Phase 0 收尾 | Completed |
 
-- 当前 Phase：Phase 0。
+- 当前 Phase：Phase 0 Completed。
 - 文档版本：V0.1。
 - 文档状态：Requirements Baseline Established。
-- 下一阶段状态：Waiting for Next Task。
+- 项目状态：Waiting for Phase 1 Task。
 - 最终 E-R 模型尚未设计、绘制或冻结；数据库概念结构设计、逻辑结构设计和 DB Schema 均未批准或冻结。
 
 ## 23. 设计决策记录
@@ -523,6 +524,7 @@ V1.0 采用 Vue 3 + FastAPI + MySQL 的前后端分离 Web 架构，桌面端作
 
 - 当前无已确认的软件 Bug。
 - TASK-P0-01 时 `PROJECT_MASTER.md` 信息不足的问题已由 TASK-P0-02 建立 V0.1 设计基线解决。
+- README 技术栈说明过时的一致性问题已由 TASK-P0-03 修复。
 - 所有标记为【待后续设计】的事项属于计划内设计工作，不得误报为已实现功能或当前 Bug。
 
 ## 25. 最终报告 / 软著素材索引
@@ -574,3 +576,13 @@ V1.0 采用 Vue 3 + FastAPI + MySQL 的前后端分离 Web 架构，桌面端作
 - 未开发内容：未创建数据库表或 SQL，未初始化 FastAPI 或 Vue，未开发 API、页面、Dashboard、分析程序、模拟数据、导入导出等业务功能，未生成课程设计报告。
 - 当前状态：Completed；Waiting for Next Task。
 - Commit：`docs: establish project requirements baseline`（本 Task 提交，以 Git 历史记录的 Hash 为准）。
+
+### TASK-P0-03
+
+- 日期：2026-09-07。
+- 任务：同步项目说明并完成 Phase 0 收尾。
+- 完成内容：README 与 `PROJECT_MASTER.md` V0.1 基线同步；清除 README 过时说明；Phase 0 标记为 Completed；检查 GitHub remote 状态。
+- 未开发内容：未进行数据库设计，未初始化或开发 Vue、FastAPI，未开发任何业务功能，未生成课程设计报告。
+- GitHub remote：Not Configured。
+- 当前状态：Completed；Waiting for Phase 1 Task。
+- Commit：`docs: sync project documentation baseline`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
