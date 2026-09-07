@@ -9,11 +9,11 @@
 | 中文名称 | 短剧数据管理与分析系统 |
 | 英文名称 | Short Drama Data Management and Analysis System |
 | 软件版本 | V1.0 |
-| 文档版本 | V0.4 |
-| 当前 Phase | Phase 1 - Completed |
-| 当前 Task | TASK-P1-03 |
-| 文档状态 | Requirements Baseline Frozen |
-| 下一阶段状态 | Waiting for Phase 2 Task |
+| 文档版本 | V0.5 |
+| 当前 Phase | Phase 2 - In Progress |
+| 当前 Task | TASK-P2-01 |
+| 文档状态 | Analytics Semantics Baseline Established |
+| 下一阶段状态 | Waiting for Next Phase 2 Task |
 | 最近更新日期 | 2026-09-07 |
 
 状态标签：
@@ -357,7 +357,7 @@ V1.0 课程项目阶段不要求完整自动备份恢复系统。手动备份、
 - 【核心功能】短剧综合、热度排行、潜力识别、时间趋势、平台、标签/题材、演员、导演、制作公司、互动表现和异常数据分析，以及规则模板结论。
 - 【主要输入】有效运营数据、基础及关系数据、时间范围、平台、标签、短剧和 TOP N 等筛选。
 - 【主要输出】原始指标摘要、互动率、增长、热度、潜力、排行、趋势、对比和规则模板结论。
-- 【关键业务规则】Dashboard 负责快速概览，本模块负责深入分析；Heat/Potential 权重不可由 V1.0 用户修改；不做预测；多标签、多平台和多主体统计口径【待分析规则专项设计】；主体分析只表达相关性。
+- 【关键业务规则】Dashboard 负责快速概览，本模块负责深入分析；Heat/Potential 权重不可由 V1.0 用户修改；不做预测；多标签、多平台和多主体统计遵守第 7.7～7.13 节统一口径；主体分析只表达相关性。
 - 【与其他模块关系】读取基础资料、发行关系、有效运营数据和质量状态，向 Dashboard、详情页与导出提供结果。
 - 【V1.0 状态】Must Have；多短剧高级对比为 Should Have，模型配置为 Future。
 
@@ -367,8 +367,8 @@ V1.0 课程项目阶段不要求完整自动备份恢复系统。手动备份、
 - 热度排行分析：基于 Heat Model V1，按时间、平台、标签和 TOP N 查询；V1.0 不允许用户自定义权重。
 - 潜力短剧分析：基于 Potential Model V1，展示潜力排行、7 日增长、互动质量、收藏率、分享率、潜力对象和规则模板结论。
 - 时间趋势分析：支持单短剧趋势、不同平台趋势、播放变化和互动变化；多短剧高级对比为 Should Have；不进行时间序列或机器学习预测。
-- 平台分析：展示平台短剧数量、总体播放表现、平均互动表现、平均热度、不同平台趋势，以及同一短剧的跨平台表现对比。平台数据规模差异的统计口径【待分析规则专项设计】。
-- 标签 / 题材分析：展示各标签短剧数量、平均播放表现、平均互动率、平均热度、潜力表现和标签间对比。多标签统计必须避免简单重复统计造成误解，具体口径【待分析规则专项设计】。
+- 平台分析：展示平台短剧数量、总体播放表现、平均互动表现、平均热度、不同平台趋势，以及同一短剧的跨平台表现对比；平台内与多平台对比遵守第 7.11 节统一口径。
+- 标签 / 题材分析：展示各标签短剧数量、平均播放表现、平均互动率、平均热度、潜力表现和标签间对比；多标签统计遵守第 7.10.1 节去重与不可横向求和规则。
 - 演员分析：展示参演作品数、作品平均热度、平均互动表现、热门作品和作品趋势，只描述相关作品表现。
 - 导演分析：展示作品数量、作品平均表现、平均热度和热门作品，只描述关联统计。
 - 制作公司分析：展示参与作品数量、不同参与类型、平均作品表现、平均热度和热门作品；统计需考虑同一短剧存在多个公司。
@@ -1004,7 +1004,7 @@ EngagementRate =
 Growth = (CurrentValue - PreviousValue) / PreviousValue
 ```
 
-系统后续至少支持相邻快照、24 小时、7 日和 30 日增长率；Dashboard 优先展示 7 日增长表现。`PreviousValue = 0` 等边界问题【待分析算法实现阶段统一处理】。
+系统后续至少支持相邻快照、24 小时、7 日和 30 日增长率；Dashboard 优先展示 7 日增长表现。`PreviousValue = 0`、基准选择与时间容差已按第 7.7.6 节冻结，具体实现留待分析算法实现阶段。
 
 ### 7.4 Heat Model V1【已冻结】
 
@@ -1022,7 +1022,7 @@ Heat = 100 × (
 
 采用 Min-Max 标准化，输出范围目标为 0～100。权重已冻结，不得修改。
 
-`xmin / xmax` 的计算范围、时间窗口、平台内或跨平台比较、极端值影响、`NULL`、`xmax = xmin` 及无有效数据等规则【待分析算法专项 Task 冻结】。
+`xmin / xmax` 的计算范围、时间语义、平台内或跨平台比较、极端值、`NULL`、`xmax = xmin` 及无有效数据规则已按第 7.8 节冻结，具体实现留待分析算法专项 Task。
 
 ### 7.5 Potential Model V1【已冻结】
 
@@ -1039,11 +1039,187 @@ Potential = 100 × (
 )
 ```
 
-权重已冻结，不得修改。模型重点衡量增长速度和互动质量，而不是当前播放总量。边界条件【待分析算法专项 Task 冻结】。
+权重已冻结，不得修改。模型重点衡量增长速度和互动质量，而不是当前播放总量。候选资格、标准化集合、负增长及排序边界已按第 7.9 节冻结，具体实现留待分析算法专项 Task。
 
 ### 7.6 自动分析结论【已冻结】
 
 V1.0 使用统计结果、规则和模板生成基础数据结论，不使用 LLM。结论可描述题材互动表现、热度排名、7 日增长和潜力排名等客观结果。AI 自动分析报告属于 V2.0【未来扩展】。
+
+### 7.7 Analytics Common Semantics V0.1【分析口径基线】
+
+本节是 Dashboard、分析中心、分析结果导出和自动结论共同遵守的 V1.0 分析口径。各调用方不得在没有明确说明上下文差异的情况下自行改变取数、聚合、标准化、排序或有效性规则。本节补充第 7.2～7.5 节，不修改 Heat Model V1 或 Potential Model V1 的公式与权重。
+
+#### 7.7.1 AnalysisContext 逻辑概念
+
+`AnalysisContext` 表示一次分析的统一条件，是服务层逻辑概念，不是当前数据库实体，也不要求持久化。至少包含：
+
+- `analysis_as_of`：分析截止时刻；
+- `time_window` 或 `custom_range`：24H、7D、30D 或自定义观察范围；
+- `analysis_granularity`：DramaPlatform 平台级或 Drama Overall 短剧整体级；
+- `platform_scope`：全部符合条件的平台，或用户明确选择的一个或多个平台；
+- `tag_scope`：未筛选，或用户选择的一个或多个标签；
+- `validity_policy`：统一有效快照与质量问题过滤规则；
+- `heat_model_version`：当前为 Heat Model V1；
+- `potential_model_version`：当前为 Potential Model V1。
+
+用户未显式指定 `analysis_as_of` 时，默认采用本次请求开始时确定的系统分析时间；同一次分析及其图表、结论和导出必须复用同一个截止时刻，并明确展示“数据截至何时”。相同 `AnalysisContext` 与相同数据库数据内容必须产生相同结果，随机因素不得进入 Heat 或 Potential。
+
+自定义时间范围用于趋势、筛选和分组聚合；Heat 表示截至 `analysis_as_of` 的当前累计表现，不把区间内累计快照相加。自动结论必须使用页面当前 `AnalysisContext`，不得暗中切换平台、标签或时间范围。分析导出必须沿用当前上下文，并建议包含截止时刻、分析范围和模型版本。
+
+#### 7.7.2 两层分析粒度与 as-of 快照
+
+- **DramaPlatform Analysis：**分析某一 Drama 在某一 Platform 上的运营表现，原始平台 `ranking` 仅在此粒度或平台内聚合中解释。
+- **Drama Overall Analysis：**分析一部 Drama 在当前平台范围内跨平台聚合后的综合表现。它不能与单个平台表现混为同一指标。
+- 给定截止时刻 T，每个 DramaPlatform 的“当前数据”取不晚于 T 的最新一个分析有效快照，即 latest valid snapshot as of T；不得读取 T 之后的数据。
+- T 之前没有分析有效快照时，该 DramaPlatform 在 T 时无有效运营数据，不以 0 或未来快照代替。
+- 未指定平台时，Drama Overall 聚合全部符合上下文条件的平台；指定一个或多个平台时，只聚合被选平台。
+
+#### 7.7.3 有效快照与质量提示
+
+- `VOID` 快照排除；具有至少一个当前未解决且判定数据不可用的严重 `ERROR` 的快照排除。
+- 同一快照存在多个质量问题时，只要存在一个上述 `ERROR`，即不能作为分析有效快照。
+- `WARNING` 快照允许参与分析，但结果必须能够传播“存在质量风险”的提示；`INFO` 不影响分析。
+- `RESOLVED` 或 `IGNORED` 的历史质量问题不得永久阻止快照参与分析，数据是否可用按其处理结果和当前有效状态判断。
+- Dashboard、分析中心、导出和自动结论必须复用这一过滤规则。
+
+#### 7.7.4 跨平台累计指标与比率
+
+- Drama Overall 的 `play_count`、`like_count`、`comment_count`、`favorite_count`、`share_count`：先分别取得各符合范围 DramaPlatform 的 as-of 最新有效快照，再按 Drama 对相应累计指标求和。
+- 跨平台比率禁止简单平均各平台比率。LikeRate、CommentRate、FavoriteRate、ShareRate、EngagementRate 和 QualityEngagement 均须先聚合原始分子与 `play_count` 分母，再按第 7.2、7.5 节公式计算。
+- 聚合后 `play_count = 0` 时，相应比率仍为 `NULL`，不得用 0 表示不可计算。
+- 原始 `ranking` 具有平台上下文，禁止跨平台求和或简单平均。Drama Overall 的系统排名只能依据当前候选集合中的 HeatScore 或 PotentialScore 产生。
+
+#### 7.7.5 累计快照与时间趋势
+
+- 累计快照禁止在时间区间内直接求和；不同日期的累计播放量相加会重复计算。
+- 区间新增量采用区间结束累计值减去区间基准累计值。若因平台修正得到负增量，保留真实计算结果并传播相应质量提示，不自动改为 0。
+- 趋势必须明确区分累计趋势与相邻快照增量趋势，不得将累计折线标注为“当期新增量”。
+- V1.0 Must Have 同时包含累计播放趋势和由相邻有效快照直接计算的每快照播放增量趋势；不引入预测。
+- 多短剧高级趋势对比继续保持 Should Have；若实现，必须采用相同时间范围和同类指标。
+
+#### 7.7.6 相邻增长与窗口基准
+
+相邻快照增长中的 Previous 是同一 DramaPlatform 当前有效快照之前最近的分析有效快照；遇到 `VOID` 或被严重 `ERROR` 排除的快照继续向前寻找。没有 Previous 或 `PreviousValue = 0` 时 Growth 为 `NULL`，不得返回 Infinity 或人为设为 100%。
+
+对 `analysis_as_of = T` 的 24H、7D、30D 窗口，当前值取 as-of T 最新有效快照；基准目标时刻分别为 T - 24 小时、T - 7 天和 T - 30 天。基准快照取不晚于目标基准时刻、且与目标时刻最接近的有效快照，并满足以下最大向前偏离容差：
+
+| 窗口 | 基准目标 | 最大允许向前偏离 |
+| --- | --- | --- |
+| 24H | T - 24 小时 | 6 小时 |
+| 7D | T - 7 天 | 24 小时 |
+| 30D | T - 30 天 | 48 小时 |
+
+不得使用目标基准时刻之后的快照。容差内无有效基准、基准值为 0，或作品上线时间不足对应窗口时，该窗口 Growth 为 `NULL`。
+
+Drama Overall 的窗口增长不得平均平台增长率。先确定当前和基准均有可比较快照的平台集合，再分别汇总该集合的当前累计值与基准累计值，最后计算整体 Growth。窗口内新增且无基准的平台不进入这两个可比总量，并必须提示“存在新增平台”；这样不会把新平台从 0 起步误报为无限增长。新上线短剧无有效 7D 基准时 7D Growth 与依赖它的 Potential 均为 `NULL`；New Release Potential 不属于 V1.0。
+
+#### 7.7.7 数据新鲜度
+
+- as-of 最新有效快照距 `analysis_as_of` 不超过 24 小时为 `Fresh`，超过 24 小时为 `Stale`。
+- `Stale` 数据仍可参与分析，不设置额外“超过若干天强制排除”规则，但页面和导出必须提示数据较旧。
+- Drama Overall 只要包含一个 Stale 平台，其整体结果必须提示“部分平台数据较旧”，不得标记为完全 Fresh。
+- Fresh/Stale 是分析层语义，本 Task 不设计数据库字段。
+
+### 7.8 Heat Model V1 补充规则【分析口径基线】
+
+- Heat 分为 Platform Heat 与 Drama Overall Heat。Platform Heat 使用各 DramaPlatform 的 as-of 数据；Drama Overall Heat 先按 7.7.4 聚合 Drama 的平台累计原始指标，再应用第 7.4 节既有公式。
+- Heat 表示截至 `analysis_as_of` 的累计运营规模综合表现，不表示区间累计快照总和，也不直接表示增长速度；V1.0 不加入时间衰减或增长率。
+- Heat Candidate Set 是满足当前 `AnalysisContext` 筛选、在截止时刻前存在有效数据且未被有效性规则排除的同粒度分析对象集合。Min-Max 的每个 `xmin / xmax` 均只来自该集合，不使用全库隐藏基准。
+- 单剧详情页不能只以该单剧作为比较集合；其 Heat 使用当前上下文中该剧所属筛选范围内全部符合资格的 Drama 作为 Candidate Set。若限定平台，则使用相应平台范围候选集合。
+- 候选集合中某指标全部相同、即 `xmax = xmin` 时，该指标对全部候选对象取 `N(x) = 0`；不得除以 0，也不重新分配剩余权重。
+- Heat Model V1 不额外执行 Winsorize、截尾或对数变换。严重 `ERROR` 数据已排除；`WARNING` 可影响 Min-Max，但结果必须提示质量风险。更鲁棒的标准化属于未来模型版本。
+- 任一分析对象缺少 Heat 必需原始指标时不得擅自补 0；该对象 Heat 为 `NULL / Not Available`，从 Heat Ranking 排除，并可产生数据质量提示。
+- Heat 排名使用未提前舍入的实际值，依次按 HeatScore 降序、`play_count` 降序、稳定 `drama_code` 升序确定。平台级也以稳定短剧业务编码作最终 tie-breaker，不以自增 ID 的偶然顺序作为用户可见规则。
+- Heat 前端建议展示 2 位小数；展示舍入不得改变实际排行。
+
+单个平台内部排行可使用该平台自己的 Candidate Set。比较多个平台的平均 Heat 时，必须将所有被比较平台的 DramaPlatform 分析对象置于共同 Candidate Set，使用统一 Min-Max 基准；禁止直接比较各平台独立归一化后平均分而不说明基准差异。
+
+### 7.9 Potential Model V1 补充规则【分析口径基线】
+
+Potential 可在当前 `AnalysisContext` 指定的分析粒度上计算。DramaPlatform 粒度使用同一平台发行关系的当前与 7D 基准；Drama Overall 粒度使用 7.7.6 节的跨平台可比较集合，并先聚合原始分子、分母后计算各比率。
+
+Potential Eligible Candidate Set 中每个对象必须同时满足：
+
+1. 存在当前有效快照或可用的 Drama Overall 当前聚合；
+2. 当前 `play_count > 0`；
+3. 存在符合容差的有效 7D baseline；
+4. baseline `play_count > 0`；
+5. QualityEngagement 可计算；
+6. FavoriteRate 可计算；
+7. ShareRate 可计算；
+8. 不含默认排除该分析数据的未解决严重质量问题。
+
+任一条件不满足时 Potential 为 `NULL`，且不进入 Potential Ranking。Potential 各组成指标必须在同一个当前 Eligible Candidate Set 内分别执行 Min-Max，不得让增长率、收藏率等使用不同范围。
+
+- 7D Growth 允许为负；处于 WARNING 且未被排除的数据按真实负值参与 Min-Max，不得改为 0；严重 `ERROR` 数据默认排除。
+- 某组成指标在全部候选对象中 `xmax = xmin` 时，对该指标统一取 `N(x) = 0`，不重新分配权重。
+- Potential 排名使用未提前舍入的实际值，依次按 PotentialScore 降序、Growth7D 降序、QualityEngagement 降序、稳定 `drama_code` 升序确定。
+- 展示可合理格式化，但展示舍入不得影响实际排序。
+
+### 7.10 标签与主体归属统计【分析口径基线】
+
+#### 7.10.1 标签范围与多标签统计
+
+- `tag_scope` 未指定时不限制标签；选择多个 Tag 时，V1.0 默认使用 OR，即属于任一选中标签的 Drama 均纳入。必须同时包含全部标签的 AND 筛选属于【未来扩展】。
+- 一部 Drama 可以分别成为多个标签集合的成员，但在同一 Tag 内只贡献一次。因此不同标签的作品数量横向相加可能大于系统唯一 Drama 总数，UI、导出与结论必须明确不可将其简单求和解释为唯一作品总数。
+- 标签分析以 Drama 为业务对象时，必须先将 DramaPlatform 聚合为 Drama Overall，再通过 Drama 与 Tag 的关系统计；禁止直接按快照或平台行计数造成同一作品重复。
+- 标签作品数量按 DISTINCT Drama。标签平均 Heat 是当前范围内有效 Drama Heat 的算术平均；平均播放量先计算每部 Drama Overall `play_count`，再对 Drama 求平均，不直接对平台快照行求平均。
+
+#### 7.10.2 Actor / Director / Company 统计归属
+
+- Actor：先得到 Drama-level Metrics，再按 Drama 与 Actor 关系归属；参演作品数按 DISTINCT Drama，平均 Heat 按其有效参演 Drama Heat 求平均，热门作品按 Heat 排序。只能表述“其参演作品表现”，不得表达演员导致热度。
+- Director：先得到 Drama-level Metrics，再按 Drama 与 Director 关系归属；作品数按 DISTINCT Drama，平均表现按作品级指标计算。多导演作品可分别属于多个导演，不同导演作品数横向相加不代表唯一作品总数。
+- Company：整体作品数按同一 Company + Drama 只计一部，即使同一公司具有多个 `relation_type`。按参与类型细分时，同一 Drama 可分别进入相应类型统计。平均表现与热门作品仍基于去重后的 Drama-level Metrics，不按关系行或快照行重复计算。
+- Actor、Director、Company 统计均为关联作品统计，不形成因果结论。
+
+### 7.11 Platform 与 ranking 分析【分析口径基线】
+
+- Platform 分析采用 DramaPlatform-level 数据。平台短剧数量按具有分析资格的 DramaPlatform 所对应 DISTINCT Drama 计算。
+- 平台总体累计播放、点赞、评论、收藏与分享，使用该平台各 DramaPlatform 在 T 的最新有效快照后求和；平台比率同样先汇总原始分子和分母。
+- 平台平均 Heat 先在相应 Candidate Set 计算各 DramaPlatform 的 Platform Heat，再求算术平均。单平台内部分析可使用平台内基准；多平台横向对比必须使用 7.8 节共同 Candidate Set 与统一 Min-Max 基准。
+- 原始 `ranking` 仅在明确平台口径下用于单平台排名趋势或单剧某平台排名变化。V1.0 模拟数据继续表示该平台当时的运营排名模拟值；不得用于跨平台总体排名，系统跨平台排名使用 Heat 或 Potential。
+
+### 7.12 当前榜单对象范围【分析口径基线】
+
+- 默认当前榜单纳入 `SERIALIZING` 与 `COMPLETED` Drama；排除 `DRAFT` 和 `INACTIVE`。历史分析可显式包含 `INACTIVE`。
+- DramaPlatform 默认当前榜单仅纳入 `ONLINE`；`PLANNED` 不进入当前分析，`OFFLINE` 默认排除但可用于显式历史分析。
+- 停用 Platform 默认不进入当前榜单，但其历史数据可在显式历史分析中使用。
+- 状态过滤属于 Candidate Set 的组成部分，必须在 AnalysisContext 或结果说明中可识别。
+
+### 7.13 统计样本量与质量传播【分析口径基线】
+
+- 聚合统计结果应尽可能提供 `sample_size / n` 及对象粒度，例如“n = 18 dramas”，避免小样本结果被误解为稳定行业结论。
+- 本 Task 不冻结最低样本量阈值；小样本自动结论的表达强度留给自动结论专项 Task。
+- 只要分析集合包含 WARNING 数据，聚合结果就必须能够标识存在质量提示；具体 UI 呈现后续设计。
+- 所有分析输出逻辑上必须能识别 Heat Model V1 与 Potential Model V1 版本。未来模型升级不得静默覆盖历史模型定义；V1.0 不要求保存历史计算结果。
+
+### 7.14 V1.0 分析规则速查表
+
+| 分析问题 | V1.0 规则 |
+| --- | --- |
+| 分析粒度 | 明确区分 DramaPlatform 与 Drama Overall |
+| as-of 快照 | 取不晚于 T 的最新有效快照；无则不可用 |
+| 有效数据 | VOID、当前未解决且不可用的严重 ERROR 排除；WARNING 参与并提示 |
+| 跨平台累计值 | 各平台先取 as-of 快照，再按 Drama 求和 |
+| Overall 比率 | 先聚合原始分子和分母，再计算比率 |
+| 原始 ranking | 只用于平台语境，不跨平台求和或平均 |
+| 区间累计快照 | 禁止相加；区间新增量用结束值减基准值 |
+| 相邻增长 | Previous 取同平台最近有效前序快照；无基准或基准为 0 则 NULL |
+| 24H / 7D / 30D 基准 | 取不晚于目标时刻的最近有效快照，容差分别为 6h / 24h / 48h |
+| Overall Growth | 仅使用当前与基准均可比较的平台集合；新增平台排除并提示 |
+| Heat 语义 | as-of 累计规模表现，不对区间累计快照求和 |
+| Heat Candidate Set | 当前筛选下同粒度、有效且有 as-of 数据的对象 |
+| `xmax = xmin` | 该组成指标统一 `N(x) = 0`，不重新分配权重 |
+| Heat 极端值 | V1.0 不 Winsorize、不截尾、不对数变换 |
+| Heat 缺失值 | 不补 0；Heat 为 NULL 并排除排行 |
+| Potential 资格 | 当前与合格 7D 基准、正播放量及全部比率均可计算 |
+| 多标签 | Tag 内 Drama 去重；不同 Tag 统计不可横向求和为唯一总数 |
+| 主体分析 | 先算 Drama-level Metrics，再归属 Actor / Director / Company |
+| Company 多类型 | 整体作品数按 Company + Drama 去重；类型细分可分别计入 |
+| 平台对比 Heat | 多平台共同 Candidate Set 与统一 Min-Max 基准 |
+| 数据新鲜度 | 距 T 不超过 24h 为 Fresh，超过为 Stale 且提示 |
+| 多 Tag 筛选 | V1.0 默认 OR；AND 为 Future |
+| 可重复性 | 相同 AnalysisContext 与数据内容产生相同结果 |
 
 ## 8. 数据质量与异常检测
 
@@ -1373,7 +1549,7 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 | --- | --- | --- |
 | Phase 0 | 项目初始化和设计基线 | Completed |
 | Phase 1 | 需求与功能模块正式冻结 | Completed |
-| Phase 2 | 数据分析规则细化 | Waiting |
+| Phase 2 | 数据分析规则细化 | In Progress |
 | Phase 3 | 数据库概念结构设计 | Waiting |
 | Phase 4 | 数据库逻辑结构与 3NF Review | Waiting |
 | Phase 5 | MySQL Schema 实现 | Waiting |
@@ -1402,11 +1578,12 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 | TASK-P1-01 | 系统功能需求与功能模块树设计 V0.1 | Completed |
 | TASK-P1-02 | 核心业务规则与对象生命周期设计 V0.1 | Completed |
 | TASK-P1-03 | 非功能需求、系统级约束与 Phase 1 基线收尾 V0.1 | Completed |
+| TASK-P2-01 | 数据分析口径、时间窗口与多平台聚合规则设计 V0.1 | Completed |
 
-- 当前 Phase：Phase 1 Completed。
-- 文档版本：V0.4。
-- 文档状态：Requirements Baseline Frozen。
-- 项目状态：Waiting for Phase 2 Task。
+- 当前 Phase：Phase 2 In Progress。
+- 文档版本：V0.5。
+- 文档状态：Analytics Semantics Baseline Established。
+- 项目状态：Waiting for Next Phase 2 Task。
 - 最终 E-R 模型尚未设计、绘制或冻结；数据库概念结构设计、逻辑结构设计和 DB Schema 均未批准或冻结。
 
 ## 23. 设计决策记录
@@ -1491,12 +1668,34 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 10. **Decision：必须执行 10 万级快照性能测试并记录环境与耗时。Reason：**性能结论必须以目标规模下的可复核证据为依据。
 11. **Decision：Snapshot 修订与唯一性冲突留给 Phase 3/4。Reason：**需在 3NF 与审计要求下统一设计版本、修订或当前有效记录模型，本 Task 不越界冻结 Schema。
 
+### ADR-016：数据分析公共口径【分析口径基线】
+
+1. **Decision：Heat 是 as-of 累计表现，不对区间累计快照求和。Reason：**累计快照相加会重复计算，增长和增量应由基准差值表达。
+2. **Decision：跨平台累计指标先取各平台 as-of 最新有效快照再求和。Reason：**保证每个平台只贡献一个截止时刻状态，并支持平台级与整体级一致转换。
+3. **Decision：跨平台比率先聚合原始分子和分母再计算。Reason：**简单平均平台比率会忽略不同播放规模，产生统计偏差。
+4. **Decision：原始 ranking 不跨平台聚合。Reason：**各平台排名口径不具备天然可比性，整体排名由 Heat/Potential 产生。
+5. **Decision：窗口基准取目标时刻之前最近有效快照，24H/7D/30D 容差为 6h/24h/48h。Reason：**兼容非固定采样，同时避免过旧数据冒充窗口基准。
+6. **Decision：Overall Growth 仅使用当前和基准均可比较的平台。Reason：**新增平台无基准，直接从 0 计算会制造无限或失真增长；另行提示新增平台。
+7. **Decision：Heat Candidate Set 由当前 AnalysisContext 的同粒度合格对象组成。Reason：**显式比较范围可避免使用不可见的全库基准。
+8. **Decision：组成指标 `xmax = xmin` 时统一取 `N(x) = 0`，不重分权重。Reason：**该指标没有区分能力，重分权重会改变冻结模型。
+9. **Decision：Heat V1 不做 Winsorize、截尾或对数变换。Reason：**保持冻结 Min-Max 模型可解释，鲁棒变换留给未来版本。
+10. **Decision：Heat 必需值缺失时为 NULL 并排除排行。Reason：**补 0 会把未知值误作真实零值并扭曲排名。
+11. **Decision：Potential 使用同一个 Eligible Candidate Set。Reason：**当前值、7D 基准及全部组成指标必须可计算，才能进行一致 Min-Max 比较。
+12. **Decision：多标签统计不可横向求和为唯一作品数。Reason：**同一 Drama 可属于多个标签，但在单个标签内只贡献一次。
+13. **Decision：Company 整体作品数按 Company + Drama 去重。Reason：**同一公司多个参与类型不代表多部作品；按类型细分时可分别归属。
+14. **Decision：多平台 Heat 对比采用共同 Candidate Set。Reason：**各平台独立 Min-Max 后的分数基准不同，不能直接作无说明的绝对比较。
+15. **Decision：as-of 快照 24 小时内为 Fresh，超过为 Stale 并提示。Reason：**保留历史可分析性，同时显式传达数据不同步风险。
+16. **Decision：当前榜单纳入 SERIALIZING、COMPLETED 与 ONLINE 关系。Reason：**排除尚未运营、已停用或已下线对象，历史分析仍可显式包含。
+17. **Decision：多 Tag 筛选默认 OR。Reason：**符合普通发现与分析习惯，AND 作为未来高级筛选避免扩大 V1.0。
+18. **Decision：所有分析围绕统一 AnalysisContext。Reason：**明确截止时刻、窗口、粒度、平台、标签、有效性和模型版本，保证跨页面一致与结果可重复。
+
 ## 24. Bug 与技术债务
 
 - 当前无已确认的软件 Bug。
 - TASK-P0-01 时 `PROJECT_MASTER.md` 信息不足的问题已由 TASK-P0-02 建立 V0.1 设计基线解决。
 - README 技术栈说明过时的一致性问题已由 TASK-P0-03 修复。
 - README 阶段状态过时事项已由 TASK-P1-03 同步解决。
+- README 保持显示 Phase 1 Completed，符合 TASK-P2-01 规定的上一阶段完成状态；Phase 2 完成后再统一同步。
 - 【Phase 3/4 必须解决的 Schema 设计问题】Snapshot 有效唯一性与保留 VOID 修订历史之间的约束冲突，详见 18.6 节；当前不是软件 Bug，且尚未冻结解决方案。
 - 所有标记为【待后续设计】的事项属于计划内设计工作，不得误报为已实现功能或当前 Bug。
 
@@ -1517,6 +1716,7 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 | 导入、质量与审计规则 | 已建立 V0.1 基线 |
 | 非功能需求与系统级约束 | 已建立 V0.1 基线 |
 | Phase 1 需求完整性 Review | PASS |
+| 数据分析公共口径与 AnalysisContext | 已建立 V0.1 基线 |
 | E-R 图 | 待完成 |
 | 最终数据库 Schema | 待完成 |
 | 数据字典 | 待完成 |
@@ -1601,3 +1801,14 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - GitHub remote：Not Configured。
 - 当前状态：Completed；Phase 1 Completed；Waiting for Phase 2 Task。
 - Commit：`docs: freeze phase 1 requirements baseline`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
+
+### TASK-P2-01
+
+- 日期：2026-09-07。
+- 任务：数据分析口径、时间窗口与多平台聚合规则设计 V0.1。
+- 完成内容：冻结 DramaPlatform/Drama Overall 两层粒度、as-of 快照、质量过滤、跨平台累计值与比率、时间窗口与 Growth 基准、Heat/Potential 候选集合和边界、多标签与主体归属、平台及 ranking、数据新鲜度、当前榜单范围、样本量和 AnalysisContext；建立分析规则速查表及十八项设计决策。
+- 验证内容：完成 41 项分析口径文档自检，确认 Heat Model V1 与 Potential Model V1 权重未修改，未执行代码、数据库或算法测试。
+- 未开发内容：未编写 Python、Pandas 或分析代码，未编写 SQL，未创建数据库、表或 Schema，未绘制 E-R 图，未初始化或开发 FastAPI/Vue/API/UI，未创建模拟数据，未冻结异常检测阈值，未生成课程设计报告或软著材料，未执行下一 Task。
+- GitHub remote：Not Configured。
+- 当前状态：Completed；Phase 2 In Progress；Waiting for Next Phase 2 Task。
+- Commit：`docs: establish analytics semantics baseline`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
