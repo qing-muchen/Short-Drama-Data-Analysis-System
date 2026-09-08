@@ -9,10 +9,10 @@
 | 中文名称 | 短剧数据管理与分析系统 |
 | 英文名称 | Short Drama Data Management and Analysis System |
 | 软件版本 | V1.0 |
-| 文档版本 | V2.8 |
+| 文档版本 | V2.9 |
 | 当前 Phase | Phase 4 - In Progress |
-| 当前 Task | TASK-P4-07 |
-| 文档状态 | Authentication Authorization Baseline Established |
+| 当前 Task | TASK-P4-08 |
+| 文档状态 | Import System Baseline Established |
 | 下一阶段状态 | Waiting for Next Phase 4 Task |
 | 最近更新日期 | 2026-09-08 |
 
@@ -22,7 +22,7 @@
 - 【待后续设计】：需求方向明确，但具体技术设计尚未确定。
 - 【未来扩展】：不属于 V1.0 开发范围。
 
-本文档记录真实的软件工程设计与开发状态，不是课程设计报告正文。数据库与后端分层基线保持冻结；TASK-P4-07 已建立 bcrypt 密码处理、JWT Access Token、Current User 和 ADMINISTRATOR/USER 后端授权基线，但未实现注册、第三方登录、Dashboard 或 Analytics。
+本文档记录真实的软件工程设计与开发状态，不是课程设计报告正文。数据库与后端分层基线保持冻结；TASK-P4-08 已建立管理员专用的 CSV/XLSX 固定模板、预校验、错误记录、确认及单事务正式写入闭环，但未实现爬虫、AI 清洗、自由字段映射或 Analytics。
 
 ## 1. 项目定义
 
@@ -3253,6 +3253,84 @@ LoginRequest(username + password)
 
 本 Task 未修改数据库 Schema、ORM Model、业务表、DDL 或 Migration；未实现注册、第三方登录、OAuth、Dashboard、Analytics、Import 或前端功能。
 
+### 12.9 Import System Baseline V0.1【TASK-P4-08】
+
+#### 12.9.1 Import 目录与固定模板
+
+```text
+imports/
+├── __init__.py
+├── parser.py
+├── validator.py
+├── importer.py
+└── templates.py
+```
+
+- V1.0 只接收 `.csv` 和 `.xlsx`，不接收 `.xls`；CSV 必须可按 UTF-8 解码，XLSX 必须通过实际 ZIP/Workbook 解析，不能只相信扩展名。
+- 基础资料模板覆盖 Drama、Actor、Director、Company、Platform、Tag；运营快照模板覆盖 Drama、Platform、snapshot_time、五项累计指标和 ranking。两类均使用固定标准列，不实现自由字段映射。
+- 单文件上限冻结为 20 MiB，数据行上限为 50,000；满足 Phase 1 的 10,000 行最低验收和 50,000 行推荐测试边界。路由流式分块读取并在超限时立即拒绝。
+- 上传文件名必须为无路径成分的安全 basename，禁止目录穿越和 NUL；上传内容只解析为数据，不执行文件内容。
+
+#### 12.9.2 Stage 1 解析、校验与错误记录
+
+```text
+Upload → PENDING_VALIDATION → Parse → Validate
+                         ├─ no valid rows → VALIDATION_FAILED
+                         └─ valid rows → READY
+```
+
+- Parser 检查文件格式、编码/工作簿、Header、固定模板、行宽、空文件和行数；Validator 负责字段必填、类型、状态、非负累计值、正 ranking、UTC 时间、未来时间、引用状态、业务唯一性以及文件内重复/冲突。
+- 快照以 `drama_code + platform_name` 解析现有 ONLINE DramaPlatform，并在校验阶段检查同一 DramaPlatform + snapshot_time 的数据库冲突；INACTIVE Drama、INACTIVE Platform 或非 ONLINE 发行关系不能进入有效集合。
+- 错误以 `ImportError` 保存 import_job_id、source_row_number、column_name、error_code、error_message 和受限 raw_value；来源文件名通过父级 ImportJob.original_filename 获得，不在错误明细重复保存。
+- 标准模板缺失互动值作为写入前 ImportError，绝不自动填 0；ImportError 不创建 DataQualityIssue，后者继续只处理进入正式系统后的质量问题。
+- 只将校验通过的标准化记录暂存到应用临时目录；暂存文件绑定 Job ID、导入类型和源文件 SHA-256，并带完整性摘要。暂存不是正式业务数据，Dashboard、分析和业务查询不得读取。
+
+#### 12.9.3 Stage 2 确认与事务
+
+```text
+READY → administrator confirm → IMPORTING
+      → one transaction for the valid set
+      ├─ COMMIT → COMPLETED / COMPLETED_WITH_ERRORS
+      └─ ROLLBACK → FAILED
+```
+
+- 只有 ADMINISTRATOR 可以创建、查看、检查错误和确认导入；USER 对全部导入接口返回 403。
+- 只有 READY Job 可以确认。Service 通过 Repository 条件更新原子抢占 READY → IMPORTING，重复确认无法获得写入资格；确认前重新校验暂存完整性，正式写入时再次检查发行关系状态和快照唯一冲突。
+- 有效记录集合由 Service 控制一个正式数据事务；任一 Repository/数据库写入失败则整个集合 rollback，并在独立状态事务中标记 FAILED，不保留部分正式写入。
+- 源文件全部成功时为 COMPLETED；存在错误行被排除且有效集合完整提交时为 COMPLETED_WITH_ERRORS。该状态不表示正式事务部分提交。
+- 快照导入严格创建稳定 Observation Slot 与 INITIAL Revision，再设置 current revision；不合并双表模型，不写派生 Heat/Potential/Growth。
+- 校验、确认成功及失败均以 ImportJob 为唯一主要目标写入 OperationLog；摘要不包含密码、Token、Secret 或上传原始敏感内容。
+
+#### 12.9.4 API 与DTO
+
+| Method | Path | 作用 | 权限 |
+| --- | --- | --- | --- |
+| POST | `/api/v1/import/jobs` | 上传 CSV/XLSX，创建任务并同步完成 Stage 1 | ADMINISTRATOR |
+| GET | `/api/v1/import/jobs/{id}` | 查看任务生命周期、行数和结果 | ADMINISTRATOR |
+| GET | `/api/v1/import/jobs/{id}/errors` | 分页查看 ImportError | ADMINISTRATOR |
+| POST | `/api/v1/import/jobs/{id}/confirm` | 显式确认并执行 Stage 2 | ADMINISTRATOR |
+
+请求/响应使用 `ImportJobCreate`、`ImportConfirmRequest`、`ImportJobResponse` 和 `ImportErrorResponse`；确认 DTO 必须显式传入 `confirm=true`。Router 只处理 HTTP、多部分文件和 DTO，工作流由 ImportService 编排，数据访问由 ImportJob/ImportError/ImportData/OperationLog Repository 完成。
+
+#### 12.9.5 验证证据与边界
+
+测试全部使用纯解析数据、临时暂存目录、Fake Repository/Session 与 FastAPI Dependency Override，不连接或修改生产数据库：
+
+| 验证项 | 结果 |
+| --- | --- |
+| CSV UTF-8 与真实 XLSX 固定模板解析 | PASS |
+| `.xls`、路径穿越与伪 XLSX 拒绝 | PASS |
+| 必填/类型/状态错误形成 ImportError 语义 | PASS |
+| PENDING_VALIDATION → READY → COMPLETED | PASS |
+| 错误行排除后 COMPLETED_WITH_ERRORS | PASS |
+| 正式写入异常 rollback 并标记 FAILED | PASS |
+| ADMINISTRATOR 四个 API 与 USER 403 | PASS |
+| OpenAPI 路径、分层和响应 DTO | PASS |
+| Python compileall / pip check | PASS |
+| 完整 pytest | 65/65 PASS |
+
+本 Task 未修改数据库 Schema、DDL、Migration 或 ORM Model；未创建 DataQualityIssue、爬虫、AI 清洗、自由字段映射、Analytics、Dashboard 或前端功能。应用临时暂存的跨进程回收与多实例共享不属于当前单机 V1.0 基线，保留为后续部署专项事项。
+
 ## 13. 技术栈
 
 ### 13.1 Web 技术栈【已冻结】
@@ -3573,7 +3651,7 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 | Phase 6 | 模拟数据系统 | Waiting |
 | Phase 7 | 原 FastAPI 基础架构工作项，已并入 Phase 4 | Merged / In Progress |
 | Phase 8 | 核心业务 API | Waiting |
-| Phase 9 | 数据导入与清洗 | Waiting |
+| Phase 9 | 原数据导入与清洗工作项，已并入 Phase 4 | Merged / In Progress |
 | Phase 10 | 数据分析服务 | Waiting |
 | Phase 11 | Vue 基础架构 | Waiting |
 | Phase 12 | 后台数据管理页面 | Waiting |
@@ -3585,7 +3663,7 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 | Phase 18 | 课程设计报告统一生成 | Waiting |
 | Phase 19 | 后续软件完善 / 软著准备 | Future |
 
-项目负责人后续 Task 已将初始路线中的数据库逻辑设计与 MySQL Schema 实现统一纳入 Phase 3 并完成，并将 FastAPI Backend Development 作为 Phase 4；Phase 5 和 Phase 7 的原工作项只保留合并轨迹，不代表需要重复执行。Phase 6 及后续初始编号仍是候选工作分解，若与后续明确 Task 冲突，以项目负责人新 Task 和本文档届时更新为准。
+项目负责人后续 Task 已将初始路线中的数据库逻辑设计与 MySQL Schema 实现统一纳入 Phase 3 并完成，并将 FastAPI Backend Development 作为 Phase 4；Phase 5、Phase 7 和当前数据导入对应的 Phase 9 原工作项只保留合并轨迹，不代表需要重复执行。Phase 6 及其他后续初始编号仍是候选工作分解，若与后续明确 Task 冲突，以项目负责人新 Task 和本文档届时更新为准。
 
 ## 22. 当前 Task 状态
 
@@ -3620,12 +3698,13 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 | TASK-P4-05 | Pydantic Schema 层设计与 DTO 边界冻结 V0.1 | Completed |
 | TASK-P4-06 | Router 与基础 CRUD API 实现 V0.1 | Completed |
 | TASK-P4-07 | 用户认证与权限体系设计 V0.1 | Completed |
+| TASK-P4-08 | 数据导入模块设计与实现 V0.1 | Completed |
 
 - 当前 Phase：Phase 4 In Progress。
-- 文档版本：V2.8。
-- 文档状态：Authentication Authorization Baseline Established。
+- 文档版本：V2.9。
+- 文档状态：Import System Baseline Established。
 - 项目状态：Waiting for Next Phase 4 Task。
-- TASK-P4-07 已建立 bcrypt、JWT Access Token、Current User、ADMINISTRATOR/USER后端授权和现有Router保护；完整 pytest 53/53 PASS。未实现注册、第三方登录、OAuth、Dashboard、Analytics 或 Import。
+- TASK-P4-08 已建立 CSV/XLSX 固定模板、Stage 1 校验与 ImportError、管理员确认、Stage 2 单事务导入及四个 ADMINISTRATOR API；完整 pytest 65/65 PASS。未实现爬虫、AI 清洗、自由字段映射、Dashboard 或 Analytics。
 
 ## 23. 设计决策记录
 
@@ -3959,6 +4038,21 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 9. **Decision：Token中的role不直接作为最终授权事实。Reason：**权限判断必须使用数据库重新加载后的当前User角色，防止角色调整等待旧Token过期。
 10. **Decision：本Task不实现注册、第三方登录、密码修改/重置和会话撤销。Reason：**注册/OAuth明确排除；密码命令与旧Token失效需要后续明确安全Task和可验证策略。
 
+### ADR-036：Import System Baseline V0.1【Phase 4 导入基线】
+
+1. **Decision：V1.0 只实现 CSV UTF-8 与 XLSX 固定标准模板。Reason：**保持导入可验证、可解释并符合已冻结范围，不引入 XLS 或自由字段映射复杂度。
+2. **Decision：文件上限 20 MiB、行数上限 50,000。Reason：**覆盖 10,000 行最低验收与 50,000 行推荐测试规模，同时限制单请求内存和解析风险。
+3. **Decision：Stage 1 只写 ImportJob/ImportError 并暂存有效记录。Reason：**未经管理员确认的数据不得进入正式业务表，导入前错误也不能混入 DataQualityIssue 生命周期。
+4. **Decision：有效暂存绑定 Job、导入类型、源文件 SHA-256 与完整性摘要。Reason：**确认阶段必须验证消费的是原任务已校验的同一数据集合。
+5. **Decision：允许有错误行的 Job 进入 READY。Reason：**管理员可以按 Phase 1 基线确认只提交通过校验的有效集合；没有有效行时才是 VALIDATION_FAILED。
+6. **Decision：Stage 2 的全部有效记录使用一个 Service 事务。Reason：**任何正式写入失败必须整体 rollback；COMPLETED_WITH_ERRORS 只表示源文件错误行已排除，不表示部分事务提交。
+7. **Decision：确认时重新检查发行状态与快照冲突。Reason：**Stage 1 与 Stage 2 之间可能发生数据变化，数据库约束与确认前检查共同防止重复或失效引用。
+8. **Decision：READY → IMPORTING 使用数据库条件更新原子抢占。Reason：**并发或重复确认只能有一个请求取得写入资格，不能让第二个请求覆盖已成功任务状态。
+9. **Decision：快照导入创建 Observation Slot + INITIAL Revision。Reason：**导入实现必须忠实消费 Phase 3 冻结双表模型，不得绕过不可变修订历史。
+10. **Decision：所有导入 API 仅允许 ADMINISTRATOR。Reason：**文件验证、错误排除和批量正式写入是高影响数据治理操作，普通 USER 保持只读权限。
+11. **Decision：导入行为以 ImportJob 为 OperationLog 的主要目标。Reason：**一条任务级审计可追溯整个批次，同时避免为每一行复制审计信息或敏感原文。
+12. **Decision：V1 单机暂存使用应用临时目录。Reason：**当前不引入未授权的对象存储或分布式基础设施；跨实例共享和孤儿暂存回收留给后续部署专项设计。
+
 ## 24. Bug 与技术债务
 
 - 当前无已确认的软件 Bug。
@@ -3977,6 +4071,7 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - 【待后续设计】登录 DTO 已由 TASK-P4-07 完成；管理员创建用户、本人修改密码和管理员重置密码仍需要专项命令 DTO 与Service流程，且不得回显明文或 `password_hash`。
 - 【已关闭】TASK-P4-06 基础 API 未认证的安全前置事项已由 TASK-P4-07 关闭；现有业务查询要求 ACTIVE Current User，写操作与 User 查询要求 ADMINISTRATOR。
 - 【待后续设计】密码修改/重置后的旧 Access Token 主动失效机制尚未实现；当前 Token 仅在过期、签名/Claim无效、用户禁用或身份不匹配时失效，不得宣称已具备完整会话撤销能力。
+- 【非阻塞部署事项】TASK-P4-08 的有效记录暂存位于单机应用临时目录；V1.0 单实例可用，但进程异常后的孤儿文件回收、多实例共享存储和定时清理须由后续部署/运维 Task 明确，当前不得宣称支持水平扩展导入。
 - 所有标记为【待后续设计】的事项属于计划内设计工作，不得误报为已实现功能或当前 Bug。
 
 ## 25. 最终报告 / 软著素材索引
@@ -4018,6 +4113,7 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 | Pydantic Schema DTO Baseline V0.1 | 已建立；18 个 ORM 对象的 Create/Update/Response、通用响应与安全边界，pytest 27/27 PASS |
 | Basic API Layer V0.1 | 已建立；`/api/v1` 下 32 个基础业务操作、统一响应/异常映射，pytest 39/39 PASS |
 | Authentication / Authorization Baseline V0.1 | 已建立；bcrypt、JWT、Current User与ADMINISTRATOR/USER授权，pytest 53/53 PASS |
+| Import System Baseline V0.1 | 已建立；CSV/XLSX固定模板、两阶段校验/确认、ImportError、单事务正式写入与Admin API，pytest 65/65 PASS |
 | 数据字典 | 已纳入 MySQL Schema Design V1 字段规格，并由 DDL/Migration V1 实现 |
 | 3NF Review | 设计级 PASS；18 表物理实现一致性验证 PASS |
 | 主键 / 外键 / 完整性设计 | 已建立 V1 基线；18/18 主键、39/39 外键及约束验证 PASS |
@@ -4396,3 +4492,16 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - GitHub remote：以本 Task 实际检查结果为准。
 - 当前状态：Completed；Phase 4 In Progress；Waiting for Next Phase 4 Task。
 - Commit：`feat(backend): add authentication and authorization baseline`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
+
+### TASK-P4-08
+
+- 日期：2026-09-08。
+- 任务：数据导入模块设计与实现 V0.1。
+- 完成内容：建立 `backend/imports/` 固定模板、CSV/XLSX 安全解析、Stage 1 字段/类型/状态/引用/唯一性/重复冲突校验、ImportError 持久化与完整性暂存；扩展 Import Repository、ImportService 两阶段流程、Import DTO 和四个 `/api/v1/import/jobs` 管理接口。
+- 生命周期与事务：Job 从 PENDING_VALIDATION 进入 VALIDATION_FAILED 或 READY；管理员确认后进入 IMPORTING；有效集合单事务全部提交为 COMPLETED/COMPLETED_WITH_ERRORS，任一正式写入失败整体 rollback 并标记 FAILED。COMPLETED_WITH_ERRORS 不表示部分事务提交。
+- 权限与安全：四个接口全部要求数据库当前角色为 ADMINISTRATOR；只接收 `.csv`/`.xlsx`，限制 20 MiB/50,000 行，验证安全文件名、内容格式和 SHA-256 暂存绑定；不执行上传文件，不在日志保存凭证或原始敏感内容。
+- 实际验证：Python compileall 与 pip check PASS；CSV/XLSX、路径穿越/伪文件、校验错误、状态流转、部分错误、事务 rollback、Snapshot 双表写入路径、原子确认抢占、管理员权限、USER 403、OpenAPI/DTO/分层测试 PASS；完整 pytest 65/65 PASS；未连接或修改生产数据库。
+- 未执行内容：未修改数据库 Schema、DDL、Migration 或 ORM Model；未开发爬虫、AI 清洗、自由字段映射、Analytics、Dashboard、前端或后续功能。
+- GitHub remote：以本 Task 实际检查结果为准。
+- 当前状态：Completed；Phase 4 In Progress；Waiting for Next Phase 4 Task。
+- Commit：`feat(backend): add import system baseline`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。

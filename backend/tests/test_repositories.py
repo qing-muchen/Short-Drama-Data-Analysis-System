@@ -13,6 +13,7 @@ import repositories
 from models.drama import Drama
 from models.user import User
 from repositories.drama_repository import DramaRepository
+from repositories.import_repository import ImportJobRepository
 from repositories.snapshot_repository import SnapshotRepository
 from repositories.user_repository import UserRepository
 
@@ -30,6 +31,10 @@ def test_repository_package_exports_expected_types() -> None:
         "CompanyRepository",
         "DirectorRepository",
         "DramaRepository",
+        "ImportDataRepository",
+        "ImportErrorRepository",
+        "ImportJobRepository",
+        "OperationLogRepository",
         "Page",
         "PlatformRepository",
         "SnapshotRepository",
@@ -147,3 +152,18 @@ def test_repository_sources_do_not_manage_transactions() -> None:
     assert ".commit(" not in source
     assert ".rollback(" not in source
     assert "sessionmaker(" not in source
+
+
+def test_import_job_ready_claim_uses_conditional_update() -> None:
+    session = make_session()
+    session.execute.return_value.rowcount = 1
+
+    claimed = ImportJobRepository(session).claim_ready(7)
+
+    assert claimed is True
+    statement = session.execute.call_args.args[0]
+    assert isinstance(statement, Update)
+    compiled = str(statement.compile(dialect=dialect()))
+    assert "import_jobs.import_job_id = %s" in compiled
+    assert "import_jobs.status = %s" in compiled
+    session.commit.assert_not_called()

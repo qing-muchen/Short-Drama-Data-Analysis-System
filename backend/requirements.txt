@@ -8,6 +8,9 @@ pydantic-settings>=2.5,<3.0
 pymysql>=1.1,<2.0
 bcrypt>=4.2,<6.0
 PyJWT>=2.9,<3.0
+openpyxl>=3.1,<4.0
+python-multipart>=0.0.9,<1.0
+tzdata>=2025.2
 
 # Test baseline
 pytest>=8,<10

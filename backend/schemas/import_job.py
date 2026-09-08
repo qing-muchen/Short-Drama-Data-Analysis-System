@@ -33,6 +33,12 @@ class ImportJobUpdate(SchemaModel):
     """Import lifecycle fields are Service-owned, not client-editable."""
 
 
+class ImportConfirmRequest(SchemaModel):
+    """Explicit administrator confirmation for the staged valid row set."""
+
+    confirm: Literal[True]
+
+
 class ImportJobResponse(SchemaModel):
     import_job_id: int = Field(ge=1)
     initiated_by_user_id: int = Field(ge=1)

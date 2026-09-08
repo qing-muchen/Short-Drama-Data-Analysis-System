@@ -65,6 +65,7 @@ from schemas import (
     ImportErrorCreate,
     ImportErrorResponse,
     ImportErrorUpdate,
+    ImportConfirmRequest,
     ImportJobCreate,
     ImportJobResponse,
     ImportJobUpdate,
@@ -245,3 +246,9 @@ def test_snapshot_slot_and_revision_write_boundaries_remain_separate() -> None:
         DramaMetricSnapshotRevisionCreate(play_count=100, version_no=2)
     with pytest.raises(ValidationError):
         DramaMetricSnapshotRevisionUpdate(play_count=100)
+
+
+def test_import_confirmation_requires_explicit_confirmation() -> None:
+    assert ImportConfirmRequest(confirm=True).confirm is True
+    with pytest.raises(ValidationError):
+        ImportConfirmRequest(confirm=False)

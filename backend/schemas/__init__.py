@@ -20,6 +20,7 @@ from schemas.drama import (
     DramaUpdate,
 )
 from schemas.import_job import (
+    ImportConfirmRequest,
     ImportErrorCreate,
     ImportErrorResponse,
     ImportErrorUpdate,
@@ -111,6 +112,7 @@ __all__ = [
     "ImportErrorCreate",
     "ImportErrorResponse",
     "ImportErrorUpdate",
+    "ImportConfirmRequest",
     "ImportJobCreate",
     "ImportJobResponse",
     "ImportJobUpdate",
