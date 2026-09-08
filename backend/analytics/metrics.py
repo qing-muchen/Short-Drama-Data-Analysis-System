@@ -53,6 +53,7 @@ class SnapshotPoint:
     revision_action: str
     raw: RawMetrics
     tag_ids: tuple[int, ...] = ()
+    drama_name: str = ""
     warning_count: int = 0
     error_count: int = 0
 
@@ -80,6 +81,7 @@ class MetricResult:
     excluded_error_count: int
     insufficient_history: bool
     included_platform_count: int
+    drama_name: str = ""
 
 
 def _safe_rate(numerator: int | None, denominator: int | None) -> float | None:
@@ -143,4 +145,3 @@ def aggregate_raw(metrics: Iterable[RawMetrics]) -> RawMetrics:
         share_count=total("share_count"),
         ranking=None,
     )
-

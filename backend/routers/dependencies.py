@@ -22,6 +22,8 @@ from repositories.tag_repository import TagRepository
 from repositories.user_repository import UserRepository
 from services.drama_service import DramaService
 from services.analytics_service import AnalyticsService
+from dashboard.service import DashboardService
+from repositories.dashboard_repository import DashboardRepository
 from services.import_service import ImportService
 from services.master_data_service import MasterDataService
 from services.platform_service import PlatformService
@@ -70,6 +72,14 @@ def get_analytics_service(session: DatabaseSession) -> AnalyticsService:
     )
 
 
+def get_dashboard_service(session: DatabaseSession) -> DashboardService:
+    return DashboardService(
+        session,
+        DashboardRepository(session),
+        get_analytics_service(session),
+    )
+
+
 UserServiceDependency = Annotated[UserService, Depends(get_user_service)]
 DramaServiceDependency = Annotated[DramaService, Depends(get_drama_service)]
 MasterDataServiceDependency = Annotated[
@@ -84,4 +94,8 @@ ImportServiceDependency = Annotated[ImportService, Depends(get_import_service)]
 AnalyticsServiceDependency = Annotated[
     AnalyticsService,
     Depends(get_analytics_service),
+]
+DashboardServiceDependency = Annotated[
+    DashboardService,
+    Depends(get_dashboard_service),
 ]

@@ -2,6 +2,7 @@
 
 from repositories.actor_repository import ActorRepository
 from repositories.analytics_repository import AnalyticsRecord, AnalyticsRepository
+from repositories.dashboard_repository import DashboardCounts, DashboardRepository
 from repositories.base import BaseRepository, Page
 from repositories.company_repository import CompanyRepository
 from repositories.director_repository import DirectorRepository
@@ -23,6 +24,8 @@ __all__ = [
     "ActorRepository",
     "BaseRepository",
     "CompanyRepository",
+    "DashboardCounts",
+    "DashboardRepository",
     "DirectorRepository",
     "DramaRepository",
     "ImportDataRepository",

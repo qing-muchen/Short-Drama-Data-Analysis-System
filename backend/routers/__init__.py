@@ -5,6 +5,7 @@ from fastapi import APIRouter
 from routers import (
     actors,
     analytics,
+    dashboard,
     auth,
     companies,
     directors,
@@ -18,6 +19,7 @@ from routers import (
 api_v1_router = APIRouter(prefix="/api/v1")
 api_v1_router.include_router(auth.router)
 api_v1_router.include_router(analytics.router)
+api_v1_router.include_router(dashboard.router)
 api_v1_router.include_router(users.router)
 api_v1_router.include_router(dramas.router)
 api_v1_router.include_router(actors.router)

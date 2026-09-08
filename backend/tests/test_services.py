@@ -37,6 +37,7 @@ def test_service_package_exports_structural_baseline() -> None:
         "BaseService",
         "BusinessException",
         "ConflictException",
+        "DashboardService",
         "DramaService",
         "ImportService",
         "MasterDataService",

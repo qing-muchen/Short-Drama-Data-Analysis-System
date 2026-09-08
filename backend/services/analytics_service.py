@@ -132,6 +132,112 @@ class AnalyticsService(BaseService):
         )
         return AnalyticsSummary(context, metrics, heat, potential, insights)
 
+    def get_metrics(self, context: AnalysisContext) -> list[MetricResult]:
+        """Return all current metrics in one AnalysisContext for Dashboard use."""
+
+        points: list[SnapshotPoint] = []
+        for record in self.read(
+            self.analytics.list_snapshot_records,
+            analysis_as_of=context.analysis_as_of,
+            platform_ids=context.platform_scope,
+            tag_ids=context.tag_scope,
+        ):
+            point = self._to_point(record)
+            if self._in_current_scope(point):
+                points.append(point)
+        grouped = self._group_points(points, context.granularity)
+        return [
+            self._calculate_metrics(key, group, context)
+            for key, group in sorted(grouped.items())
+        ]
+
+    def get_rankings(
+        self, context: AnalysisContext
+    ) -> tuple[list[MetricResult], dict[int, HeatScore], dict[int, PotentialScore]]:
+        """Return metrics plus V1 rankings; Dashboard only formats these results."""
+
+        metrics = self.get_metrics(context)
+        heat_scores = calculate_heat_scores(
+            HeatCandidate(metric.object_key, metric.drama_code, metric.raw)
+            for metric in metrics
+        )
+        potential_scores = calculate_potential_scores(
+            PotentialCandidate(
+                object_key=metric.object_key,
+                drama_code=metric.drama_code,
+                play_count=metric.raw.play_count,
+                growth_7d=metric.growth_7d,
+                quality_engagement=metric.engagement.quality_engagement,
+                favorite_rate=metric.engagement.favorite_rate,
+                share_rate=metric.engagement.share_rate,
+            )
+            for metric in metrics
+        )
+        return metrics, heat_scores, potential_scores
+
+    def get_trend(self, context: AnalysisContext) -> list[dict[str, object]]:
+        """Build a daily cumulative trend from valid snapshots, not snapshot sums."""
+
+        from analytics.constants import WINDOW_TARGETS
+
+        start = context.analysis_as_of - WINDOW_TARGETS[context.time_window]
+        points: list[SnapshotPoint] = []
+        for record in self.read(
+            self.analytics.list_snapshot_records,
+            analysis_as_of=context.analysis_as_of,
+            platform_ids=context.platform_scope,
+            tag_ids=context.tag_scope,
+        ):
+            point = self._to_point(record)
+            if (
+                self._in_current_scope(point)
+                and point.is_valid
+                and point.snapshot_time >= start
+            ):
+                points.append(point)
+        by_day: dict[object, list[SnapshotPoint]] = defaultdict(list)
+        for point in points:
+            by_day[point.snapshot_time.date()].append(point)
+        result: list[dict[str, object]] = []
+        for day in sorted(by_day):
+            latest_by_platform: dict[int, SnapshotPoint] = {}
+            for point in by_day[day]:
+                previous = latest_by_platform.get(point.drama_platform_id)
+                if previous is None or point.snapshot_time > previous.snapshot_time:
+                    latest_by_platform[point.drama_platform_id] = point
+            raw = aggregate_raw(point.raw for point in latest_by_platform.values())
+            engagement = calculate_engagement(raw)
+            result.append(
+                {
+                    "date": day,
+                    "play_count": raw.play_count,
+                    "engagement_rate": engagement.engagement_rate,
+                }
+            )
+        return result
+
+    def get_quality_summary(self, context: AnalysisContext) -> dict[str, object]:
+        return self.quality_summary_from_metrics(self.get_metrics(context))
+
+    @staticmethod
+    def quality_summary_from_metrics(
+        metrics: Iterable[MetricResult],
+    ) -> dict[str, object]:
+        metrics = list(metrics)
+        return {
+            "quality_issue_count": sum(
+                metric.warning_count + metric.excluded_error_count
+                for metric in metrics
+            ),
+            "warning_count": sum(metric.warning_count for metric in metrics),
+            "error_count": sum(metric.excluded_error_count for metric in metrics),
+            "freshness_summary": {
+                "fresh": sum(metric.freshness == "FRESH" for metric in metrics),
+                "stale": sum(metric.freshness == "STALE" for metric in metrics),
+                "unknown": sum(metric.freshness is None for metric in metrics),
+            },
+        }
+
     @staticmethod
     def _to_point(record: AnalyticsRecord) -> SnapshotPoint:
         return SnapshotPoint(
@@ -157,6 +263,7 @@ class AnalyticsService(BaseService):
             tag_ids=record.tag_ids,
             warning_count=record.warning_count,
             error_count=record.error_count,
+            drama_name=record.drama_name,
         )
 
     @staticmethod
@@ -239,6 +346,7 @@ class AnalyticsService(BaseService):
             excluded_error_count=excluded_error_count,
             insufficient_history=growth.growth_7d is None,
             included_platform_count=len(current),
+            drama_name=points[0].drama_name,
         )
 
     @staticmethod
@@ -264,4 +372,5 @@ class AnalyticsService(BaseService):
             excluded_error_count=0,
             insufficient_history=True,
             included_platform_count=0,
+            drama_name="",
         )

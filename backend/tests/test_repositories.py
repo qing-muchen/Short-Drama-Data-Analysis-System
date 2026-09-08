@@ -31,6 +31,8 @@ def test_repository_package_exports_expected_types() -> None:
         "ActorRepository",
         "BaseRepository",
         "CompanyRepository",
+        "DashboardCounts",
+        "DashboardRepository",
         "DirectorRepository",
         "DramaRepository",
         "ImportDataRepository",

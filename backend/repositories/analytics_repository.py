@@ -18,6 +18,7 @@ from repositories.base import BaseRepository
 class AnalyticsRecord:
     drama_id: int
     drama_code: str
+    drama_name: str
     drama_status: str
     drama_platform_id: int
     drama_platform_status: str
@@ -156,6 +157,7 @@ class AnalyticsRepository(BaseRepository[DramaMetricSnapshot]):
                 AnalyticsRecord(
                     drama_id=drama.drama_id,
                     drama_code=drama.drama_code,
+                    drama_name=drama.drama_name,
                     drama_status=drama.status,
                     drama_platform_id=release.drama_platform_id,
                     drama_platform_status=release.status,
@@ -181,4 +183,3 @@ class AnalyticsRepository(BaseRepository[DramaMetricSnapshot]):
                 )
             )
         return records
-

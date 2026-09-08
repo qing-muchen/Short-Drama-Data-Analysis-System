@@ -9,10 +9,10 @@
 | 中文名称 | 短剧数据管理与分析系统 |
 | 英文名称 | Short Drama Data Management and Analysis System |
 | 软件版本 | V1.0 |
-| 文档版本 | V3.0 |
+| 文档版本 | V3.1 |
 | 当前 Phase | Phase 4 - In Progress |
-| 当前 Task | TASK-P4-09 |
-| 文档状态 | Analytics Service Baseline Established |
+| 当前 Task | TASK-P4-10 |
+| 文档状态 | Dashboard API Baseline Established |
 | 下一阶段状态 | Waiting for Next Phase 4 Task |
 | 最近更新日期 | 2026-09-08 |
 
@@ -22,7 +22,7 @@
 - 【待后续设计】：需求方向明确，但具体技术设计尚未确定。
 - 【未来扩展】：不属于 V1.0 开发范围。
 
-本文档记录真实的软件工程设计与开发状态，不是课程设计报告正文。数据库与后端分层基线保持冻结；TASK-P4-09 已按 Analytics Design Baseline V1.0 实现确定性的 AnalysisContext、Metrics、Growth、Heat、Potential、Insight、只读 Repository、Service 与认证 API，但未实现 Dashboard、前端、AI、预测或推荐。
+本文档记录真实的软件工程设计与开发状态，不是课程设计报告正文。数据库与后端分层基线保持冻结；TASK-P4-10 已在 Analytics Service 之上建立受认证的 Dashboard 概览、排行、趋势和质量 API，但未实现 Vue 前端、ECharts 页面、AI、预测或推荐。
 
 ## 1. 项目定义
 
@@ -3360,6 +3360,33 @@ Analytics Repository 只读取 Observation Slot 的 current revision、DramaPlat
 
 测试使用固定时间和固定指标，不连接或修改生产数据库，覆盖 Context 时区/范围确定性、Growth 基准与零分母、Heat Min-Max/缺失值/稳定排名、Potential 资格、Insight 冲突合并与群体样本限制、认证路由、OpenAPI、Schema 响应及既有分层回归。Python compileall 与完整 pytest 均通过。本 Task 未修改 Database Schema、DDL、Migration 或 ORM Model，未开发 Dashboard、前端、AI、机器学习、预测或推荐系统。
 
+### 12.11 Dashboard API Baseline V0.1【TASK-P4-10】
+
+#### 12.11.1 模块与调用边界
+
+新增顶层 `dashboard/` 包，包含 `service.py`、`schemas.py`、`constants.py` 和 `__init__.py`。DashboardService 只编排展示聚合：指标、Growth、Heat、Potential、趋势和质量口径全部调用 AnalyticsService；主数据总量由只读 DashboardRepository 提供。Dashboard Router 不直接访问 ORM、Repository 或计算模块，不向数据库回写派生结果。
+
+#### 12.11.2 API 与 DTO
+
+新增受认证的 `/api/v1/dashboard` 接口：
+
+| Method | Path | 输出 |
+| --- | --- | --- |
+| GET | `/api/v1/dashboard/overview` | 短剧、演员、导演、公司、平台、标签数量，总播放量、平均互动率、质量问题数 |
+| GET | `/api/v1/dashboard/rankings/heat` | Heat Top N 短剧、作品名、Heat 分数、纳入平台数 |
+| GET | `/api/v1/dashboard/rankings/growth` | 7D Growth Top N 短剧、增长率和当前播放量 |
+| GET | `/api/v1/dashboard/rankings/potential` | Potential Top N 短剧、Potential 分数和 Growth7D |
+| GET | `/api/v1/dashboard/trend` | 当前窗口按日累计播放量和互动率序列 |
+| GET | `/api/v1/dashboard/quality` | 质量问题、WARNING/ERROR 数量和 Fresh/Stale 汇总 |
+
+接口使用 `DashboardOverviewResponse`、`RankingResponse`、`TrendResponse` 和 `QualitySummaryResponse`，统一包裹在 `ResponseModel` 中，不直接返回裸字典。所有接口要求登录；ADMINISTRATOR 与 USER 均可读，权限规则由后端 `require_user` 强制执行，前端菜单隐藏不构成安全边界。
+
+#### 12.11.3 上下文、排行与展示规则
+
+概览、排行、趋势和质量查询均接收统一的 `analysis_as_of`、时间窗口（默认概览/趋势/Heat 30D、Growth/Potential 7D）、平台范围和标签范围，并按 OR 语义筛选标签。排行默认最多 10 条、上限 50 条；Heat/Potential 的 Candidate Set、版本、as-of、质量过滤和稳定排序完全由 AnalyticsService 负责。Trend 使用每日最后有效快照表达累计趋势，不把历史累计快照求和当作新增量。空数据返回空列表或 NULL 指标，不制造虚假数值。
+
+本 Task 仅建立后端展示 API 与聚合服务，不创建 Vue 页面、ECharts 配置、Dashboard 缓存、AI 分析或新的业务指标。验证使用 Mock Service/Repository 与 FastAPI Dependency Override，不连接生产数据库。
+
 ## 13. 技术栈
 
 ### 13.1 Web 技术栈【已冻结】
@@ -3729,12 +3756,14 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 | TASK-P4-07 | 用户认证与权限体系设计 V0.1 | Completed |
 | TASK-P4-08 | 数据导入模块设计与实现 V0.1 | Completed |
 | TASK-P4-09 | Analytics Service实现 V0.1 | Completed |
+| TASK-P4-10 | Dashboard API设计与实现 V0.1 | Completed |
 
 - 当前 Phase：Phase 4 In Progress。
-- 文档版本：V3.0。
-- 文档状态：Analytics Service Baseline Established。
+- 文档版本：V3.1。
+- 文档状态：Dashboard API Baseline Established。
 - 项目状态：Waiting for Next Phase 4 Task。
 - TASK-P4-09 已按冻结 Analytics Design Baseline V1.0 建立 AnalysisContext、Metric/Growth/Heat/Potential/Insight 确定性实现、只读 Repository、AnalyticsService、DTO 与认证汇总 API；完整 pytest 72/72 PASS。未实现 Dashboard、前端、AI、预测或推荐。
+- TASK-P4-10 已在 AnalyticsService 之上建立受认证的 Dashboard 概览、Heat/Growth/Potential 排行、趋势和质量 API；DashboardService 仅负责展示组合，完整 pytest 74/74 PASS。未实现 Vue 页面、ECharts、AI 或推荐。
 
 ## 23. 设计决策记录
 
@@ -4097,6 +4126,17 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 10. **Decision：分析 API 仅提供受认证的单剧汇总。Reason：**本 Task 建立最小完整调用链，不越界开发 Dashboard 或批量分析页面接口。
 11. **Decision：Analytics V1 禁止 AI、预测、推荐和因果推断。Reason：**冻结基线是确定性历史数据分析，不具备未来预测或决策证据。
 
+### ADR-038：Dashboard API Baseline V0.1【Phase 4 展示聚合基线】
+
+1. **Decision：DashboardService 只编排展示结果，所有指标、排行、趋势和质量计算委托 AnalyticsService。Reason：**保持 Router → Service → Repository 分层，并确保 Dashboard 与分析中心共用同一 AnalysisContext、as-of 和数据有效性口径。**
+2. **Decision：主数据数量由只读 DashboardRepository 提供，派生指标不回写数据库。Reason：**概览计数是数据访问职责，Heat、Growth、Potential、互动率和质量汇总仍属于 AnalyticsService 的确定性计算。**
+3. **Decision：六个 Dashboard API 统一接受截止时刻、时间窗口、平台范围和标签范围。Reason：**排行、趋势、质量与概览必须可复现且不能隐含切换分析范围；标签范围沿用已冻结 OR 语义。**
+4. **Decision：Dashboard 全部接口只要求登录，ADMINISTRATOR 与 USER 共享只读查看权限。Reason：**符合 Phase 1 权限矩阵，数据写入、导入和治理操作不在 Dashboard 范围内。**
+5. **Decision：排行默认返回 10 条、单次最多 50 条。Reason：**控制首页负载并保留有限的用户查看范围；排序、Candidate Set 和模型版本由 AnalyticsService 负责。**
+6. **Decision：Trend 按日选取各平台最后有效快照后聚合，绝不对累计快照求和。Reason：**累计指标不能跨时间相加，且该规则与 Phase 2 多平台 as-of 口径一致。**
+7. **Decision：空结果返回空列表或 NULL 指标。Reason：**Dashboard 不用 0 或伪造结论掩盖无数据，调用方可以明确呈现 Empty State。**
+8. **Decision：V1.0 不引入缓存、Vue/ECharts 页面、AI、预测或推荐。Reason：**本 Task 只建立可验证的后端聚合 API，不扩大实现边界。**
+
 ## 24. Bug 与技术债务
 
 - 当前无已确认的软件 Bug。
@@ -4158,6 +4198,7 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 | Basic API Layer V0.1 | 已建立；`/api/v1` 下 32 个基础业务操作、统一响应/异常映射，pytest 39/39 PASS |
 | Authentication / Authorization Baseline V0.1 | 已建立；bcrypt、JWT、Current User与ADMINISTRATOR/USER授权，pytest 53/53 PASS |
 | Import System Baseline V0.1 | 已建立；CSV/XLSX固定模板、两阶段校验/确认、ImportError、单事务正式写入与Admin API，pytest 65/65 PASS |
+| Dashboard API Baseline V0.1 | 已建立；概览、Heat/Growth/Potential 排行、趋势和质量 API，DashboardService 复用 AnalyticsService，pytest 74/74 PASS |
 | 数据字典 | 已纳入 MySQL Schema Design V1 字段规格，并由 DDL/Migration V1 实现 |
 | 3NF Review | 设计级 PASS；18 表物理实现一致性验证 PASS |
 | 主键 / 外键 / 完整性设计 | 已建立 V1 基线；18/18 主键、39/39 外键及约束验证 PASS |
@@ -4562,3 +4603,16 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - GitHub remote：以本 Task 实际检查结果为准。
 - 当前状态：Completed；Phase 4 In Progress；Waiting for Next Phase 4 Task。
 - Commit：`feat(backend): add analytics service baseline`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
+
+### TASK-P4-10
+
+- 日期：2026-09-08。
+- 任务：Dashboard API设计与实现 V0.1。
+- 完成内容：建立 `backend/dashboard/` 展示聚合包、DashboardRepository 与 DashboardService；提供概览、Heat/Growth/Potential 排行、按日趋势和质量摘要六个受认证 API，统一使用 Dashboard DTO 与 ResponseModel。
+- 调用边界：DashboardService 组合 AnalyticsService 的指标、排行、趋势和质量结果；主数据数量通过只读 Repository 获取；Router 不直接调用 ORM、Repository 或计算函数，不写入派生指标。
+- 权限与范围：六个接口均使用 `require_user`，ADMINISTRATOR/USER 可读；支持 AnalysisContext 的截止时刻、窗口、平台和标签筛选，排行默认 10 条、上限 50 条；未开发 Vue、ECharts、缓存、AI、预测或推荐。
+- 实际验证：固定 Mock Service/Repository 与 FastAPI Dependency Override 下完成路由注册、Response Schema、权限、空数据、AnalyticsService 委托测试；Python compileall PASS，完整 pytest 74/74 PASS，未连接或修改生产数据库。
+- 未执行内容：未修改 Database Schema、DDL、Migration 或 ORM Model；未开发前端页面、桌面端或新的分析算法。
+- GitHub remote：以本 Task 实际检查结果为准。
+- 当前状态：Completed；Phase 4 In Progress；Waiting for Next Phase 4 Task。
+- Commit：`feat(backend): add dashboard api baseline`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
