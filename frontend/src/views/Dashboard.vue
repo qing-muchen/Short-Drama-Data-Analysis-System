@@ -191,7 +191,12 @@ onUnmounted(() => {
         <h1>数据驾驶舱</h1>
         <p class="subtitle">运营概览、作品排行、趋势与数据质量</p>
       </div>
-      <el-button :icon="Refresh" :loading="loading" @click="loadDashboard">刷新数据</el-button>
+      <div class="header-actions">
+        <router-link to="/dramas"><el-button>短剧管理</el-button></router-link>
+        <router-link to="/actors"><el-button>演员管理</el-button></router-link>
+        <router-link to="/platforms"><el-button>平台管理</el-button></router-link>
+        <el-button :icon="Refresh" :loading="loading" @click="loadDashboard">刷新数据</el-button>
+      </div>
     </header>
 
     <el-alert
@@ -295,6 +300,14 @@ onUnmounted(() => {
   justify-content: space-between;
   gap: 24px;
   margin-bottom: 24px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .eyebrow,

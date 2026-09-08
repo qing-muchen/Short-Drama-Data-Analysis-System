@@ -1,7 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
 import { useUserStore } from '../stores/user'
-import Dashboard from '../views/Dashboard.vue'
 import LoginView from '../views/Login.vue'
 import PlaceholderView from '../views/PlaceholderView.vue'
 
@@ -13,7 +12,25 @@ const router = createRouter({
     {
       path: '/dashboard',
       name: 'dashboard',
-      component: Dashboard,
+      component: () => import('../views/Dashboard.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/dramas',
+      name: 'dramas',
+      component: () => import('../views/drama/DramaList.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/actors',
+      name: 'actors',
+      component: () => import('../views/master/ActorList.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/platforms',
+      name: 'platforms',
+      component: () => import('../views/master/PlatformList.vue'),
       meta: { requiresAuth: true },
     },
   ],

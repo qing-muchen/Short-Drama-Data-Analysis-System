@@ -9,10 +9,10 @@
 | 中文名称 | 短剧数据管理与分析系统 |
 | 英文名称 | Short Drama Data Management and Analysis System |
 | 软件版本 | V1.0 |
-| 文档版本 | V3.4 |
+| 文档版本 | V3.5 |
 | 当前 Phase | Phase 5 - In Progress |
-| 当前 Task | TASK-P5-03 |
-| 文档状态 | Dashboard Frontend Baseline Established |
+| 当前 Task | TASK-P5-04 |
+| 文档状态 | Data Management Frontend Baseline Established |
 | 下一阶段状态 | Waiting for Next Phase 5 Task |
 | 最近更新日期 | 2026-09-08 |
 
@@ -22,7 +22,7 @@
 - 【待后续设计】：需求方向明确，但具体技术设计尚未确定。
 - 【未来扩展】：不属于 V1.0 开发范围。
 
-本文档记录真实的软件工程设计与开发状态，不是课程设计报告正文。数据库与后端分层基线保持冻结；TASK-P5-03 已建立 Dashboard 前端页面、六类 API 封装、概览与质量展示、三类排行和 ECharts 趋势图，数据管理与导入页面仍未实现。
+本文档记录真实的软件工程设计与开发状态，不是课程设计报告正文。数据库与后端分层基线保持冻结；TASK-P5-04 已建立短剧、演员和平台数据管理页面、类型化 CRUD API 封装、服务端分页查询及前端角色展示控制，导入页面与分析中心仍未实现。
 
 ## 1. 项目定义
 
@@ -3433,6 +3433,22 @@ Access Token 使用 localStorage 键 `access_token`。存储操作集中在 `uti
 
 新增通用 `ApiResponse<T>` 及 `DashboardOverview`、`RankingItem`、`TrendItem`、`QualitySummary` 等 TypeScript 接口，字段与后端 ResponseModel 及 Dashboard DTO 一致。工程安装 ECharts 并生成 npm lockfile；补齐 Vite/Node 类型声明及第三方库声明检查配置。Node.js 24.11.1、npm 11.6.2 环境下 `npm run build` PASS；Vite 报告主 JavaScript chunk 约 2.23 MB 的非阻塞体积警告，后续页面增多时应按路由拆分与按需引入优化。本 Task 未修改后端、数据库、DDL、Migration 或 ORM，未开发数据管理、导入或软著材料。
 
+### 12.15 Data Management Frontend Baseline V0.1【TASK-P5-04】
+
+#### 12.15.1 页面、路由与调用边界
+
+新增 `views/drama/DramaList.vue`、`views/master/ActorList.vue` 和 `views/master/PlatformList.vue`，并注册受 `requiresAuth` 保护的 `/dramas`、`/actors`、`/platforms` 路由。三个页面均通过独立 API 模块访问后端，不直接调用 Axios；Dashboard 增加管理入口。路由采用动态导入，使各管理页面形成独立构建 Chunk。
+
+#### 12.15.2 查询、写入与权限
+
+短剧、演员和平台列表均使用后端服务端分页，支持名称搜索、状态筛选、查询重置、loading、Empty State、错误提示和重试。ADMINISTRATOR 根据 Current User 的 `role_code` 显示新增、编辑和停用操作；USER 只读。停用前必须二次确认，调用后端 DELETE 语义的逻辑停用接口，不将其描述为物理删除。前端按钮隐藏只改善体验，FastAPI 权限校验仍是安全边界。
+
+短剧表格展示 `drama_code`、`drama_name`、状态和 `created_at`；表单维护名称、简介和状态。依据冻结后端 DTO，`drama_code` 由 Service 生成并只读展示，任务描述中的 `description` 按实际 `synopsis` 字段提交。Actor 和 Platform 表单分别匹配 `actor_name/profile_note/status` 与 `platform_name/description/status`。
+
+#### 12.15.3 类型与验证
+
+新增泛型 `Pagination<T>`、Drama/Actor/Platform 实体、状态、查询参数和写入 DTO，字段严格匹配后端 Pydantic Schema，不使用业务 `any`。Node.js 24.11.1、npm 11.6.2 环境下 `npm run build` PASS，共转换 2296 个模块；三个管理页面 Chunk 分别约 6.56 KB、6.62 KB 和 7.38 KB。Element Plus 全局依赖与 Dashboard/ECharts Chunk 仍有大于 500 KB 的非阻塞警告。本 Task 未修改后端、数据库、DDL、Migration 或 ORM，未开发导入页面、分析中心或软著材料。
+
 ## 13. 技术栈
 
 ### 13.1 Web 技术栈【已冻结】
@@ -3806,16 +3822,18 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 | TASK-P5-01 | Vue3前端工程初始化与基础架构设计 V0.1 | Completed — 工程骨架已建立并由 P5-03 完成构建回归 |
 | TASK-P5-02 | 登录页面与JWT状态管理实现 V0.1 | Completed — 源码完成并由 P5-03 完成构建回归 |
 | TASK-P5-03 | Dashboard可视化页面实现 V0.1 | Completed — 六类 Dashboard API、三类排行与 ECharts 趋势构建 PASS |
+| TASK-P5-04 | 短剧数据管理页面实现 V0.1 | Completed — Drama/Actor/Platform 管理页与构建验证 PASS |
 
 - 当前 Phase：Phase 5 In Progress。
-- 文档版本：V3.4。
-- 文档状态：Dashboard Frontend Baseline Established。
+- 文档版本：V3.5。
+- 文档状态：Data Management Frontend Baseline Established。
 - 项目状态：Waiting for Next Phase 5 Task。
 - TASK-P4-09 已按冻结 Analytics Design Baseline V1.0 建立 AnalysisContext、Metric/Growth/Heat/Potential/Insight 确定性实现、只读 Repository、AnalyticsService、DTO 与认证汇总 API；完整 pytest 72/72 PASS。未实现 Dashboard、前端、AI、预测或推荐。
 - TASK-P4-10 已在 AnalyticsService 之上建立受认证的 Dashboard 概览、Heat/Growth/Potential 排行、趋势和质量 API；DashboardService 仅负责展示组合，完整 pytest 74/74 PASS。未实现 Vue 页面、ECharts、AI 或推荐。
 - TASK-P5-01 已建立 Vue3 + Vite + TypeScript 工程、Router、Pinia、Axios、Element Plus 基础配置和占位路由；本 Task 已补齐依赖并通过完整构建，未实现的业务页面仍按后续 Task 推进。
 - TASK-P5-02 已建立 Login 页面、认证 API、User Store、localStorage Token 管理、Axios 自动注入/401 清理和基础 Router Guard；相关代码已随本 Task 完整 TypeScript/Vite 构建通过。
 - TASK-P5-03 已建立 Dashboard 页面、六类类型化 API 封装、八项概览、三类 Top 10、双折线趋势与质量摘要；`npm run build` PASS，未开发数据管理或导入页面。
+- TASK-P5-04 已建立短剧、演员和平台列表、查询、分页、新增、编辑及逻辑停用页面；ADMINISTRATOR 可见写操作，USER 只读，`npm run build` PASS。未开发导入页面或分析中心。
 
 ## 23. 设计决策记录
 
@@ -4215,6 +4233,15 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 5. **Decision：NULL 显示为不可用，空列表显示 Empty State。Reason：**NULL 表示未知或不可计算，不能被前端误写成业务值 0。**
 6. **Decision：当前接受构建产物体积警告并登记后续优化。Reason：**V0.1 仅有单个 Dashboard 页面，功能与类型构建已通过；路由懒加载和 ECharts 按需引入应在页面规模扩大后专项处理。**
 
+### ADR-042：Data Management Frontend Baseline V0.1【Phase 5 数据管理基线】
+
+1. **Decision：Drama、Actor、Platform 各自使用类型化 API 模块，页面不直接调用 Axios。Reason：**保持组件、HTTP 客户端和后端契约分离，统一复用 Token 与错误处理。**
+2. **Decision：全部列表使用后端筛选和服务端分页。Reason：**延续系统级分页约束，禁止先加载全部数据后在浏览器过滤。**
+3. **Decision：前端以 `role_code` 控制写按钮可见性，但不作为安全边界。Reason：**它与 CurrentUser DTO 一致；伪造前端状态仍不能绕过后端 ADMINISTRATOR 校验。**
+4. **Decision：DELETE 操作在 UI 中明确为“停用”并二次确认。Reason：**后端业务规则保留历史引用，页面不得让用户误以为执行物理删除。**
+5. **Decision：`drama_code` 在表单中只读并由后端生成，简介使用后端 `synopsis` 字段。Reason：**忠实遵守已冻结 Pydantic/Service 契约，避免客户端提交未知字段导致 422。**
+6. **Decision：新增管理路由采用动态导入。Reason：**页面彼此独立且不是每次会话都需要加载，路由拆分可控制首屏资源并为后续扩展建立惯例。**
+
 ## 24. Bug 与技术债务
 
 - 当前无已确认的软件 Bug。
@@ -4235,7 +4262,7 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - 【待后续设计】密码修改/重置后的旧 Access Token 主动失效机制尚未实现；当前 Token 仅在过期、签名/Claim无效、用户禁用或身份不匹配时失效，不得宣称已具备完整会话撤销能力。
 - 【非阻塞部署事项】TASK-P4-08 的有效记录暂存位于单机应用临时目录；V1.0 单实例可用，但进程异常后的孤儿文件回收、多实例共享存储和定时清理须由后续部署/运维 Task 明确，当前不得宣称支持水平扩展导入。
 - 【已关闭】TASK-P5-01/P5-02 的 npm 依赖与构建验证阻塞已在 TASK-P5-03 关闭；已生成 lockfile，并完成 Vue/TypeScript/Router/Axios/ECharts 生产构建验证。
-- 【非阻塞性能事项】TASK-P5-03 的 Vite 生产构建主 JavaScript chunk 约 2.23 MB，超过默认 500 kB 提示阈值；不影响当前构建与功能验收，后续页面扩展时应通过路由懒加载、ECharts 按需引入或 manualChunks 优化。
+- 【非阻塞性能事项】TASK-P5-04 已完成路由级拆分，三个管理页面均小于 8 KB；Element Plus 全局入口约 1.09 MB、Dashboard/ECharts Chunk 约 1.13 MB，仍超过 500 KB，后续可通过 Element Plus/ECharts 按需引入和 manualChunks 继续优化。
 - 所有标记为【待后续设计】的事项属于计划内设计工作，不得误报为已实现功能或当前 Bug。
 
 ## 25. 最终报告 / 软著素材索引
@@ -4282,6 +4309,7 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 | Vue3 Frontend Engineering Baseline V0.1 | 已建立；Vite + TypeScript、Router、Pinia、Axios、Element Plus 与基础路由；npm 安装及构建回归 PASS |
 | Frontend Authentication Baseline V0.1 | 已建立；Login、User Store、Auth API、JWT localStorage、Axios 401 处理与 Router Guard；构建回归 PASS |
 | Dashboard Frontend Baseline V0.1 | 已建立；概览、Heat/Growth/Potential 排行、趋势图和质量摘要；TypeScript/Vite 生产构建 PASS |
+| Data Management Frontend Baseline V0.1 | 已建立；Drama/Actor/Platform 查询、分页、管理员写入和逻辑停用；TypeScript/Vite 构建 PASS |
 | 数据字典 | 已纳入 MySQL Schema Design V1 字段规格，并由 DDL/Migration V1 实现 |
 | 3NF Review | 设计级 PASS；18 表物理实现一致性验证 PASS |
 | 主键 / 外键 / 完整性设计 | 已建立 V1 基线；18/18 主键、39/39 外键及约束验证 PASS |
@@ -4737,3 +4765,15 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - GitHub remote：以本 Task 实际检查结果为准。
 - 当前状态：Completed；Phase 5 In Progress；Waiting for Next Phase 5 Task。
 - Commit：`feat(frontend): implement dashboard page`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
+
+### TASK-P5-04
+
+- 日期：2026-09-08。
+- 任务：短剧数据管理页面实现 V0.1。
+- 完成内容：新增 Drama、Actor、Platform 类型与 API 模块，建立三个数据管理页面及认证路由；支持服务端分页、名称搜索、状态筛选、重置、表单校验、新增、编辑、逻辑停用确认和状态反馈。
+- 权限与契约：页面按 `currentUser.role_code` 控制管理员按钮，USER 只读，后端仍执行最终授权；`drama_code` 遵循 Service 自动生成规则只读展示，简介按后端 `synopsis` DTO 提交。
+- 实际验证：Node.js 24.11.1、npm 11.6.2 下 `npm run build` PASS，2296 modules transformed；路由懒加载生成独立管理页面 Chunk，保留 Element Plus 与 ECharts 体积优化提示。
+- 未执行内容：未修改 backend、database、DDL、Migration 或 ORM；未开发导入页面、分析中心或软著材料。
+- GitHub remote：以本 Task 实际检查结果为准。
+- 当前状态：Completed；Phase 5 In Progress；Waiting for Next Phase 5 Task。
+- Commit：`feat(frontend): implement data management pages`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
