@@ -9,11 +9,11 @@
 | 中文名称 | 短剧数据管理与分析系统 |
 | 英文名称 | Short Drama Data Management and Analysis System |
 | 软件版本 | V1.0 |
-| 文档版本 | V3.8 |
-| 当前 Phase | Phase 5 - Completed |
-| 当前 Task | TASK-P5-07 |
-| 文档状态 | Frontend Phase Completed |
-| 下一阶段状态 | Waiting for Phase 6 Task |
+| 文档版本 | V3.9 |
+| 当前 Phase | Phase 6 - In Progress |
+| 当前 Task | TASK-PHASE6-01 |
+| 文档状态 | Phase 6 Integration Baseline Established |
+| 下一阶段状态 | Waiting for Next Phase 6 Task |
 | 最近更新日期 | 2026-09-08 |
 
 状态标签：
@@ -22,7 +22,7 @@
 - 【待后续设计】：需求方向明确，但具体技术设计尚未确定。
 - 【未来扩展】：不属于 V1.0 开发范围。
 
-本文档记录真实的软件工程设计与开发状态，不是课程设计报告正文。数据库与后端分层基线保持冻结；TASK-P5-06 已建立分析中心页面、短剧选择、AnalysisContext、Metric/Growth/Heat/Potential 与 Insight 展示；导入任务全量列表与普通用户读权限仍受当前后端契约限制。TASK-P5-07 已完成 Phase 5 前端最终 Review：9 个页面完整、Router/API 分层/权限/TypeScript 检查通过、`npm run build` PASS，前端技术债已登记且不立即修改。
+本文档记录真实的软件工程设计与开发状态，不是课程设计报告正文。数据库与后端分层基线保持冻结；TASK-P5-06 已建立分析中心页面、短剧选择、AnalysisContext、Metric/Growth/Heat/Potential 与 Insight 展示；导入任务全量列表与普通用户读权限仍受当前后端契约限制。TASK-P5-07 已完成 Phase 5 前端最终 Review：9 个页面完整、Router/API 分层/权限/TypeScript 检查通过、`npm run build` PASS，前端技术债已登记且不立即修改。TASK-PHASE6-01 已建立 Phase 6 联调基线：环境检查记录、Development Run Guide 与全链路集成测试计划（仅设计不执行），联调阻断项仅为本地 `.env` 与数据库凭据配置。
 
 ## 1. 项目定义
 
@@ -3499,6 +3499,20 @@ Insight 列表原样展示 Type、RuleCode、Conclusion，并允许展开查看 
 
 Node.js 24.11.1、npm 11.6.2 环境下 `npm run build` PASS，共转换 2311 个模块，构建耗时 9.88s；唯一 Warning 为 `index`（约 1.09 MB）与 `Dashboard`（约 1.13 MB，含 ECharts）Chunk 超过 500 kB，属真实非阻塞提示。前端技术债已登记于 `frontend/FRONTEND_FINAL_REVIEW.md`：Element Plus/ECharts 按需引入、manualChunks 拆分、`/` 空占位首页、Dashboard 全量刷新、导入任务本地历史列表、列表页分页状态持久化、格式化工具去重、UI 细节优化；均不立即修改。本 Task 未修改后端、数据库、DDL、Migration、Analytics 规则与 API 设计，未进入 Phase 6，未生成课程设计报告或软著材料。
 
+### 12.19 Phase 6 Integration Baseline V0.1【TASK-PHASE6-01】
+
+#### 12.19.1 环境检查结论
+
+本机实测：Backend 使用 `backend/.venv`（Python 3.12.14），requirements 全部可 import，启动方式为 `uvicorn main:app --reload`；Frontend Node v24.11.1、npm 11.6.2、`node_modules` 就绪，启动方式为 `npm run dev`；Database 为 MySQL 8.0.45，Windows 服务 `mysql` 已运行。联调阻断项仅两处本地配置：`backend/.env` 与 `frontend/.env` 均未创建，`backend/.env` 缺失会使应用因 `secret_key` 校验失败无法启动；数据库凭据仓库内仅有占位示例，应用级连接需操作者本地配置。Docker 29.6.2 已安装但 daemon 未启动，暂不可作备用路径。本 Task 不代创建本地机密文件、不写入真实密码。
+
+#### 12.19.2 Development Run Guide
+
+新增 `docs/testing/development_run_guide.md`，顺序覆盖：启动 MySQL → 初始化数据库（DDL 与 Migration 二选一）→ 创建 `backend/.env` 并启动 Backend → 创建 `frontend/.env` 并启动 Frontend → 访问 `http://localhost:5173` → 首次引导 ADMINISTRATOR 账号（bcrypt 哈希 + 手工 INSERT，无注册端点与种子脚本）。文档含联调冒烟清单 S1～S5。
+
+#### 12.19.3 全链路测试设计与性能规划
+
+新增 `docs/testing/integration_test_plan.md`，按统一模板（编号/目标/前置条件/步骤/预期结果/实际结果/状态）设计 IT-01 用户登录、IT-02 数据查询、IT-03 数据管理、IT-04 数据导入、IT-05 分析展示五条链路，全部状态为 DESIGNED，不执行、不伪造结果。性能测试仅登记 PT-01 普通查询约 2 秒、PT-02 Dashboard 约 3 秒、PT-03 单剧分析 3–5 秒的 10 万级 Snapshot 规划，不生成虚假数据。
+
 ## 13. 技术栈
 
 ### 13.1 Web 技术栈【已冻结】
@@ -3876,11 +3890,12 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 | TASK-P5-05 | 数据导入页面实现 V0.1 | Completed — 管理员上传/任务/错误/确认流程构建 PASS，后端列表与USER读权限待补 |
 | TASK-P5-06 | 分析中心页面实现 V0.1 | Completed — Context/Metric/Growth/Heat/Potential/Insight 展示构建 PASS |
 | TASK-P5-07 | Phase 5 前端最终 Review V1.0 | Completed — 页面/Router/API分层/权限/TypeScript Review PASS，构建 PASS，技术债已登记 |
+| TASK-PHASE6-01 | 系统联调环境准备与全链路测试设计 V0.1 | Completed — 环境检查/Development Run Guide/IT-01~05 测试计划/性能规划已建立，未执行测试 |
 
-- 当前 Phase：Phase 5 Completed。
-- 文档版本：V3.8。
-- 文档状态：Frontend Phase Completed。
-- 项目状态：Waiting for Phase 6 Task。
+- 当前 Phase：Phase 6 In Progress。
+- 文档版本：V3.9。
+- 文档状态：Phase 6 Integration Baseline Established。
+- 项目状态：Waiting for Next Phase 6 Task。
 - TASK-P4-09 已按冻结 Analytics Design Baseline V1.0 建立 AnalysisContext、Metric/Growth/Heat/Potential/Insight 确定性实现、只读 Repository、AnalyticsService、DTO 与认证汇总 API；完整 pytest 72/72 PASS。未实现 Dashboard、前端、AI、预测或推荐。
 - TASK-P4-10 已在 AnalyticsService 之上建立受认证的 Dashboard 概览、Heat/Growth/Potential 排行、趋势和质量 API；DashboardService 仅负责展示组合，完整 pytest 74/74 PASS。未实现 Vue 页面、ECharts、AI 或推荐。
 - TASK-P5-01 已建立 Vue3 + Vite + TypeScript 工程、Router、Pinia、Axios、Element Plus 基础配置和占位路由；本 Task 已补齐依赖并通过完整构建，未实现的业务页面仍按后续 Task 推进。
@@ -3890,6 +3905,7 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 - TASK-P5-05 已建立管理员 CSV/XLSX 上传、任务详情、错误分页、READY 确认及状态/失败处理页面，`npm run build` PASS；当前后端无全量任务列表且四个接口均仅管理员可用，USER 只读要求待后端专项补齐。
 - TASK-P5-06 已建立可搜索短剧的只读分析中心，展示 AnalysisContext、原始/互动指标、Growth、Heat、Potential 与原样 Insight，ADMINISTRATOR/USER 均可访问；`npm run build` PASS。
 - TASK-P5-07 已完成 Phase 5 前端最终 Review：9 个必需页面、Router 登录保护与懒加载、API 模块分层、ADMINISTRATOR/USER UI 权限、TypeScript 无业务 `any` 全部检查通过；`npm run build` PASS（2311 模块）；仅登记 Chunk 体积等非阻塞技术债于 `frontend/FRONTEND_FINAL_REVIEW.md`，未立即修改。
+- TASK-PHASE6-01 已完成 Phase 6 联调环境准备：实测 MySQL 8.0.45 服务运行、backend/.venv Python 3.12.14 依赖齐全、Frontend Node v24.11.1 依赖就绪；识别 `backend/.env`、`frontend/.env` 缺失与数据库凭据为联调阻断项；建立 `docs/testing/development_run_guide.md` 与 `docs/testing/integration_test_plan.md`（IT-01～IT-05 + PT-01～PT-03，全部 DESIGNED，未执行测试、未生成虚假结果）。
 
 ## 23. 设计决策记录
 
@@ -4388,6 +4404,7 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 | Import Frontend Baseline V0.1 | 已建立；管理员 CSV/XLSX 上传、任务详情、错误分页与确认导入；TypeScript/Vite 构建 PASS，列表/USER读权限待后端补齐 |
 | Analytics Frontend Baseline V0.1 | 已建立；短剧选择、Context、Metric/Growth/Heat/Potential、Insight 只读展示；TypeScript/Vite 构建 PASS |
 | Phase 5 Frontend Final Review V1.0 | PASS；9 页面/路由/API分层/权限/TypeScript Review 通过，`npm run build` PASS（2311 模块），技术债已登记 |
+| Phase 6 Integration Baseline V0.1 | 已建立；环境检查记录、Development Run Guide、IT-01～IT-05 测试计划与 PT-01～PT-03 性能规划，测试仅设计未执行 |
 | 数据字典 | 已纳入 MySQL Schema Design V1 字段规格，并由 DDL/Migration V1 实现 |
 | 3NF Review | 设计级 PASS；18 表物理实现一致性验证 PASS |
 | 主键 / 外键 / 完整性设计 | 已建立 V1 基线；18/18 主键、39/39 外键及约束验证 PASS |
@@ -4893,3 +4910,15 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - GitHub remote：以本 Task 实际检查结果为准。
 - 当前状态：Completed；Phase 5 Completed；Waiting for Phase 6 Task。
 - Commit：`docs(frontend): complete phase5 review`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
+
+### TASK-PHASE6-01
+
+- 日期：2026-09-08。
+- 任务：系统联调环境准备与全链路测试设计 V0.1。
+- 完成内容：实测联调环境（MySQL 8.0.45 服务运行；`backend/.venv` Python 3.12.14 依赖齐全；Frontend Node v24.11.1、npm 11.6.2 依赖就绪），建立 `docs/testing/development_run_guide.md` 启动流程与冒烟清单，建立 `docs/testing/integration_test_plan.md` 全链路测试计划。
+- 联调阻断项：`backend/.env` 与 `frontend/.env` 均未创建，`backend/.env` 缺失导致 `import main` 因 `secret_key` 校验失败；数据库凭据仓库仅占位示例，应用级连接需操作者本地配置；Docker daemon 未启动暂不可用。本 Task 不代创建本地机密文件、不写入真实密码。
+- 测试计划：IT-01 用户登录、IT-02 数据查询、IT-03 数据管理、IT-04 数据导入、IT-05 分析展示，统一模板（编号/目标/前置条件/步骤/预期结果/实际结果/状态）；PT-01 普通查询约 2 秒、PT-02 Dashboard 约 3 秒、PT-03 单剧分析 3–5 秒（10 万级 Snapshot）。全部 DESIGNED，未执行、未生成虚假结果。
+- 未执行内容：未修改 backend 业务代码、frontend 业务代码、database Schema、DDL、Migration 或 Analytics 规则；未生成课程设计报告或软著材料。
+- GitHub remote：以本 Task 实际检查结果为准。
+- 当前状态：Completed；Phase 6 In Progress；Waiting for Next Phase 6 Task。
+- Commit：`docs: establish phase6 integration baseline`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
