@@ -1,4 +1,5 @@
 export { default as apiClient } from './axios'
+export { getDramaAnalysisSummary } from './analytics'
 export { createActor, deactivateActor, getActors, updateActor } from './actor'
 export { getCurrentUser, login } from './auth'
 export {
@@ -9,6 +10,6 @@ export {
   getQuality,
   getTrend,
 } from './dashboard'
-export { createDrama, deactivateDrama, getDramas, updateDrama } from './drama'
+export { createDrama, deactivateDrama, getDrama, getDramas, updateDrama } from './drama'
 export { confirmImportJob, createImportJob, getImportErrors, getImportJob } from './import'
 export { createPlatform, deactivatePlatform, getPlatforms, updatePlatform } from './platform'

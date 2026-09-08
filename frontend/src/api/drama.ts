@@ -7,6 +7,11 @@ export async function getDramas(params: DramaListParams): Promise<Pagination<Dra
   return response.data.data
 }
 
+export async function getDrama(dramaId: number): Promise<Drama> {
+  const response = await apiClient.get<ApiResponse<Drama>>(`/dramas/${dramaId}`)
+  return response.data.data
+}
+
 export async function createDrama(payload: DramaCreate): Promise<Drama> {
   const response = await apiClient.post<ApiResponse<Drama>>('/dramas', payload)
   return response.data.data

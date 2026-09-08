@@ -9,10 +9,10 @@
 | 中文名称 | 短剧数据管理与分析系统 |
 | 英文名称 | Short Drama Data Management and Analysis System |
 | 软件版本 | V1.0 |
-| 文档版本 | V3.6 |
+| 文档版本 | V3.7 |
 | 当前 Phase | Phase 5 - In Progress |
-| 当前 Task | TASK-P5-05 |
-| 文档状态 | Import Frontend Baseline Established |
+| 当前 Task | TASK-P5-06 |
+| 文档状态 | Analytics Frontend Baseline Established |
 | 下一阶段状态 | Waiting for Next Phase 5 Task |
 | 最近更新日期 | 2026-09-08 |
 
@@ -22,7 +22,7 @@
 - 【待后续设计】：需求方向明确，但具体技术设计尚未确定。
 - 【未来扩展】：不属于 V1.0 开发范围。
 
-本文档记录真实的软件工程设计与开发状态，不是课程设计报告正文。数据库与后端分层基线保持冻结；TASK-P5-05 已建立管理员 CSV/XLSX 上传、导入任务详情、错误分页和确认导入页面；分析中心仍未实现，导入任务全量列表与普通用户读权限受当前后端契约限制。
+本文档记录真实的软件工程设计与开发状态，不是课程设计报告正文。数据库与后端分层基线保持冻结；TASK-P5-06 已建立分析中心页面、短剧选择、AnalysisContext、Metric/Growth/Heat/Potential 与 Insight 展示；导入任务全量列表与普通用户读权限仍受当前后端契约限制。
 
 ## 1. 项目定义
 
@@ -3467,6 +3467,24 @@ Access Token 使用 localStorage 键 `access_token`。存储操作集中在 `uti
 
 新增 ImportJob、ImportErrorItem、ImportStatus、ImportType、ImportFileFormat 类型及通用 API Error 类型，API/页面无业务 `any`。Node.js 24.11.1、npm 11.6.2 环境下 `npm run build` PASS，共转换 2307 个模块；三个 Import 页面形成独立 Chunk。本 Task 未修改后端、数据库、DDL、Migration 或 ORM，未开发分析中心、软著材料或课程设计报告。
 
+### 12.17 Analytics Frontend Baseline V0.1【TASK-P5-06】
+
+#### 12.17.1 页面、作品选择与 API 边界
+
+新增 `views/analytics/AnalyticsCenter.vue` 和受登录保护的 `/analytics` 懒加载路由；ADMINISTRATOR 与 USER 均可只读访问。页面复用 Drama API 提供可远程搜索的作品选择，并支持从短剧列表以 `drama_id` 查询参数直达分析；选定后只调用 `api/analytics.ts` 的 `getDramaAnalysisSummary(id)`。汇总接口不返回 `drama_name`，因此名称仅来自所选 Drama 基础资料，所有分析上下文、指标、模型结果和结论均来自 Analytics API。
+
+#### 12.17.2 Context、Metric 与模型展示
+
+AnalysisContext 区域展示 as-of、时间窗口、Drama Platform/Overall 粒度、平台/标签范围、质量策略和 Heat/Potential/Anomaly/Insight/Metric 版本。核心指标展示累计播放、点赞、评论、收藏、分享和互动率；Growth 展示 24H、7D、30D；Heat 展示分数、排名、候选集合大小、模型版本和粒度；Potential 展示分数、排名、候选状态和模型版本。NULL 统一显示“暂无数据”，Potential 缺失仅解释为未返回候选结果，不在前端重新计算资格。
+
+#### 12.17.3 Insight 与表达边界
+
+Insight 列表原样展示 Type、RuleCode、Conclusion，并允许展开查看 Trigger 与结构化 Evidence；不修改后端结论文本。页面明确 Potential 只是当前数据中的增长潜力信号，禁止使用预测、爆款或推荐表达。空响应、无 Insight、loading、API error 和重试均有明确状态。
+
+#### 12.17.4 类型与验证
+
+新增 AnalysisContext、ModelVersions、MetricSummary、GrowthResult、HeatResult、PotentialResult、InsightItem 和 DramaAnalysisSummary 类型，Evidence 使用 `Record<string, unknown>`，无业务 `any`。Node.js 24.11.1、npm 11.6.2 环境下 `npm run build` PASS，共转换 2311 个模块；Analytics 页面形成独立懒加载 Chunk。本 Task 未修改后端、数据库、DDL、Migration 或 ORM，未进入 Phase 6，未生成课程设计报告或软著材料。
+
 ## 13. 技术栈
 
 ### 13.1 Web 技术栈【已冻结】
@@ -3842,10 +3860,11 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 | TASK-P5-03 | Dashboard可视化页面实现 V0.1 | Completed — 六类 Dashboard API、三类排行与 ECharts 趋势构建 PASS |
 | TASK-P5-04 | 短剧数据管理页面实现 V0.1 | Completed — Drama/Actor/Platform 管理页与构建验证 PASS |
 | TASK-P5-05 | 数据导入页面实现 V0.1 | Completed — 管理员上传/任务/错误/确认流程构建 PASS，后端列表与USER读权限待补 |
+| TASK-P5-06 | 分析中心页面实现 V0.1 | Completed — Context/Metric/Growth/Heat/Potential/Insight 展示构建 PASS |
 
 - 当前 Phase：Phase 5 In Progress。
-- 文档版本：V3.6。
-- 文档状态：Import Frontend Baseline Established。
+- 文档版本：V3.7。
+- 文档状态：Analytics Frontend Baseline Established。
 - 项目状态：Waiting for Next Phase 5 Task。
 - TASK-P4-09 已按冻结 Analytics Design Baseline V1.0 建立 AnalysisContext、Metric/Growth/Heat/Potential/Insight 确定性实现、只读 Repository、AnalyticsService、DTO 与认证汇总 API；完整 pytest 72/72 PASS。未实现 Dashboard、前端、AI、预测或推荐。
 - TASK-P4-10 已在 AnalyticsService 之上建立受认证的 Dashboard 概览、Heat/Growth/Potential 排行、趋势和质量 API；DashboardService 仅负责展示组合，完整 pytest 74/74 PASS。未实现 Vue 页面、ECharts、AI 或推荐。
@@ -3854,6 +3873,7 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 - TASK-P5-03 已建立 Dashboard 页面、六类类型化 API 封装、八项概览、三类 Top 10、双折线趋势与质量摘要；`npm run build` PASS，未开发数据管理或导入页面。
 - TASK-P5-04 已建立短剧、演员和平台列表、查询、分页、新增、编辑及逻辑停用页面；ADMINISTRATOR 可见写操作，USER 只读，`npm run build` PASS。未开发导入页面或分析中心。
 - TASK-P5-05 已建立管理员 CSV/XLSX 上传、任务详情、错误分页、READY 确认及状态/失败处理页面，`npm run build` PASS；当前后端无全量任务列表且四个接口均仅管理员可用，USER 只读要求待后端专项补齐。
+- TASK-P5-06 已建立可搜索短剧的只读分析中心，展示 AnalysisContext、原始/互动指标、Growth、Heat、Potential 与原样 Insight，ADMINISTRATOR/USER 均可访问；`npm run build` PASS。
 
 ## 23. 设计决策记录
 
@@ -4271,6 +4291,15 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 5. **Decision：普通 USER 不调用当前 Import API。Reason：**后端四个端点均强制 AdministratorDependency；前端不能把隐藏按钮伪装成已经存在的读权限。**
 6. **Decision：用本浏览器最近任务记录提供临时导航并明确非全量列表。Reason：**当前后端没有任务列表端点，前端不得用本地缓存冒充权威系统记录。**
 
+### ADR-044：Analytics Frontend Baseline V0.1【Phase 5 分析中心基线】
+
+1. **Decision：`/analytics` 先通过 Drama API 选择作品，再调用单剧汇总接口。Reason：**当前 Analytics API 必须提供 drama_id，页面需要可用且类型安全的对象选择入口。**
+2. **Decision：短剧名称来自 Drama 基础资料，分析值仅来自 Analytics Summary。Reason：**汇总响应只有 drama_code 而没有 drama_name；该补充只用于对象标识，不改变任何指标或结论。**
+3. **Decision：前端不实现 Heat、Growth、Potential 计算或候选判断。Reason：**冻结模型必须以 AnalyticsService 为唯一计算来源，Potential 是否为候选只按响应是否返回结果展示。**
+4. **Decision：Insight Conclusion 原样显示，Trigger/Evidence 仅作为可展开解释。Reason：**保持规则输出可追溯，禁止前端改写语义、因果关系或风险程度。**
+5. **Decision：Potential 始终附带“增长潜力信号而非预测/推荐”的说明。Reason：**避免将确定性历史数据模型误解为未来保证或商业决策。**
+6. **Decision：ADMINISTRATOR 与 USER 共享分析只读访问。Reason：**与 Phase 1 权限矩阵及后端 `require_user` 一致，页面不提供任何写操作。**
+
 ## 24. Bug 与技术债务
 
 - 当前无已确认的软件 Bug。
@@ -4341,6 +4370,7 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 | Dashboard Frontend Baseline V0.1 | 已建立；概览、Heat/Growth/Potential 排行、趋势图和质量摘要；TypeScript/Vite 生产构建 PASS |
 | Data Management Frontend Baseline V0.1 | 已建立；Drama/Actor/Platform 查询、分页、管理员写入和逻辑停用；TypeScript/Vite 构建 PASS |
 | Import Frontend Baseline V0.1 | 已建立；管理员 CSV/XLSX 上传、任务详情、错误分页与确认导入；TypeScript/Vite 构建 PASS，列表/USER读权限待后端补齐 |
+| Analytics Frontend Baseline V0.1 | 已建立；短剧选择、Context、Metric/Growth/Heat/Potential、Insight 只读展示；TypeScript/Vite 构建 PASS |
 | 数据字典 | 已纳入 MySQL Schema Design V1 字段规格，并由 DDL/Migration V1 实现 |
 | 3NF Review | 设计级 PASS；18 表物理实现一致性验证 PASS |
 | 主键 / 外键 / 完整性设计 | 已建立 V1 基线；18/18 主键、39/39 外键及约束验证 PASS |
@@ -4821,3 +4851,16 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - GitHub remote：以本 Task 实际检查结果为准。
 - 当前状态：Completed；Phase 5 In Progress；Waiting for Next Phase 5 Task。
 - Commit：`feat(frontend): implement import pages`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
+
+### TASK-P5-06
+
+- 日期：2026-09-08。
+- 任务：分析中心页面实现 V0.1。
+- 完成内容：新增 Analytics 汇总 API 与完整 TypeScript 类型，建立可远程搜索短剧的分析中心及认证路由；展示 AnalysisContext、核心指标、24H/7D/30D Growth、Heat、Potential 候选状态和结构化 Insight。
+- 口径边界：短剧名称来自 Drama API，全部分析值和结论来自单剧 Summary；前端不计算模型、不改写 Conclusion，NULL 显示“暂无数据”，Potential 明确不表示预测、爆款或推荐。
+- 权限与状态：ADMINISTRATOR/USER 均可只读；支持从短剧列表直达、loading、Empty State、API error 和重试，不提供写操作。
+- 实际验证：Node.js 24.11.1、npm 11.6.2 下 `npm run build` PASS，2311 modules transformed；Analytics 页面生成独立懒加载 Chunk。
+- 未执行内容：未修改 backend、database、DDL、Migration 或 ORM；未进入 Phase 6，未生成课程设计报告或软著材料。
+- GitHub remote：以本 Task 实际检查结果为准。
+- 当前状态：Completed；Phase 5 In Progress；Waiting for Phase 5 Final Review。
+- Commit：`feat(frontend): implement analytics center`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。

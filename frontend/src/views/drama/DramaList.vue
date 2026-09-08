@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
+import { useRouter } from 'vue-router'
 
 import { createDrama, deactivateDrama, getDramas, updateDrama } from '../../api/drama'
 import { useUserStore } from '../../stores/user'
@@ -15,6 +16,7 @@ interface DramaForm {
 }
 
 const userStore = useUserStore()
+const router = useRouter()
 const isAdmin = computed(() => userStore.currentUser?.role_code === 'ADMINISTRATOR')
 const loading = ref(false)
 const saving = ref(false)
@@ -168,6 +170,10 @@ function handlePageChange(nextPage: number): void {
   void loadRows()
 }
 
+function openAnalysis(row: Drama): void {
+  void router.push({ path: '/analytics', query: { drama_id: String(row.drama_id) } })
+}
+
 onMounted(() => void loadRows())
 </script>
 
@@ -216,10 +222,12 @@ onMounted(() => void loadRows())
         <el-table-column label="创建时间" min-width="170">
           <template #default="scope">{{ formatDate(scope.row.created_at) }}</template>
         </el-table-column>
-        <el-table-column v-if="isAdmin" label="操作" width="150" fixed="right">
+        <el-table-column label="操作" :width="isAdmin ? 210 : 80" fixed="right">
           <template #default="scope">
-            <el-button link type="primary" @click="openEdit(scope.row)">编辑</el-button>
+            <el-button link type="success" @click="openAnalysis(scope.row)">分析</el-button>
+            <el-button v-if="isAdmin" link type="primary" @click="openEdit(scope.row)">编辑</el-button>
             <el-button
+              v-if="isAdmin"
               link
               type="danger"
               :disabled="scope.row.status === 'INACTIVE'"
