@@ -9,12 +9,12 @@
 | 中文名称 | 短剧数据管理与分析系统 |
 | 英文名称 | Short Drama Data Management and Analysis System |
 | 软件版本 | V1.0 |
-| 文档版本 | V2.5 |
+| 文档版本 | V2.6 |
 | 当前 Phase | Phase 4 - In Progress |
-| 当前 Task | TASK-P4-04 |
-| 文档状态 | Service Layer Baseline Established |
+| 当前 Task | TASK-P4-05 |
+| 文档状态 | Schema DTO Baseline Established |
 | 下一阶段状态 | Waiting for Next Phase 4 Task |
-| 最近更新日期 | 2026-09-07 |
+| 最近更新日期 | 2026-09-08 |
 
 状态标签：
 
@@ -22,7 +22,7 @@
 - 【待后续设计】：需求方向明确，但具体技术设计尚未确定。
 - 【未来扩展】：不属于 V1.0 开发范围。
 
-本文档记录真实的软件工程设计与开发状态，不是课程设计报告正文。数据库、ORM 与 Repository 基线保持冻结；TASK-P4-04 已建立 Service Layer Baseline V0.1，包括依赖注入、事务模板、安全异常边界和业务模块职责骨架，但未实现具体业务流程、API、Router 或分析算法。
+本文档记录真实的软件工程设计与开发状态，不是课程设计报告正文。数据库、ORM、Repository 与 Service 基线保持冻结；TASK-P4-05 已建立 Pydantic v2 Schema DTO Baseline V0.1，完成 18 个 ORM 对象的请求/响应边界、分页与通用响应结构，但未创建 Router、API、CRUD 或业务流程。
 
 ## 1. 项目定义
 
@@ -3023,6 +3023,71 @@ services/
 
 本 Task 未修改 ORM、Repository、数据库 Schema、DDL 或 Migration；未创建 Router、API、业务 DTO、具体业务流程或分析算法。
 
+### 12.6 Pydantic Schema / DTO Baseline V0.1【TASK-P4-05】
+
+#### 12.6.1 目录与分层边界
+
+Schema 层沿用 TASK-P4-01 已冻结的顶层 `backend/schemas/`，位于 ORM/Service 与未来 Router/API 协议之间：
+
+```text
+schemas/
+├── common.py
+├── user.py
+├── drama.py
+├── master_data.py
+├── platform.py
+├── snapshot.py
+├── import_job.py
+├── quality.py
+├── operation_log.py
+└── __init__.py
+```
+
+DTO 负责输入形状、基础类型/长度/枚举校验和安全输出；复杂业务规则、权限、事务与跨对象流程继续由 Service 负责。Schema 不执行 ORM 查询，不依赖 FastAPI Request/Response，也不生成 HTTP 响应。
+
+#### 12.6.2 通用 Schema
+
+- 所有 DTO 继承 `SchemaModel`，统一启用 Pydantic v2 `from_attributes=True`、去除字符串首尾空白和拒绝未知字段。
+- `PageResponse[T]` 固定 `page`、`page_size`、`total`、`items`，只表达未来 API 的分页结果，不替代 Repository 的持久化层 `Page[T]`。
+- `ResponseModel[T]` 固定 `data` 与 `message`；`ErrorResponse` 固定安全错误的 `code`、`message` 和可选 `details`。
+- 具体 HTTP 状态码、Router 异常映射与 API envelope 使用方式留给后续 API 专项 Task。
+
+#### 12.6.3 Entity DTO 覆盖与写入控制
+
+已为 18 个 ORM 对象建立 Create/Update/Response 分离：User、Drama、Actor、Director、Company、Platform、Tag、DramaActor、DramaDirector、DramaCompany、DramaTag、DramaPlatform、DramaMetricSnapshot、DramaMetricSnapshotRevision、ImportJob、ImportError、DataQualityIssue、OperationLog。
+
+- Create/Update 只暴露 ORM 中确有定义且允许由对应流程输入的字段；客户端不得写入数据库主键、created_at、updated_at、处理人、操作人、版本号和其他审计字段。
+- Response 使用 `from_attributes=True` 从 ORM 实例转换；禁止直接返回 ORM 实例作为稳定 API 契约。
+- User Response 明确排除 `password_hash`；用户名、密码输入和管理员密码重置需要独立认证命令 DTO，由后续认证专项 Task 设计，绝不把明文密码伪装为 ORM 字段或回传密码 Hash。
+- Drama `drama_code` 由系统生成，仅出现在响应；ImportJob 生命周期与计数、处理人/时间、OperationLog 操作人等均由 Service 控制。
+- 所有 DTO 禁止添加 HeatScore、PotentialScore、GrowthRate 等不存在于对应事实 ORM 的分析字段；分析结果 DTO 必须由后续分析 API 专项 Task 单独设计。
+
+#### 12.6.4 特殊对象边界
+
+- Snapshot Slot 与不可变 Revision 保持两个 DTO 系列。普通 Slot Create 只接收发行关系与观测时间；Revision Create 只接收指标载荷和修订原因，版本号、INITIAL/CORRECTION/VOID 动作、前序修订、操作人和 current pointer 均由 SnapshotService 事务流程产生。两个 Update DTO 均无普通可写字段。
+- DataQualityIssue 保留 `target_drama_id`、`target_drama_platform_id`、`target_snapshot_revision_id` 三个真实互斥目标，DTO 校验恰好一个目标；禁止替换成 `target_type + target_id` 或 JSON。
+- OperationLog 保留冻结的固定真实目标集合，DTO 校验恰好一个目标；操作用户由 Service 从认证上下文写入。响应只提供操作类型、结果、时间和目标摘要等安全信息，不含密码、Hash、Token 或 Secret。
+- ImportError 和 OperationLog 为追加型证据，Revision 为不可变历史；相应 Update DTO 无可写字段，不代表数据库记录可由客户端任意更新。
+
+#### 12.6.5 验证证据
+
+测试不启动 API、不连接或修改数据库：
+
+| 验证项 | 结果 |
+| --- | --- |
+| 18 个实体的 Create/Update/Response import | PASS |
+| 全部 DTO 字段均为对应 ORM 列的子集 | PASS |
+| Response `from_attributes=True` | PASS |
+| User ORM 转换与 password_hash 隔离 | PASS |
+| 枚举、空白、未知字段和分析字段拒绝 | PASS |
+| 泛型分页结构 | PASS |
+| Quality 与 Operation 互斥真实目标 | PASS |
+| Snapshot Slot/Revision 写入边界 | PASS |
+| Python compileall | PASS |
+| 完整 pytest | 27/27 PASS |
+
+本 Task 未修改 ORM Model、Repository、Service、数据库 Schema、DDL 或 Migration；未创建 Router、API、CRUD、业务流程或分析算法。
+
 ## 13. 技术栈
 
 ### 13.1 Web 技术栈【已冻结】
@@ -3387,12 +3452,13 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 | TASK-P4-02 | 数据库 ORM 模型映射设计 V0.1 | Completed |
 | TASK-P4-03 | Repository 数据访问层设计与基础查询能力 V0.1 | Completed |
 | TASK-P4-04 | Service 业务层架构设计 V0.1 | Completed |
+| TASK-P4-05 | Pydantic Schema 层设计与 DTO 边界冻结 V0.1 | Completed |
 
 - 当前 Phase：Phase 4 In Progress。
-- 文档版本：V2.5。
-- 文档状态：Service Layer Baseline Established。
+- 文档版本：V2.6。
+- 文档状态：Schema DTO Baseline Established。
 - 项目状态：Waiting for Next Phase 4 Task。
-- TASK-P4-04 已建立 BaseService、Service异常体系与8个业务Service依赖骨架，冻结Service事务所有权、Repository调用和HTTP无关边界；pytest 19/19 PASS。未创建Router、API、具体业务流程或分析算法。
+- TASK-P4-05 已建立 Pydantic v2 Schema/DTO 层，覆盖 18 个 ORM 对象的 Create/Update/Response、安全响应、互斥目标、泛型分页和 ORM 转换边界；完整 pytest 27/27 PASS。未创建 Router、API、CRUD、具体业务流程或分析算法。
 
 ## 23. 设计决策记录
 
@@ -3690,6 +3756,17 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 7. **Decision：本 Task 的业务 Service 只建立依赖骨架。Reason：**用户、Drama、Snapshot、Import、Quality 和 Analytics 具体流程必须由后续明确 Task 分别实现和验证。
 8. **Decision：AnalyticsService 不包含任何算法占位实现。Reason：**Heat、Potential、Anomaly、Insight 与 AnalysisContext 已在 Phase 2 冻结，必须通过专项实现 Task 忠实落地。
 
+### ADR-033：Pydantic Schema DTO Baseline V0.1【Phase 4 DTO 基线】
+
+1. **Decision：所有 API DTO 使用 Pydantic v2 并统一启用 `from_attributes=True`。Reason：**在保留 ORM 转换便利性的同时，以明确 DTO 隔离持久化对象与外部协议。
+2. **Decision：Create、Update、Response 必须分离。Reason：**客户端可写字段与数据库生成、审计和响应字段的权限边界不同，不能复用一个全字段对象。
+3. **Decision：DTO 字段必须来自对应 ORM 列，分析结果另建专项 DTO。Reason：**本基线不能虚构数据库属性，也不能将 Heat、Potential、Growth 等上下文派生值污染事实实体契约。
+4. **Decision：User Response 排除 password_hash，认证凭证留给认证命令 DTO。Reason：**Hash 永不属于对外响应；明文密码又不是 ORM 字段，应在后续认证流程中建立单向输入契约。
+5. **Decision：Snapshot Slot 与 Revision DTO 不合并。Reason：**ORM 必须忠实表达“稳定观测槽 + 不可变修订记录”，普通创建不得绕过 Service 写入 current pointer、版本链或审计字段。
+6. **Decision：DataQualityIssue 和 OperationLog DTO 保留互斥真实目标。Reason：**这与冻结 Schema 的真实 FK 和 CHECK 语义一致，禁止退化为无参照完整性的多态 ID 或 JSON。
+7. **Decision：不可变证据对象使用空 Update DTO 并拒绝额外字段。Reason：**保持统一命名的同时明确不存在普通客户端更新能力，真正状态变更由专项 Service 命令处理。
+8. **Decision：基础格式校验在 Schema，复杂业务规则在 Service。Reason：**长度、枚举、必填和互斥输入适合边界拒绝；生命周期、权限、事务和跨对象校验不能下沉到 DTO。
+
 ## 24. Bug 与技术债务
 
 - 当前无已确认的软件 Bug。
@@ -3704,7 +3781,8 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - 【非阻塞文档同步事项】`README.md` 仍显示 Phase 2 Completed / Waiting for Phase 3 Database Design；本 Task 未获授权修改 README，须由后续明确文档同步 Task 更新，不影响 Database Design Baseline V1.0。
 - 【非阻塞环境事项】宿主 PATH 当前未提供 `python`/`py` 命令；TASK-P4-01 使用 Codex 提供的 Python 3.12.14 创建被 Git 忽略的 `backend/.venv` 并完成验证。其他开发环境仍须自行提供 Python 3.12+。
 - 【待后续设计】Alembic 已初始化但没有业务 Revision；必须由后续明确 Task 决定其与已验证 V001～V006 SQL 基线的接管/对齐方式，不得直接 stamp 或 autogenerate。
-- 【非阻塞文档同步事项】`backend/README.md` 仍保留 TASK-P4-01“models/repositories/services 尚待后续实现”的阶段性描述；TASK-P4-02～P4-04 修改范围未包含该文件，应由后续明确文档同步 Task 更新，不影响 ORM、Repository 或 Service Baseline。
+- 【非阻塞文档同步事项】`backend/README.md` 仍保留 TASK-P4-01“models/repositories/services 尚待后续实现”的阶段性描述；TASK-P4-02～P4-05 修改范围未包含该文件，应由后续明确文档同步 Task 更新，不影响 ORM、Repository、Service 或 Schema DTO Baseline。
+- 【待后续设计】用户创建、登录、本人修改密码和管理员重置密码需要认证专项命令 DTO；该 DTO 可接受一次性明文密码输入，但必须与 ORM User DTO 分离、不得回显，也不得暴露 `password_hash`。
 - 所有标记为【待后续设计】的事项属于计划内设计工作，不得误报为已实现功能或当前 Bug。
 
 ## 25. 最终报告 / 软著素材索引
@@ -3743,6 +3821,7 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 | SQLAlchemy ORM Mapping Baseline V0.1 | 已建立；18 Model、39 FK、58 CHECK、16 UNIQUE、46 显式索引，pytest 4/4 PASS |
 | Repository Layer Baseline V0.1 | 已建立；BaseRepository、Page、8 个实体 Repository，pytest 11/11 PASS |
 | Service Layer Baseline V0.1 | 已建立；BaseService、5类异常、8个业务Service职责骨架，pytest 19/19 PASS |
+| Pydantic Schema DTO Baseline V0.1 | 已建立；18 个 ORM 对象的 Create/Update/Response、通用响应与安全边界，pytest 27/27 PASS |
 | 数据字典 | 已纳入 MySQL Schema Design V1 字段规格，并由 DDL/Migration V1 实现 |
 | 3NF Review | 设计级 PASS；18 表物理实现一致性验证 PASS |
 | 主键 / 外键 / 完整性设计 | 已建立 V1 基线；18/18 主键、39/39 外键及约束验证 PASS |
@@ -4079,3 +4158,16 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - GitHub remote：以本 Task 实际检查结果为准。
 - 当前状态：Completed；Phase 4 In Progress；Waiting for Next Phase 4 Task。
 - Commit：`feat(backend): establish service layer baseline`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
+
+### TASK-P4-05
+
+- 日期：2026-09-08。
+- 任务：Pydantic Schema 层设计与 DTO 边界冻结 V0.1。
+- 完成内容：建立 `SchemaModel`、泛型 `PageResponse[T]`、`ResponseModel[T]`、`ErrorResponse`，以及全部 18 个 ORM 对象的 Create/Update/Response DTO；统一 Pydantic v2 `from_attributes=True` 和未知字段拒绝。
+- 写入边界：主键、数据库时间戳、处理人、操作人、版本链、current revision 和生命周期计数不允许由普通客户端写入；User Response 不含 password_hash；Drama code、Import 生命周期和审计身份由 Service 负责。
+- 特殊模型：Snapshot Slot/Revision 保持双模型；DataQualityIssue 保留三个互斥真实 FK 目标；OperationLog 保留固定互斥目标并排除敏感认证内容；不可变 Revision、ImportError 和 OperationLog 无普通 Update 字段。
+- 实际验证：Python compileall PASS；DTO/ORM 字段子集、ORM 转换、枚举/空白/额外字段拒绝、分页、互斥目标与 Snapshot 边界测试 PASS；完整 pytest 27/27 PASS；未连接数据库。
+- 未执行内容：未修改 ORM、Repository、Service、Schema/DDL/Migration，未创建 Router、API、CRUD、业务流程、分析算法或 API 测试。
+- GitHub remote：以本 Task 实际检查结果为准。
+- 当前状态：Completed；Phase 4 In Progress；Waiting for Next Phase 4 Task。
+- Commit：`feat(backend): add pydantic schema layer`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
