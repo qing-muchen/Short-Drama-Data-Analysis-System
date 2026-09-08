@@ -9,10 +9,10 @@
 | 中文名称 | 短剧数据管理与分析系统 |
 | 英文名称 | Short Drama Data Management and Analysis System |
 | 软件版本 | V1.0 |
-| 文档版本 | V2.9 |
+| 文档版本 | V3.0 |
 | 当前 Phase | Phase 4 - In Progress |
-| 当前 Task | TASK-P4-08 |
-| 文档状态 | Import System Baseline Established |
+| 当前 Task | TASK-P4-09 |
+| 文档状态 | Analytics Service Baseline Established |
 | 下一阶段状态 | Waiting for Next Phase 4 Task |
 | 最近更新日期 | 2026-09-08 |
 
@@ -22,7 +22,7 @@
 - 【待后续设计】：需求方向明确，但具体技术设计尚未确定。
 - 【未来扩展】：不属于 V1.0 开发范围。
 
-本文档记录真实的软件工程设计与开发状态，不是课程设计报告正文。数据库与后端分层基线保持冻结；TASK-P4-08 已建立管理员专用的 CSV/XLSX 固定模板、预校验、错误记录、确认及单事务正式写入闭环，但未实现爬虫、AI 清洗、自由字段映射或 Analytics。
+本文档记录真实的软件工程设计与开发状态，不是课程设计报告正文。数据库与后端分层基线保持冻结；TASK-P4-09 已按 Analytics Design Baseline V1.0 实现确定性的 AnalysisContext、Metrics、Growth、Heat、Potential、Insight、只读 Repository、Service 与认证 API，但未实现 Dashboard、前端、AI、预测或推荐。
 
 ## 1. 项目定义
 
@@ -3331,6 +3331,35 @@ READY → administrator confirm → IMPORTING
 
 本 Task 未修改数据库 Schema、DDL、Migration 或 ORM Model；未创建 DataQualityIssue、爬虫、AI 清洗、自由字段映射、Analytics、Dashboard 或前端功能。应用临时暂存的跨进程回收与多实例共享不属于当前单机 V1.0 基线，保留为后续部署专项事项。
 
+### 12.10 Analytics Service Baseline V0.1【TASK-P4-09】
+
+#### 12.10.1 确定性上下文与模块边界
+
+后端新增顶层 `analytics/` 纯计算包，包含 `context.py`、`metrics.py`、`growth.py`、`heat.py`、`potential.py`、`insight.py`、`constants.py` 与统一导出。`AnalysisContext` 是不可变逻辑对象，统一携带 `analysis_as_of`、24H/7D/30D 时间窗口、DramaPlatform/Drama Overall 粒度、平台范围、Tag OR 范围、`VALID_WITH_WARNINGS` 有效性策略和五项冻结模型/字典版本。时区输入转换为 UTC 数据库时间语义，范围 ID 排序去重；相同数据与上下文形成相同确定性键和结果。
+
+Analytics Repository 只读取 Observation Slot 的 current revision、DramaPlatform/Drama/Platform 范围、活动标签和 OPEN/CONFIRMED 质量问题，不计算 Heat、Potential 或 Insight。AnalyticsService 仅通过 AnalyticsRepository 与 DramaRepository 读取数据，负责状态范围、质量过滤、粒度分组、跨平台组合和纯计算模块编排；派生结果不写回 ORM 或数据库。
+
+#### 12.10.2 Metric、Growth 与有效性实现
+
+- 当前榜单默认只纳入 SERIALIZING/COMPLETED Drama、ONLINE DramaPlatform 与 ACTIVE Platform；平台与标签筛选由同一 AnalysisContext 下推，标签多选保持 OR。
+- current revision 为 VOID，或其 SnapshotRevision/DramaPlatform/Drama 上存在 OPEN/CONFIRMED ERROR 时，不进入分析；遇到被排除点继续向前查找有效快照。WARNING 继续参与并传播计数和 DATA_QUALITY Insight；Stale 继续参与并标记 FRESH/STALE。
+- Raw Metrics 保持累计事实语义；Drama Overall 先逐平台选 as-of 最新有效点，再聚合五项原始分子/分母。任一必要组成值未知时保持 NULL，不补 0；原始 Ranking 不跨平台聚合。
+- LikeRate、CommentRate、FavoriteRate、ShareRate、EngagementRate 与 QualityEngagement 在聚合后计算；PlayCount 为 0 或必要值未知时返回 NULL。
+- Adjacent Growth 使用同一 DramaPlatform 最近有效前序点；24H/7D/30D 使用不晚于目标时刻的基准和 6h/24h/48h 最大向前偏离容差。无基准或基准播放量为 0 返回 NULL。Drama Overall 只聚合当前与基准均存在的可比较平台集合，不平均平台增长率。
+
+#### 12.10.3 Heat、Potential 与 Insight 实现
+
+- Heat Model V1 严格使用 Play 0.40、Like 0.20、Comment 0.15、Favorite 0.15、Share 0.10；同一粒度和 AnalysisContext Candidate Set 内逐指标 Min-Max，`xmax=xmin` 贡献 0，不重新分配权重。任一必要输入缺失则 Heat 为 NULL；排名按未舍入分数、播放量和 drama_code 稳定排序。Platform Heat 与 Drama Overall Heat 使用同一实现、不同粒度输入。
+- Potential Model V1 严格使用 Growth7D 0.45、QualityEngagement 0.25、FavoriteRate 0.20、ShareRate 0.10；当前播放量为正、7D Growth 与三个互动比率均可计算才进入统一 Eligible Candidate Set。负增长保留，缺项返回 NULL；排名按未舍入分数、Growth7D、QualityEngagement 和 drama_code 稳定排序。
+- Insight Rule Set V1 实现 PERFORMANCE、GROWTH、POTENTIAL、RISK、PLATFORM、TAG、DATA_QUALITY 七类规则框架，输出 RuleCode、Trigger、Evidence、Conclusion、优先级和规则版本。详情结果最多 5 条；质量/风险优先，高 Heat 与 Growth 下降合并为带转折的单条结论，小于 5 个群体样本不形成平台/标签群体趋势。
+- Insight 只描述指标直接支持的累计表现、变化、增长潜力信号或数据限制；禁止预测、商业推荐、因果推断和随机措辞。Evidence 携带实际值、阈值/排名、样本量、AnalysisContext 与模型版本。
+
+#### 12.10.4 DTO、API 与验证
+
+新增 `AnalysisContextRequest`、`MetricResponse`、`HeatResponse`、`PotentialResponse`、`InsightResponse` 与汇总响应 DTO。接口 `GET /api/v1/analytics/dramas/{id}/summary` 要求 ACTIVE ADMINISTRATOR/USER 登录，Router 只接收路径/查询参数、构建 Context、调用 AnalyticsService 并输出统一 ResponseModel；DRAMA_PLATFORM 粒度要求明确且仅选择一个平台。
+
+测试使用固定时间和固定指标，不连接或修改生产数据库，覆盖 Context 时区/范围确定性、Growth 基准与零分母、Heat Min-Max/缺失值/稳定排名、Potential 资格、Insight 冲突合并与群体样本限制、认证路由、OpenAPI、Schema 响应及既有分层回归。Python compileall 与完整 pytest 均通过。本 Task 未修改 Database Schema、DDL、Migration 或 ORM Model，未开发 Dashboard、前端、AI、机器学习、预测或推荐系统。
+
 ## 13. 技术栈
 
 ### 13.1 Web 技术栈【已冻结】
@@ -3699,12 +3728,13 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 | TASK-P4-06 | Router 与基础 CRUD API 实现 V0.1 | Completed |
 | TASK-P4-07 | 用户认证与权限体系设计 V0.1 | Completed |
 | TASK-P4-08 | 数据导入模块设计与实现 V0.1 | Completed |
+| TASK-P4-09 | Analytics Service实现 V0.1 | Completed |
 
 - 当前 Phase：Phase 4 In Progress。
-- 文档版本：V2.9。
-- 文档状态：Import System Baseline Established。
+- 文档版本：V3.0。
+- 文档状态：Analytics Service Baseline Established。
 - 项目状态：Waiting for Next Phase 4 Task。
-- TASK-P4-08 已建立 CSV/XLSX 固定模板、Stage 1 校验与 ImportError、管理员确认、Stage 2 单事务导入及四个 ADMINISTRATOR API；完整 pytest 65/65 PASS。未实现爬虫、AI 清洗、自由字段映射、Dashboard 或 Analytics。
+- TASK-P4-09 已按冻结 Analytics Design Baseline V1.0 建立 AnalysisContext、Metric/Growth/Heat/Potential/Insight 确定性实现、只读 Repository、AnalyticsService、DTO 与认证汇总 API；完整 pytest 72/72 PASS。未实现 Dashboard、前端、AI、预测或推荐。
 
 ## 23. 设计决策记录
 
@@ -4052,6 +4082,20 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 10. **Decision：所有导入 API 仅允许 ADMINISTRATOR。Reason：**文件验证、错误排除和批量正式写入是高影响数据治理操作，普通 USER 保持只读权限。
 11. **Decision：导入行为以 ImportJob 为 OperationLog 的主要目标。Reason：**一条任务级审计可追溯整个批次，同时避免为每一行复制审计信息或敏感原文。
 12. **Decision：V1 单机暂存使用应用临时目录。Reason：**当前不引入未授权的对象存储或分布式基础设施；跨实例共享和孤儿暂存回收留给后续部署专项设计。
+
+### ADR-037：Analytics Service Baseline V0.1【Phase 4 分析实现基线】
+
+1. **Decision：AnalysisContext 使用不可变值对象并统一 UTC 截止时刻、范围、粒度、质量策略与版本。Reason：**同一输入必须可复现，页面、导出和 Insight 不能暗中切换口径。
+2. **Decision：AnalyticsRepository 只提供 current revision、范围关系和活动质量元数据。Reason：**Repository 负责数据访问，as-of、聚合、评分和结论仍由 AnalyticsService 与纯计算模块负责。
+3. **Decision：VOID 与活动 ERROR 排除，WARNING/Stale 参与并提示。Reason：**忠实落地统一有效数据过滤规则，既不污染结果，也不机械丢弃可用告警数据。
+4. **Decision：跨平台指标先选各平台 as-of 有效点，再聚合原始值。Reason：**累计快照不可跨时间求和，比率也不能简单平均平台比率。
+5. **Decision：Growth 基准严格使用冻结目标时刻和 6h/24h/48h 容差。Reason：**避免使用未来点或超范围历史点制造伪增长；无基准和零基准必须为 NULL。
+6. **Decision：Heat/Potential 权重集中为冻结常量，分数不持久化。Reason：**实现只能引用 V1 模型，派生结果随 Candidate Set 与 AnalysisContext 变化，写入事实表会破坏一致性。
+7. **Decision：单剧详情 Heat/Potential 使用完整同范围候选集合。Reason：**单对象 Min-Max 会失去比较意义，排名证据也无法成立。
+8. **Decision：Insight 输出结构化 Trigger/Evidence/Conclusion 和版本。Reason：**结论必须可解释、可测试、可追溯，不能以随机文案或无证据形容词替代规则。
+9. **Decision：高 Heat 与 7D 下降合并表达，质量与风险优先。Reason：**保留两个真实维度并明确转折，避免相互孤立的表面矛盾结论。
+10. **Decision：分析 API 仅提供受认证的单剧汇总。Reason：**本 Task 建立最小完整调用链，不越界开发 Dashboard 或批量分析页面接口。
+11. **Decision：Analytics V1 禁止 AI、预测、推荐和因果推断。Reason：**冻结基线是确定性历史数据分析，不具备未来预测或决策证据。
 
 ## 24. Bug 与技术债务
 
@@ -4505,3 +4549,16 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - GitHub remote：以本 Task 实际检查结果为准。
 - 当前状态：Completed；Phase 4 In Progress；Waiting for Next Phase 4 Task。
 - Commit：`feat(backend): add import system baseline`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
+
+### TASK-P4-09
+
+- 日期：2026-09-08。
+- 任务：Analytics Service实现 V0.1。
+- 完成内容：建立 `backend/analytics/` 七个职责模块与统一导出，实现不可变 AnalysisContext、原始/互动 Metric、Adjacent/24H/7D/30D Growth、Platform/Drama Overall Heat、Platform/Drama Overall Potential 和七类 Insight Rule Set V1 框架；新增 AnalyticsRepository、AnalyticsService、Analytics DTO 及受认证单剧汇总 API。
+- 有效性与聚合：current revision 为 VOID 或存在活动 ERROR 时排除；WARNING/Stale 参与并提示；跨平台先取各 DramaPlatform as-of 最新有效点，再聚合原始分子/分母；NULL 不替换为 0，Ranking 不跨平台聚合。
+- 模型忠实性：Heat 与 Potential 公式、权重、Candidate Set、Min-Max 零范围规则、资格和稳定排序均引用冻结 V1 定义；派生结果不写入 ORM 或事实表。Insight 带 Trigger/Evidence/Conclusion、上下文和版本，禁止预测、推荐与因果表述。
+- API 与测试：新增 `GET /api/v1/analytics/dramas/{id}/summary`，ACTIVE ADMINISTRATOR/USER 可访问；固定数据测试覆盖 Context、Growth、Heat、Potential、Insight、DTO、路由、OpenAPI 和既有回归；Python compileall PASS，完整 pytest 72/72 PASS，未连接或修改生产数据库。
+- 未执行内容：未修改 Database Schema、DDL、Migration 或 ORM Model；未开发 Dashboard、前端、AI、机器学习、预测、推荐或后续功能。
+- GitHub remote：以本 Task 实际检查结果为准。
+- 当前状态：Completed；Phase 4 In Progress；Waiting for Next Phase 4 Task。
+- Commit：`feat(backend): add analytics service baseline`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。

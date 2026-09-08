@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from database.session import get_db_session
 from repositories.actor_repository import ActorRepository
+from repositories.analytics_repository import AnalyticsRepository
 from repositories.company_repository import CompanyRepository
 from repositories.director_repository import DirectorRepository
 from repositories.drama_repository import DramaRepository
@@ -20,6 +21,7 @@ from repositories.platform_repository import PlatformRepository
 from repositories.tag_repository import TagRepository
 from repositories.user_repository import UserRepository
 from services.drama_service import DramaService
+from services.analytics_service import AnalyticsService
 from services.import_service import ImportService
 from services.master_data_service import MasterDataService
 from services.platform_service import PlatformService
@@ -60,6 +62,14 @@ def get_import_service(session: DatabaseSession) -> ImportService:
     )
 
 
+def get_analytics_service(session: DatabaseSession) -> AnalyticsService:
+    return AnalyticsService(
+        session,
+        AnalyticsRepository(session),
+        DramaRepository(session),
+    )
+
+
 UserServiceDependency = Annotated[UserService, Depends(get_user_service)]
 DramaServiceDependency = Annotated[DramaService, Depends(get_drama_service)]
 MasterDataServiceDependency = Annotated[
@@ -71,3 +81,7 @@ PlatformServiceDependency = Annotated[
     Depends(get_platform_service),
 ]
 ImportServiceDependency = Annotated[ImportService, Depends(get_import_service)]
+AnalyticsServiceDependency = Annotated[
+    AnalyticsService,
+    Depends(get_analytics_service),
+]

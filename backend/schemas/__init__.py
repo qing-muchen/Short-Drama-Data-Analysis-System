@@ -1,5 +1,25 @@
 """Public Pydantic DTO surface for the backend application."""
 
+from schemas.analytics import (
+    AnalysisContextRequest,
+    AnalysisContextResponse,
+    AnalyticsSummaryResponse,
+    HeatResponse,
+    InsightResponse,
+    MetricResponse,
+    ModelVersionsSchema,
+    PotentialResponse,
+)
+from schemas.analytics import (
+    AnalysisContextRequest,
+    AnalysisContextResponse,
+    AnalyticsSummaryResponse,
+    HeatResponse,
+    InsightResponse,
+    MetricResponse,
+    ModelVersionsSchema,
+    PotentialResponse,
+)
 from schemas.common import ErrorResponse, PageResponse, ResponseModel, SchemaModel
 from schemas.auth import CurrentUserResponse, LoginRequest, TokenResponse
 from schemas.drama import (
@@ -71,6 +91,12 @@ from schemas.snapshot import (
 from schemas.user import UserCreate, UserResponse, UserUpdate
 
 __all__ = [
+    "AnalysisContextRequest",
+    "AnalysisContextResponse",
+    "AnalyticsSummaryResponse",
+    "AnalysisContextRequest",
+    "AnalysisContextResponse",
+    "AnalyticsSummaryResponse",
     "ActorCreate",
     "ActorResponse",
     "ActorUpdate",
@@ -109,6 +135,7 @@ __all__ = [
     "DramaTagUpdate",
     "DramaUpdate",
     "ErrorResponse",
+    "HeatResponse",
     "ImportErrorCreate",
     "ImportErrorResponse",
     "ImportErrorUpdate",
@@ -116,14 +143,23 @@ __all__ = [
     "ImportJobCreate",
     "ImportJobResponse",
     "ImportJobUpdate",
+    "HeatResponse",
+    "InsightResponse",
     "LoginRequest",
+    "InsightResponse",
+    "MetricResponse",
+    "ModelVersionsSchema",
     "OperationLogCreate",
     "OperationLogResponse",
     "OperationLogUpdate",
     "PageResponse",
+    "MetricResponse",
+    "ModelVersionsSchema",
     "PlatformCreate",
     "PlatformResponse",
     "PlatformUpdate",
+    "PotentialResponse",
+    "PotentialResponse",
     "ResponseModel",
     "SchemaModel",
     "TagCreate",

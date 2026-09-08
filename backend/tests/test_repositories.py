@@ -26,6 +26,8 @@ def make_session() -> Session:
 
 def test_repository_package_exports_expected_types() -> None:
     assert set(repositories.__all__) == {
+        "AnalyticsRecord",
+        "AnalyticsRepository",
         "ActorRepository",
         "BaseRepository",
         "CompanyRepository",

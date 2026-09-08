@@ -1,6 +1,7 @@
 """Transport-neutral SQLAlchemy repositories."""
 
 from repositories.actor_repository import ActorRepository
+from repositories.analytics_repository import AnalyticsRecord, AnalyticsRepository
 from repositories.base import BaseRepository, Page
 from repositories.company_repository import CompanyRepository
 from repositories.director_repository import DirectorRepository
@@ -17,6 +18,8 @@ from repositories.tag_repository import TagRepository
 from repositories.user_repository import UserRepository
 
 __all__ = [
+    "AnalyticsRecord",
+    "AnalyticsRepository",
     "ActorRepository",
     "BaseRepository",
     "CompanyRepository",

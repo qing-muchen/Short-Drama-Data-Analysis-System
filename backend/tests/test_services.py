@@ -33,6 +33,7 @@ def make_session() -> Session:
 def test_service_package_exports_structural_baseline() -> None:
     assert set(services.__all__) == {
         "AnalyticsService",
+        "AnalyticsSummary",
         "BaseService",
         "BusinessException",
         "ConflictException",

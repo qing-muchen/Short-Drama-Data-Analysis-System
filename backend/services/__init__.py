@@ -1,6 +1,6 @@
 """Transport-neutral Service boundaries and transaction primitives."""
 
-from services.analytics_service import AnalyticsService
+from services.analytics_service import AnalyticsService, AnalyticsSummary
 from services.base import BaseService, RepositorySessionMismatchError
 from services.drama_service import DramaService
 from services.exceptions import (
@@ -19,6 +19,7 @@ from services.user_service import UserService
 
 __all__ = [
     "AnalyticsService",
+    "AnalyticsSummary",
     "BaseService",
     "BusinessException",
     "ConflictException",

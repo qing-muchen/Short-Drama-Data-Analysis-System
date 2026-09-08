@@ -92,11 +92,8 @@ def test_openapi_registers_only_authorized_basic_api_paths() -> None:
     assert set(paths["/api/v1/import/jobs/{import_job_id}"]) == {"get"}
     assert set(paths["/api/v1/import/jobs/{import_job_id}/errors"]) == {"get"}
     assert set(paths["/api/v1/import/jobs/{import_job_id}/confirm"]) == {"post"}
-    assert not any(
-        forbidden in path
-        for path in paths
-        for forbidden in ("dashboard", "analytics")
-    )
+    assert set(paths["/api/v1/analytics/dramas/{drama_id}/summary"]) == {"get"}
+    assert not any("dashboard" in path for path in paths)
     drama_errors = paths["/api/v1/dramas/{drama_id}"]["get"]["responses"]
     assert drama_errors["404"]["content"]["application/json"]["schema"]["$ref"].endswith(
         "/ErrorResponse"
@@ -218,6 +215,7 @@ def test_route_handlers_do_not_access_repository_or_orm_layers() -> None:
         "platforms.py",
         "tags.py",
         "imports.py",
+        "analytics.py",
     )
     source = "\n".join(
         (router_path / file_name).read_text(encoding="utf-8")
