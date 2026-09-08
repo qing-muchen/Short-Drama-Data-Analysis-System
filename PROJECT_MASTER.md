@@ -9,10 +9,10 @@
 | 中文名称 | 短剧数据管理与分析系统 |
 | 英文名称 | Short Drama Data Management and Analysis System |
 | 软件版本 | V1.0 |
-| 文档版本 | V3.3 |
+| 文档版本 | V3.4 |
 | 当前 Phase | Phase 5 - In Progress |
-| 当前 Task | TASK-P5-02 |
-| 文档状态 | Frontend Authentication Baseline Established |
+| 当前 Task | TASK-P5-03 |
+| 文档状态 | Dashboard Frontend Baseline Established |
 | 下一阶段状态 | Waiting for Next Phase 5 Task |
 | 最近更新日期 | 2026-09-08 |
 
@@ -22,7 +22,7 @@
 - 【待后续设计】：需求方向明确，但具体技术设计尚未确定。
 - 【未来扩展】：不属于 V1.0 开发范围。
 
-本文档记录真实的软件工程设计与开发状态，不是课程设计报告正文。数据库与后端分层基线保持冻结；TASK-P5-02 已建立登录页面、JWT 本地状态、当前用户加载、Axios 认证拦截器与基础路由保护，Dashboard、业务管理页面和 ECharts 仍未实现。
+本文档记录真实的软件工程设计与开发状态，不是课程设计报告正文。数据库与后端分层基线保持冻结；TASK-P5-03 已建立 Dashboard 前端页面、六类 API 封装、概览与质量展示、三类排行和 ECharts 趋势图，数据管理与导入页面仍未实现。
 
 ## 1. 项目定义
 
@@ -3419,6 +3419,20 @@ Access Token 使用 localStorage 键 `access_token`。存储操作集中在 `uti
 
 前端类型严格匹配后端统一响应包装与 `LoginResponse`/`CurrentUserResponse` 字段，不使用 `any`。本 Task 不实现 Dashboard 内容、业务管理页面、图表、注册、第三方登录或其他认证方式。
 
+### 12.14 Dashboard Frontend Baseline V0.1【TASK-P5-03】
+
+#### 12.14.1 页面与数据调用边界
+
+`/dashboard` 正式绑定 `views/Dashboard.vue`，页面由 Overview Cards、Heat/Growth/Potential 三类排行、近 30 日 Trend 图表和 Quality Summary 组成。组件只调用 `api/dashboard.ts` 的六个类型化函数，不直接使用 Axios 发起业务请求；所有数值均来自后端 Dashboard API，前端不重算 Heat、Growth、Potential 或互动指标。
+
+#### 12.14.2 展示与状态处理
+
+概览使用 Element Plus Card 展示短剧、演员、导演、公司、平台、总播放量、平均互动率和质量问题数；排行使用 Table 各展示 Top 10；趋势使用 ECharts 双纵轴折线图展示播放量与互动率；质量区域展示 WARNING、ERROR、Fresh 与 Stale 数量。页面并行加载六类数据，统一处理 loading、API error、重试以及列表/趋势空结果，NULL 指标显示为不可用而非强制填 0。
+
+#### 12.14.3 类型与构建基线
+
+新增通用 `ApiResponse<T>` 及 `DashboardOverview`、`RankingItem`、`TrendItem`、`QualitySummary` 等 TypeScript 接口，字段与后端 ResponseModel 及 Dashboard DTO 一致。工程安装 ECharts 并生成 npm lockfile；补齐 Vite/Node 类型声明及第三方库声明检查配置。Node.js 24.11.1、npm 11.6.2 环境下 `npm run build` PASS；Vite 报告主 JavaScript chunk 约 2.23 MB 的非阻塞体积警告，后续页面增多时应按路由拆分与按需引入优化。本 Task 未修改后端、数据库、DDL、Migration 或 ORM，未开发数据管理、导入或软著材料。
+
 ## 13. 技术栈
 
 ### 13.1 Web 技术栈【已冻结】
@@ -3789,17 +3803,19 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 | TASK-P4-08 | 数据导入模块设计与实现 V0.1 | Completed |
 | TASK-P4-09 | Analytics Service实现 V0.1 | Completed |
 | TASK-P4-10 | Dashboard API设计与实现 V0.1 | Completed |
-| TASK-P5-01 | Vue3前端工程初始化与基础架构设计 V0.1 | Completed — 工程骨架已建立，npm 验证受环境阻塞 |
-| TASK-P5-02 | 登录页面与JWT状态管理实现 V0.1 | Completed — 源码完成，npm 构建验证受环境阻塞 |
+| TASK-P5-01 | Vue3前端工程初始化与基础架构设计 V0.1 | Completed — 工程骨架已建立并由 P5-03 完成构建回归 |
+| TASK-P5-02 | 登录页面与JWT状态管理实现 V0.1 | Completed — 源码完成并由 P5-03 完成构建回归 |
+| TASK-P5-03 | Dashboard可视化页面实现 V0.1 | Completed — 六类 Dashboard API、三类排行与 ECharts 趋势构建 PASS |
 
 - 当前 Phase：Phase 5 In Progress。
-- 文档版本：V3.3。
-- 文档状态：Frontend Authentication Baseline Established。
+- 文档版本：V3.4。
+- 文档状态：Dashboard Frontend Baseline Established。
 - 项目状态：Waiting for Next Phase 5 Task。
 - TASK-P4-09 已按冻结 Analytics Design Baseline V1.0 建立 AnalysisContext、Metric/Growth/Heat/Potential/Insight 确定性实现、只读 Repository、AnalyticsService、DTO 与认证汇总 API；完整 pytest 72/72 PASS。未实现 Dashboard、前端、AI、预测或推荐。
 - TASK-P4-10 已在 AnalyticsService 之上建立受认证的 Dashboard 概览、Heat/Growth/Potential 排行、趋势和质量 API；DashboardService 仅负责展示组合，完整 pytest 74/74 PASS。未实现 Vue 页面、ECharts、AI 或推荐。
-- TASK-P5-01 已建立 Vue3 + Vite + TypeScript 工程、Router、Pinia、Axios、Element Plus 基础配置和占位路由；npm install/build 因当前环境权限/网络限制未完成，未实现登录、Dashboard、CRUD 或图表页面。
-- TASK-P5-02 已建立 Login 页面、认证 API、User Store、localStorage Token 管理、Axios 自动注入/401 清理和基础 Router Guard；依赖仍未安装，构建与运行测试须在 npm 环境恢复后重试。未实现 Dashboard 内容、业务管理或 ECharts。
+- TASK-P5-01 已建立 Vue3 + Vite + TypeScript 工程、Router、Pinia、Axios、Element Plus 基础配置和占位路由；本 Task 已补齐依赖并通过完整构建，未实现的业务页面仍按后续 Task 推进。
+- TASK-P5-02 已建立 Login 页面、认证 API、User Store、localStorage Token 管理、Axios 自动注入/401 清理和基础 Router Guard；相关代码已随本 Task 完整 TypeScript/Vite 构建通过。
+- TASK-P5-03 已建立 Dashboard 页面、六类类型化 API 封装、八项概览、三类 Top 10、双折线趋势与质量摘要；`npm run build` PASS，未开发数据管理或导入页面。
 
 ## 23. 设计决策记录
 
@@ -4190,6 +4206,15 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 5. **Decision：登录成功支持安全的站内 redirect，否则进入 `/dashboard`。Reason：**保留用户原始导航意图；Dashboard 目前仍为占位路由，不提前实现页面。**
 6. **Decision：前端 Route Guard 不是后端权限边界。Reason：**Guard 只改善导航体验，所有实际业务访问仍必须由 FastAPI 强制认证与授权。**
 
+### ADR-041：Dashboard Frontend Baseline V0.1【Phase 5 可视化基线】
+
+1. **Decision：Dashboard 组件只调用独立 API 模块，不直接调用 Axios。Reason：**保持 View → API Client → Backend 的单向边界，便于复用、测试和统一认证处理。**
+2. **Decision：六个 Dashboard 请求并行加载并采用统一 loading/error/retry 状态。Reason：**这些只读展示数据相互独立，并行可减少完整页面等待时间，统一失败状态避免展示口径不完整却看似成功。**
+3. **Decision：前端只格式化后端指标，不重新计算 Heat、Growth、Potential 或互动率。Reason：**分析口径必须以冻结的后端 Analytics/Dashboard Service 为唯一实现，避免前后端结果漂移。**
+4. **Decision：趋势图使用 ECharts 双纵轴呈现累计播放量与互动率。Reason：**两种指标量纲不同，分轴能在不改变原始数值的情况下保持可读性。**
+5. **Decision：NULL 显示为不可用，空列表显示 Empty State。Reason：**NULL 表示未知或不可计算，不能被前端误写成业务值 0。**
+6. **Decision：当前接受构建产物体积警告并登记后续优化。Reason：**V0.1 仅有单个 Dashboard 页面，功能与类型构建已通过；路由懒加载和 ECharts 按需引入应在页面规模扩大后专项处理。**
+
 ## 24. Bug 与技术债务
 
 - 当前无已确认的软件 Bug。
@@ -4209,7 +4234,8 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - 【已关闭】TASK-P4-06 基础 API 未认证的安全前置事项已由 TASK-P4-07 关闭；现有业务查询要求 ACTIVE Current User，写操作与 User 查询要求 ADMINISTRATOR。
 - 【待后续设计】密码修改/重置后的旧 Access Token 主动失效机制尚未实现；当前 Token 仅在过期、签名/Claim无效、用户禁用或身份不匹配时失效，不得宣称已具备完整会话撤销能力。
 - 【非阻塞部署事项】TASK-P4-08 的有效记录暂存位于单机应用临时目录；V1.0 单实例可用，但进程异常后的孤儿文件回收、多实例共享存储和定时清理须由后续部署/运维 Task 明确，当前不得宣称支持水平扩展导入。
-- 【环境阻塞 / 待重试】TASK-P5-01 的 `npm install` 在当前受限环境中因 npm 注册表/缓存访问权限未返回，提升权限请求又受使用额度限制；因此尚未生成 `node_modules`/lockfile，TASK-P5-01/P5-02 均未能完成 `npm run build`。前端源文件已建立，需在可访问 npm 的环境重试安装、构建和运行态认证测试。
+- 【已关闭】TASK-P5-01/P5-02 的 npm 依赖与构建验证阻塞已在 TASK-P5-03 关闭；已生成 lockfile，并完成 Vue/TypeScript/Router/Axios/ECharts 生产构建验证。
+- 【非阻塞性能事项】TASK-P5-03 的 Vite 生产构建主 JavaScript chunk 约 2.23 MB，超过默认 500 kB 提示阈值；不影响当前构建与功能验收，后续页面扩展时应通过路由懒加载、ECharts 按需引入或 manualChunks 优化。
 - 所有标记为【待后续设计】的事项属于计划内设计工作，不得误报为已实现功能或当前 Bug。
 
 ## 25. 最终报告 / 软著素材索引
@@ -4253,8 +4279,9 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 | Authentication / Authorization Baseline V0.1 | 已建立；bcrypt、JWT、Current User与ADMINISTRATOR/USER授权，pytest 53/53 PASS |
 | Import System Baseline V0.1 | 已建立；CSV/XLSX固定模板、两阶段校验/确认、ImportError、单事务正式写入与Admin API，pytest 65/65 PASS |
 | Dashboard API Baseline V0.1 | 已建立；概览、Heat/Growth/Potential 排行、趋势和质量 API，DashboardService 复用 AnalyticsService，pytest 74/74 PASS |
-| Vue3 Frontend Engineering Baseline V0.1 | 已建立；Vite + TypeScript、Router、Pinia、Axios、Element Plus 与占位路由；npm 安装/构建待环境恢复后验证 |
-| Frontend Authentication Baseline V0.1 | 已建立；Login、User Store、Auth API、JWT localStorage、Axios 401 处理与 Router Guard；npm 构建待环境恢复后验证 |
+| Vue3 Frontend Engineering Baseline V0.1 | 已建立；Vite + TypeScript、Router、Pinia、Axios、Element Plus 与基础路由；npm 安装及构建回归 PASS |
+| Frontend Authentication Baseline V0.1 | 已建立；Login、User Store、Auth API、JWT localStorage、Axios 401 处理与 Router Guard；构建回归 PASS |
+| Dashboard Frontend Baseline V0.1 | 已建立；概览、Heat/Growth/Potential 排行、趋势图和质量摘要；TypeScript/Vite 生产构建 PASS |
 | 数据字典 | 已纳入 MySQL Schema Design V1 字段规格，并由 DDL/Migration V1 实现 |
 | 3NF Review | 设计级 PASS；18 表物理实现一致性验证 PASS |
 | 主键 / 外键 / 完整性设计 | 已建立 V1 基线；18/18 主键、39/39 外键及约束验证 PASS |
@@ -4697,3 +4724,16 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - GitHub remote：以本 Task 实际检查结果为准。
 - 当前状态：源码完成；npm 构建验证待环境恢复后重试；Phase 5 In Progress；Waiting for Next Phase 5 Task。
 - Commit：`feat(frontend): add authentication flow`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
+
+### TASK-P5-03
+
+- 日期：2026-09-08。
+- 任务：Dashboard可视化页面实现 V0.1。
+- 完成内容：新增 Dashboard 类型、六类 API 封装和 `Dashboard.vue`；正式绑定 `/dashboard`，完成八项 Overview、Heat/Growth/Potential Top 10、播放量/互动率 Trend 及 WARNING/ERROR/Fresh/Stale 质量摘要。
+- 调用与口径：Vue 组件不直接发起 Axios 业务请求；后端 ResponseModel 由 API 层解包；前端只负责显示与格式化，不重新计算任何分析指标，NULL 与空结果保持明确语义。
+- 状态与安全：页面统一处理并行 loading、API error、重试和 Empty State；继续复用 Axios Bearer Token 与 Router Guard，后端认证仍是实际安全边界。
+- 实际验证：安装 ECharts 与 Node 类型依赖并生成 lockfile；Node.js 24.11.1、npm 11.6.2 下 `npm run build` PASS，2282 modules transformed；存在主 JavaScript chunk 约 2.23 MB 的非阻塞优化提示。
+- 未执行内容：未修改 backend、database、DDL、Migration 或 ORM；未开发数据管理页面、导入页面或软著材料。
+- GitHub remote：以本 Task 实际检查结果为准。
+- 当前状态：Completed；Phase 5 In Progress；Waiting for Next Phase 5 Task。
+- Commit：`feat(frontend): implement dashboard page`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。

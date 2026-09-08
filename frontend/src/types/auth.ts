@@ -22,8 +22,3 @@ export interface LoginResponse {
   token_type: 'bearer'
   expires_in_seconds: number
 }
-
-export interface ApiResponse<T> {
-  data: T
-  message: string
-}
