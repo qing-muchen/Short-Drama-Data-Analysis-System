@@ -1,15 +1,11 @@
 <script setup lang="ts">
 import { reactive, ref } from 'vue'
-import axios from 'axios'
 import type { FormInstance, FormRules } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 
 import { useUserStore } from '../stores/user'
 import type { LoginRequest } from '../types/auth'
-
-interface ApiErrorBody {
-  message?: string
-}
+import { getApiErrorMessage } from '../utils/api-error'
 
 const router = useRouter()
 const route = useRoute()
@@ -27,10 +23,7 @@ const rules: FormRules<LoginRequest> = {
 }
 
 function readableError(error: unknown): string {
-  if (axios.isAxiosError<ApiErrorBody>(error)) {
-    return error.response?.data?.message || '登录失败，请检查用户名和密码。'
-  }
-  return error instanceof Error ? error.message : '登录失败，请稍后重试。'
+  return getApiErrorMessage(error, '登录失败，请检查用户名和密码。')
 }
 
 function loginRedirect(value: unknown): string {

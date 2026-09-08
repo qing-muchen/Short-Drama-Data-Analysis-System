@@ -9,11 +9,11 @@
 | 中文名称 | 短剧数据管理与分析系统 |
 | 英文名称 | Short Drama Data Management and Analysis System |
 | 软件版本 | V1.0 |
-| 文档版本 | V3.7 |
-| 当前 Phase | Phase 5 - In Progress |
-| 当前 Task | TASK-P5-06 |
-| 文档状态 | Analytics Frontend Baseline Established |
-| 下一阶段状态 | Waiting for Next Phase 5 Task |
+| 文档版本 | V3.8 |
+| 当前 Phase | Phase 5 - Completed |
+| 当前 Task | TASK-P5-07 |
+| 文档状态 | Frontend Phase Completed |
+| 下一阶段状态 | Waiting for Phase 6 Task |
 | 最近更新日期 | 2026-09-08 |
 
 状态标签：
@@ -22,7 +22,7 @@
 - 【待后续设计】：需求方向明确，但具体技术设计尚未确定。
 - 【未来扩展】：不属于 V1.0 开发范围。
 
-本文档记录真实的软件工程设计与开发状态，不是课程设计报告正文。数据库与后端分层基线保持冻结；TASK-P5-06 已建立分析中心页面、短剧选择、AnalysisContext、Metric/Growth/Heat/Potential 与 Insight 展示；导入任务全量列表与普通用户读权限仍受当前后端契约限制。
+本文档记录真实的软件工程设计与开发状态，不是课程设计报告正文。数据库与后端分层基线保持冻结；TASK-P5-06 已建立分析中心页面、短剧选择、AnalysisContext、Metric/Growth/Heat/Potential 与 Insight 展示；导入任务全量列表与普通用户读权限仍受当前后端契约限制。TASK-P5-07 已完成 Phase 5 前端最终 Review：9 个页面完整、Router/API 分层/权限/TypeScript 检查通过、`npm run build` PASS，前端技术债已登记且不立即修改。
 
 ## 1. 项目定义
 
@@ -3485,6 +3485,20 @@ Insight 列表原样展示 Type、RuleCode、Conclusion，并允许展开查看 
 
 新增 AnalysisContext、ModelVersions、MetricSummary、GrowthResult、HeatResult、PotentialResult、InsightItem 和 DramaAnalysisSummary 类型，Evidence 使用 `Record<string, unknown>`，无业务 `any`。Node.js 24.11.1、npm 11.6.2 环境下 `npm run build` PASS，共转换 2311 个模块；Analytics 页面形成独立懒加载 Chunk。本 Task 未修改后端、数据库、DDL、Migration 或 ORM，未进入 Phase 6，未生成课程设计报告或软著材料。
 
+### 12.18 Frontend Final Review V1.0【TASK-P5-07】
+
+#### 12.18.1 页面与路由 Review
+
+确认 9 个必需页面全部存在且路由注册完整：`/login`、`/dashboard`、`/dramas`、`/actors`、`/platforms`、`/imports`、`/imports/:id`、`/imports/:id/errors`、`/analytics`。业务页面全部懒加载；`router.beforeEach` 对 `requiresAuth` 路由执行未登录拦截，未登录访问跳转 `/login?redirect=...`，已登录访问 `/login` 重定向 `/dashboard`，token 存在但用户信息缺失时自动 `fetchCurrentUser()`，失败则登出。未新增路由。
+
+#### 12.18.2 API 分层、权限与 TypeScript Review
+
+所有页面经 `api/*.ts` 模块调用后端，不直接发起 HTTP 请求；Review 发现 `Login.vue`、`Dashboard.vue` 为错误解析直接 `import axios`，已作为小修复改为复用 `utils/api-error.ts`，组件不再直接 import axios。前端统一按 `role_code === 'ADMINISTRATOR'` 控制 UI：管理员可见新增/编辑/停用/上传/确认导入，USER 只读并收到导入权限说明，前端仅为 UI 控制，后端仍是最终安全边界。TypeScript 无业务 `any`，API 响应均有 `ApiResponse<T>`/`Pagination<T>` 类型，未进行大规模重构。
+
+#### 12.18.3 Build 结果与技术债
+
+Node.js 24.11.1、npm 11.6.2 环境下 `npm run build` PASS，共转换 2311 个模块，构建耗时 9.88s；唯一 Warning 为 `index`（约 1.09 MB）与 `Dashboard`（约 1.13 MB，含 ECharts）Chunk 超过 500 kB，属真实非阻塞提示。前端技术债已登记于 `frontend/FRONTEND_FINAL_REVIEW.md`：Element Plus/ECharts 按需引入、manualChunks 拆分、`/` 空占位首页、Dashboard 全量刷新、导入任务本地历史列表、列表页分页状态持久化、格式化工具去重、UI 细节优化；均不立即修改。本 Task 未修改后端、数据库、DDL、Migration、Analytics 规则与 API 设计，未进入 Phase 6，未生成课程设计报告或软著材料。
+
 ## 13. 技术栈
 
 ### 13.1 Web 技术栈【已冻结】
@@ -3861,11 +3875,12 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 | TASK-P5-04 | 短剧数据管理页面实现 V0.1 | Completed — Drama/Actor/Platform 管理页与构建验证 PASS |
 | TASK-P5-05 | 数据导入页面实现 V0.1 | Completed — 管理员上传/任务/错误/确认流程构建 PASS，后端列表与USER读权限待补 |
 | TASK-P5-06 | 分析中心页面实现 V0.1 | Completed — Context/Metric/Growth/Heat/Potential/Insight 展示构建 PASS |
+| TASK-P5-07 | Phase 5 前端最终 Review V1.0 | Completed — 页面/Router/API分层/权限/TypeScript Review PASS，构建 PASS，技术债已登记 |
 
-- 当前 Phase：Phase 5 In Progress。
-- 文档版本：V3.7。
-- 文档状态：Analytics Frontend Baseline Established。
-- 项目状态：Waiting for Next Phase 5 Task。
+- 当前 Phase：Phase 5 Completed。
+- 文档版本：V3.8。
+- 文档状态：Frontend Phase Completed。
+- 项目状态：Waiting for Phase 6 Task。
 - TASK-P4-09 已按冻结 Analytics Design Baseline V1.0 建立 AnalysisContext、Metric/Growth/Heat/Potential/Insight 确定性实现、只读 Repository、AnalyticsService、DTO 与认证汇总 API；完整 pytest 72/72 PASS。未实现 Dashboard、前端、AI、预测或推荐。
 - TASK-P4-10 已在 AnalyticsService 之上建立受认证的 Dashboard 概览、Heat/Growth/Potential 排行、趋势和质量 API；DashboardService 仅负责展示组合，完整 pytest 74/74 PASS。未实现 Vue 页面、ECharts、AI 或推荐。
 - TASK-P5-01 已建立 Vue3 + Vite + TypeScript 工程、Router、Pinia、Axios、Element Plus 基础配置和占位路由；本 Task 已补齐依赖并通过完整构建，未实现的业务页面仍按后续 Task 推进。
@@ -3874,6 +3889,7 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 - TASK-P5-04 已建立短剧、演员和平台列表、查询、分页、新增、编辑及逻辑停用页面；ADMINISTRATOR 可见写操作，USER 只读，`npm run build` PASS。未开发导入页面或分析中心。
 - TASK-P5-05 已建立管理员 CSV/XLSX 上传、任务详情、错误分页、READY 确认及状态/失败处理页面，`npm run build` PASS；当前后端无全量任务列表且四个接口均仅管理员可用，USER 只读要求待后端专项补齐。
 - TASK-P5-06 已建立可搜索短剧的只读分析中心，展示 AnalysisContext、原始/互动指标、Growth、Heat、Potential 与原样 Insight，ADMINISTRATOR/USER 均可访问；`npm run build` PASS。
+- TASK-P5-07 已完成 Phase 5 前端最终 Review：9 个必需页面、Router 登录保护与懒加载、API 模块分层、ADMINISTRATOR/USER UI 权限、TypeScript 无业务 `any` 全部检查通过；`npm run build` PASS（2311 模块）；仅登记 Chunk 体积等非阻塞技术债于 `frontend/FRONTEND_FINAL_REVIEW.md`，未立即修改。
 
 ## 23. 设计决策记录
 
@@ -4371,6 +4387,7 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 | Data Management Frontend Baseline V0.1 | 已建立；Drama/Actor/Platform 查询、分页、管理员写入和逻辑停用；TypeScript/Vite 构建 PASS |
 | Import Frontend Baseline V0.1 | 已建立；管理员 CSV/XLSX 上传、任务详情、错误分页与确认导入；TypeScript/Vite 构建 PASS，列表/USER读权限待后端补齐 |
 | Analytics Frontend Baseline V0.1 | 已建立；短剧选择、Context、Metric/Growth/Heat/Potential、Insight 只读展示；TypeScript/Vite 构建 PASS |
+| Phase 5 Frontend Final Review V1.0 | PASS；9 页面/路由/API分层/权限/TypeScript Review 通过，`npm run build` PASS（2311 模块），技术债已登记 |
 | 数据字典 | 已纳入 MySQL Schema Design V1 字段规格，并由 DDL/Migration V1 实现 |
 | 3NF Review | 设计级 PASS；18 表物理实现一致性验证 PASS |
 | 主键 / 外键 / 完整性设计 | 已建立 V1 基线；18/18 主键、39/39 外键及约束验证 PASS |
@@ -4864,3 +4881,15 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - GitHub remote：以本 Task 实际检查结果为准。
 - 当前状态：Completed；Phase 5 In Progress；Waiting for Phase 5 Final Review。
 - Commit：`feat(frontend): implement analytics center`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
+
+### TASK-P5-07
+
+- 日期：2026-09-08。
+- 任务：Phase 5 Frontend Final Review V1.0。
+- 完成内容：完成 `frontend/src/` 最终 Review，确认 9 个必需页面全部存在；Router 登录保护与懒加载正常；组件统一经 `api/*.ts` 调用后端，Review 发现 Login/Dashboard 直接 import axios 解析错误的分层瑕疵并小修复为复用 `utils/api-error.ts`；ADMINISTRATOR 写操作与 USER 只读的 UI 控制一致；TypeScript 无业务 `any`，API 响应均有类型。
+- 实际验证：Node.js 24.11.1、npm 11.6.2 下 `npm run build` PASS，2311 modules transformed，9.88s；唯一 Warning 为 `index`/`Dashboard` Chunk 超过 500 kB 的非阻塞体积提示。
+- 技术债登记：`frontend/FRONTEND_FINAL_REVIEW.md` 登记 Element Plus/ECharts 按需引入、manualChunks、空占位首页、Dashboard 全量刷新、导入任务本地历史、分页状态持久化、格式化工具去重、UI 细节优化，均不立即修改。
+- 未执行内容：未修改 backend、database、DDL、Migration、Analytics 规则与 API 设计；未进入 Phase 6，未生成课程设计报告或软著材料。
+- GitHub remote：以本 Task 实际检查结果为准。
+- 当前状态：Completed；Phase 5 Completed；Waiting for Phase 6 Task。
+- Commit：`docs(frontend): complete phase5 review`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。

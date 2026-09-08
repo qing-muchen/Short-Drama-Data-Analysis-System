@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import axios from 'axios'
 import * as echarts from 'echarts'
 import { Refresh } from '@element-plus/icons-vue'
 
@@ -19,10 +18,7 @@ import type {
   RankingItem,
   TrendItem,
 } from '../types/dashboard'
-
-interface ApiErrorBody {
-  message?: string
-}
+import { getApiErrorMessage } from '../utils/api-error'
 
 interface QualityCard {
   label: string
@@ -81,10 +77,7 @@ function formatScore(value: number | null): string {
 }
 
 function readableError(error: unknown): string {
-  if (axios.isAxiosError<ApiErrorBody>(error)) {
-    return error.response?.data?.message || 'Dashboard 数据加载失败，请稍后重试。'
-  }
-  return error instanceof Error ? error.message : 'Dashboard 数据加载失败，请稍后重试。'
+  return getApiErrorMessage(error, 'Dashboard 数据加载失败，请稍后重试。')
 }
 
 async function loadDashboard(): Promise<void> {
