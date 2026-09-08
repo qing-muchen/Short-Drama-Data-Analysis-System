@@ -9,10 +9,10 @@
 | 中文名称 | 短剧数据管理与分析系统 |
 | 英文名称 | Short Drama Data Management and Analysis System |
 | 软件版本 | V1.0 |
-| 文档版本 | V2.6 |
+| 文档版本 | V2.7 |
 | 当前 Phase | Phase 4 - In Progress |
-| 当前 Task | TASK-P4-05 |
-| 文档状态 | Schema DTO Baseline Established |
+| 当前 Task | TASK-P4-06 |
+| 文档状态 | Basic API Layer Established |
 | 下一阶段状态 | Waiting for Next Phase 4 Task |
 | 最近更新日期 | 2026-09-08 |
 
@@ -22,7 +22,7 @@
 - 【待后续设计】：需求方向明确，但具体技术设计尚未确定。
 - 【未来扩展】：不属于 V1.0 开发范围。
 
-本文档记录真实的软件工程设计与开发状态，不是课程设计报告正文。数据库、ORM、Repository 与 Service 基线保持冻结；TASK-P4-05 已建立 Pydantic v2 Schema DTO Baseline V0.1，完成 18 个 ORM 对象的请求/响应边界、分页与通用响应结构，但未创建 Router、API、CRUD 或业务流程。
+本文档记录真实的软件工程设计与开发状态，不是课程设计报告正文。数据库、ORM、Repository、Service 与 DTO 基线保持冻结；TASK-P4-06 已建立 `/api/v1` Router 和基础 CRUD API 调用链，但未实现认证、Dashboard、Analytics 或数据导入接口。
 
 ## 1. 项目定义
 
@@ -3088,6 +3088,80 @@ DTO 负责输入形状、基础类型/长度/枚举校验和安全输出；复�
 
 本 Task 未修改 ORM Model、Repository、Service、数据库 Schema、DDL 或 Migration；未创建 Router、API、CRUD、业务流程或分析算法。
 
+### 12.7 Router 与基础 CRUD API Baseline V0.1【TASK-P4-06】
+
+#### 12.7.1 API 版本与目录
+
+所有业务接口统一使用 `/api/v1` 前缀；`/health`、`/docs` 和 `/openapi.json` 保持系统级路径。Router 结构：
+
+```text
+routers/
+├── __init__.py
+├── dependencies.py
+├── errors.py
+├── responses.py
+├── users.py
+├── dramas.py
+├── actors.py
+├── directors.py
+├── companies.py
+├── platforms.py
+└── tags.py
+```
+
+`dependencies.py` 是请求级组合根，负责在同一 Session 上构造 Repository 和 Service；业务路由文件不导入 Repository、ORM 或 Session。`responses.py` 只执行 ORM 属性到冻结 DTO 的转换，不包含数据访问或业务规则。
+
+#### 12.7.2 基础 API 范围
+
+| 资源 | 列表 | 详情 | 创建 | 更新 | DELETE 语义 |
+| --- | --- | --- | --- | --- | --- |
+| User | GET | GET | 不开放 | 不开放 | 不开放 |
+| Drama | GET | GET | POST | PUT | 标记 INACTIVE |
+| Actor | GET | GET | POST | PUT | 标记 INACTIVE |
+| Director | GET | GET | POST | PUT | 标记 INACTIVE |
+| Company | GET | GET | POST | PUT | 标记 INACTIVE |
+| Platform | GET | GET | POST | PUT | 标记 INACTIVE |
+| Tag | GET | GET | POST | PUT | 标记 INACTIVE |
+
+列表使用 `page`、`page_size`、可选状态及名称过滤，最大 page_size 为 100；过滤、计数和分页仍在 Repository/数据库侧执行。当前共注册 32 个 `/api/v1` 业务操作。未创建登录、用户创建/密码、Dashboard、Analytics、Import、Snapshot 或关系管理 API。
+
+#### 12.7.3 Service 调用与事务
+
+- 固定调用链为 HTTP → Pydantic Schema → Service → Repository → ORM → Database。
+- TASK-P4-04 的 Service 骨架在本 Task 获得最小 CRUD 流程扩展：UserService 只读；DramaService、MasterDataService 和 PlatformService 负责查询、创建、更新与停用。
+- Router 将 Create/Update DTO 以已校验字段映射传给 Service；Router 不生成业务编号、不判断唯一性、不 commit/rollback，也不直接调用 Repository。
+- Drama 稳定内部业务编号由 DramaService 生成；Platform/Tag 名称冲突由 Service 转为 ConflictException。
+- 写入通过 `BaseService.transaction()` 统一 commit/rollback；DELETE 路径遵循冻结生命周期规则，只将对象状态更新为 INACTIVE，不调用 Repository 物理 delete。
+- 显式将必填名称/状态更新为 NULL 时由 Service 返回 ValidationException，避免泄露为底层数据库错误。
+
+#### 12.7.4 响应与异常映射
+
+- 单对象成功响应使用 `ResponseModel[EntityResponse]`；列表使用 `ResponseModel[PageResponse[EntityResponse]]`，不直接返回未约束 dict 或 ORM 对象。
+- POST 创建成功返回 201；查询、更新和停用成功返回 200。
+- NotFoundException → 404；ValidationException → 400；ConflictException → 409；PersistenceException → 500；FastAPI 请求校验错误 → 422。
+- 所有错误运行时使用 ErrorResponse，OpenAPI 同步声明 ErrorResponse；PersistenceException 不返回 SQL、连接信息或内部异常详情。
+- 本基线不实现认证。当前 `/api/v1` 接口仅用于后端分层和契约基线验证，在认证专项 Task 完成后才具备生产授权边界。
+
+#### 12.7.5 OpenAPI 与测试证据
+
+测试通过 FastAPI dependency override 注入隔离 Service，不连接或修改数据库：
+
+| 验证项 | 结果 |
+| --- | --- |
+| 7 个业务 Router import | PASS |
+| 32 个 `/api/v1` 操作和允许方法 | PASS |
+| User 仅两个只读操作 | PASS |
+| Drama GET/POST/PUT/DELETE Schema 响应 | PASS |
+| DELETE 返回 INACTIVE 且 Service 不调用物理 delete | PASS |
+| 400/404/409/422/500 安全 ErrorResponse | PASS |
+| Route Handler 无 Repository/ORM/Session 访问 | PASS |
+| OpenAPI 生成及 ErrorResponse 声明 | PASS |
+| Uvicorn 实际启动，`/docs` 与 `/openapi.json` | PASS（HTTP 200） |
+| Python compileall | PASS |
+| 完整 pytest | 39/39 PASS |
+
+本 Task 未修改 ORM Model、Repository 或数据库 Schema/DDL/Migration；未开发认证、Dashboard、Analytics、Import、Snapshot/关系 API 或前端代码。
+
 ## 13. 技术栈
 
 ### 13.1 Web 技术栈【已冻结】
@@ -3453,12 +3527,13 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 | TASK-P4-03 | Repository 数据访问层设计与基础查询能力 V0.1 | Completed |
 | TASK-P4-04 | Service 业务层架构设计 V0.1 | Completed |
 | TASK-P4-05 | Pydantic Schema 层设计与 DTO 边界冻结 V0.1 | Completed |
+| TASK-P4-06 | Router 与基础 CRUD API 实现 V0.1 | Completed |
 
 - 当前 Phase：Phase 4 In Progress。
-- 文档版本：V2.6。
-- 文档状态：Schema DTO Baseline Established。
+- 文档版本：V2.7。
+- 文档状态：Basic API Layer Established。
 - 项目状态：Waiting for Next Phase 4 Task。
-- TASK-P4-05 已建立 Pydantic v2 Schema/DTO 层，覆盖 18 个 ORM 对象的 Create/Update/Response、安全响应、互斥目标、泛型分页和 ORM 转换边界；完整 pytest 27/27 PASS。未创建 Router、API、CRUD、具体业务流程或分析算法。
+- TASK-P4-06 已建立 `/api/v1` Router、32 个基础业务操作、Service CRUD 事务入口和统一 ErrorResponse 映射；完整 pytest 39/39 PASS，Uvicorn `/docs` 与 OpenAPI 实测 HTTP 200。未实现认证、Dashboard、Analytics、Import 或 Snapshot/关系 API。
 
 ## 23. 设计决策记录
 
@@ -3767,6 +3842,18 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 7. **Decision：不可变证据对象使用空 Update DTO 并拒绝额外字段。Reason：**保持统一命名的同时明确不存在普通客户端更新能力，真正状态变更由专项 Service 命令处理。
 8. **Decision：基础格式校验在 Schema，复杂业务规则在 Service。Reason：**长度、枚举、必填和互斥输入适合边界拒绝；生命周期、权限、事务和跨对象校验不能下沉到 DTO。
 
+### ADR-034：Router 与基础 CRUD API Baseline V0.1【Phase 4 API 基线】
+
+1. **Decision：业务 API 统一使用 `/api/v1` 前缀。Reason：**为后续兼容性演进提供清晰版本边界，同时保持健康检查和文档为系统级路径。
+2. **Decision：Router 只调用 Service，Repository 只在请求组合根实例化。Reason：**依赖装配不是业务数据访问；路由处理器不得绕过业务与事务层。
+3. **Decision：成功响应统一为 ResponseModel，分页嵌套 PageResponse。Reason：**避免无约束 dict 和 ORM 对象成为公开协议，保持 OpenAPI 与运行时一致。
+4. **Decision：Service 异常统一映射为 400/404/409/500，输入结构错误为 422。Reason：**客户端能够区分错误类别，同时数据库异常和内部信息不会泄露。
+5. **Decision：Drama、Actor、Director、Company、Platform、Tag 的 DELETE API 执行逻辑停用。Reason：**这些对象有历史引用，物理删除违反 Phase 1 生命周期与 Phase 3 RESTRICT 设计。
+6. **Decision：User API 在认证专项 Task 前仅开放查询。Reason：**用户创建、密码和登录需要凭证 DTO、Hash、权限及会话安全的整体设计，不能在基础 CRUD 中提前实现。
+7. **Decision：Drama code 由 Service 生成，Platform/Tag 唯一性由 Service 预检并由数据库最终保护。Reason：**业务标识和冲突语义不属于 Router，数据库约束仍是并发下的完整性边界。
+8. **Decision：本基线不创建 Dashboard、Analytics、Import、Snapshot 或关系 API。Reason：**这些模块具有专项业务规则，必须由后续明确 Task 实现，不能机械套用通用 CRUD。
+9. **Decision：未认证的基础 API 只作为工程基线。Reason：**TASK-P4-06 明确禁止认证；在认证和授权 Task 完成前不得视为可部署的安全业务接口。
+
 ## 24. Bug 与技术债务
 
 - 当前无已确认的软件 Bug。
@@ -3781,8 +3868,9 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - 【非阻塞文档同步事项】`README.md` 仍显示 Phase 2 Completed / Waiting for Phase 3 Database Design；本 Task 未获授权修改 README，须由后续明确文档同步 Task 更新，不影响 Database Design Baseline V1.0。
 - 【非阻塞环境事项】宿主 PATH 当前未提供 `python`/`py` 命令；TASK-P4-01 使用 Codex 提供的 Python 3.12.14 创建被 Git 忽略的 `backend/.venv` 并完成验证。其他开发环境仍须自行提供 Python 3.12+。
 - 【待后续设计】Alembic 已初始化但没有业务 Revision；必须由后续明确 Task 决定其与已验证 V001～V006 SQL 基线的接管/对齐方式，不得直接 stamp 或 autogenerate。
-- 【非阻塞文档同步事项】`backend/README.md` 仍保留 TASK-P4-01“models/repositories/services 尚待后续实现”的阶段性描述；TASK-P4-02～P4-05 修改范围未包含该文件，应由后续明确文档同步 Task 更新，不影响 ORM、Repository、Service 或 Schema DTO Baseline。
+- 【非阻塞文档同步事项】`backend/README.md` 仍保留 TASK-P4-01“models/repositories/services 尚待后续实现”的阶段性描述；TASK-P4-02～P4-06 修改范围未包含该文件，应由后续明确文档同步 Task 更新，不影响 ORM、Repository、Service、Schema DTO 或 Basic API Baseline。
 - 【待后续设计】用户创建、登录、本人修改密码和管理员重置密码需要认证专项命令 DTO；该 DTO 可接受一次性明文密码输入，但必须与 ORM User DTO 分离、不得回显，也不得暴露 `password_hash`。
+- 【安全前置事项】TASK-P4-06 按任务禁止事项未实现认证与授权，当前基础 API 仅可用于工程联调和隔离测试；在认证专项 Task 完成前不得部署为对外可访问的业务服务。
 - 所有标记为【待后续设计】的事项属于计划内设计工作，不得误报为已实现功能或当前 Bug。
 
 ## 25. 最终报告 / 软著素材索引
@@ -3822,6 +3910,7 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 | Repository Layer Baseline V0.1 | 已建立；BaseRepository、Page、8 个实体 Repository，pytest 11/11 PASS |
 | Service Layer Baseline V0.1 | 已建立；BaseService、5类异常、8个业务Service职责骨架，pytest 19/19 PASS |
 | Pydantic Schema DTO Baseline V0.1 | 已建立；18 个 ORM 对象的 Create/Update/Response、通用响应与安全边界，pytest 27/27 PASS |
+| Basic API Layer V0.1 | 已建立；`/api/v1` 下 32 个基础业务操作、统一响应/异常映射，pytest 39/39 PASS |
 | 数据字典 | 已纳入 MySQL Schema Design V1 字段规格，并由 DDL/Migration V1 实现 |
 | 3NF Review | 设计级 PASS；18 表物理实现一致性验证 PASS |
 | 主键 / 外键 / 完整性设计 | 已建立 V1 基线；18/18 主键、39/39 外键及约束验证 PASS |
@@ -4171,3 +4260,17 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - GitHub remote：以本 Task 实际检查结果为准。
 - 当前状态：Completed；Phase 4 In Progress；Waiting for Next Phase 4 Task。
 - Commit：`feat(backend): add pydantic schema layer`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
+
+### TASK-P4-06
+
+- 日期：2026-09-08。
+- 任务：Router 与基础 CRUD API 实现 V0.1。
+- 完成内容：建立 `/api/v1` 聚合 Router、User/Drama/Actor/Director/Company/Platform/Tag 七个资源 Router、请求级依赖组合、响应转换和统一异常处理；完成 32 个基础业务操作。
+- 调用链：HTTP 参数和 DTO 由 Router 接收，Router 只调用 Service；Repository 仅在组合根中按同一 Session 构造；Service 负责查询、唯一性预检、Drama code 生成、写事务和停用规则。
+- API 范围：Drama 与五类主数据支持列表、详情、创建、更新和逻辑停用；User 只支持列表和详情。成功响应使用 ResponseModel/PageResponse，错误使用 ErrorResponse；未开放物理删除。
+- 异常映射：Validation 400、Not Found 404、Conflict 409、Request Validation 422、脱敏 Persistence 500；OpenAPI 明确声明统一错误模型。
+- 实际验证：Python compileall PASS；OpenAPI 15 个路径、32 个业务操作和允许方法 PASS；Dependency Override 下 Drama CRUD、响应 Schema、400/404/409/422/500 与分层检查 PASS；完整 pytest 39/39 PASS；Uvicorn 实际启动且 `/docs`、`/openapi.json` HTTP 200。
+- 未执行内容：未修改 ORM、Repository 或数据库 Schema/DDL/Migration；未开发认证、用户写入/密码、Dashboard、Analytics、Import、Snapshot/关系 API 或前端代码；未连接或修改数据库。
+- GitHub remote：以本 Task 实际检查结果为准。
+- 当前状态：Completed；Phase 4 In Progress；Waiting for Next Phase 4 Task。
+- Commit：`feat(backend): add basic crud api layer`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。

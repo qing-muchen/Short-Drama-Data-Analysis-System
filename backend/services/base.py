@@ -1,14 +1,16 @@
 """Service dependency and transaction boundary primitives."""
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from typing import Any
+from typing import Any, TypeVar
 
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from repositories.base import BaseRepository
 from services.exceptions import PersistenceException
+
+ResultT = TypeVar("ResultT")
 
 
 class RepositorySessionMismatchError(RuntimeError):
@@ -43,6 +45,21 @@ class BaseService:
         except Exception:
             self._session.rollback()
             raise
+
+    def read(
+        self,
+        operation: Callable[..., ResultT],
+        /,
+        *args: Any,
+        **kwargs: Any,
+    ) -> ResultT:
+        """Run one Repository read and hide persistence implementation errors."""
+
+        try:
+            return operation(*args, **kwargs)
+        except SQLAlchemyError as error:
+            self._session.rollback()
+            raise PersistenceException() from error
 
     def _assert_shared_session(
         self,
