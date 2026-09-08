@@ -1,6 +1,7 @@
 """Public Pydantic DTO surface for the backend application."""
 
 from schemas.common import ErrorResponse, PageResponse, ResponseModel, SchemaModel
+from schemas.auth import CurrentUserResponse, LoginRequest, TokenResponse
 from schemas.drama import (
     DramaActorCreate,
     DramaActorResponse,
@@ -75,6 +76,7 @@ __all__ = [
     "CompanyCreate",
     "CompanyResponse",
     "CompanyUpdate",
+    "CurrentUserResponse",
     "DataQualityIssueCreate",
     "DataQualityIssueResponse",
     "DataQualityIssueUpdate",
@@ -112,6 +114,7 @@ __all__ = [
     "ImportJobCreate",
     "ImportJobResponse",
     "ImportJobUpdate",
+    "LoginRequest",
     "OperationLogCreate",
     "OperationLogResponse",
     "OperationLogUpdate",
@@ -124,6 +127,7 @@ __all__ = [
     "TagCreate",
     "TagResponse",
     "TagUpdate",
+    "TokenResponse",
     "UserCreate",
     "UserResponse",
     "UserUpdate",

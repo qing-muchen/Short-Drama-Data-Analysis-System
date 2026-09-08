@@ -2,8 +2,9 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Path, Query, status
+from fastapi import APIRouter, Depends, Path, Query, status
 
+from auth.dependencies import require_admin, require_user
 from routers.dependencies import PlatformServiceDependency
 from routers.errors import ERROR_RESPONSES
 from routers.responses import item_response, page_response
@@ -15,7 +16,12 @@ from schemas.platform import (
     PlatformUpdate,
 )
 
-router = APIRouter(prefix="/platforms", tags=["platforms"], responses=ERROR_RESPONSES)
+router = APIRouter(
+    prefix="/platforms",
+    tags=["platforms"],
+    responses=ERROR_RESPONSES,
+    dependencies=[Depends(require_user)],
+)
 
 
 @router.get("", response_model=ResponseModel[PageResponse[PlatformResponse]])
@@ -47,6 +53,7 @@ def get_platform(
     "",
     response_model=ResponseModel[PlatformResponse],
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_admin)],
 )
 def create_platform(
     payload: PlatformCreate,
@@ -58,7 +65,11 @@ def create_platform(
     )
 
 
-@router.put("/{platform_id}", response_model=ResponseModel[PlatformResponse])
+@router.put(
+    "/{platform_id}",
+    response_model=ResponseModel[PlatformResponse],
+    dependencies=[Depends(require_admin)],
+)
 def update_platform(
     payload: PlatformUpdate,
     service: PlatformServiceDependency,
@@ -73,7 +84,11 @@ def update_platform(
     )
 
 
-@router.delete("/{platform_id}", response_model=ResponseModel[PlatformResponse])
+@router.delete(
+    "/{platform_id}",
+    response_model=ResponseModel[PlatformResponse],
+    dependencies=[Depends(require_admin)],
+)
 def delete_platform(
     service: PlatformServiceDependency,
     platform_id: Annotated[int, Path(ge=1)],

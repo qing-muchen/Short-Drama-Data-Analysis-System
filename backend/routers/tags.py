@@ -2,15 +2,21 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Path, Query, status
+from fastapi import APIRouter, Depends, Path, Query, status
 
+from auth.dependencies import require_admin, require_user
 from routers.dependencies import MasterDataServiceDependency
 from routers.errors import ERROR_RESPONSES
 from routers.responses import item_response, page_response
 from schemas.common import PageResponse, ResponseModel
 from schemas.master_data import EntityStatus, TagCreate, TagResponse, TagUpdate
 
-router = APIRouter(prefix="/tags", tags=["tags"], responses=ERROR_RESPONSES)
+router = APIRouter(
+    prefix="/tags",
+    tags=["tags"],
+    responses=ERROR_RESPONSES,
+    dependencies=[Depends(require_user)],
+)
 
 
 @router.get("", response_model=ResponseModel[PageResponse[TagResponse]])
@@ -42,6 +48,7 @@ def get_tag(
     "",
     response_model=ResponseModel[TagResponse],
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_admin)],
 )
 def create_tag(
     payload: TagCreate,
@@ -53,7 +60,11 @@ def create_tag(
     )
 
 
-@router.put("/{tag_id}", response_model=ResponseModel[TagResponse])
+@router.put(
+    "/{tag_id}",
+    response_model=ResponseModel[TagResponse],
+    dependencies=[Depends(require_admin)],
+)
 def update_tag(
     payload: TagUpdate,
     service: MasterDataServiceDependency,
@@ -65,7 +76,11 @@ def update_tag(
     )
 
 
-@router.delete("/{tag_id}", response_model=ResponseModel[TagResponse])
+@router.delete(
+    "/{tag_id}",
+    response_model=ResponseModel[TagResponse],
+    dependencies=[Depends(require_admin)],
+)
 def delete_tag(
     service: MasterDataServiceDependency,
     tag_id: Annotated[int, Path(ge=1)],

@@ -2,15 +2,21 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Path, Query
+from fastapi import APIRouter, Depends, Path, Query
 
+from auth.dependencies import require_admin
 from routers.dependencies import UserServiceDependency
 from routers.errors import ERROR_RESPONSES
 from routers.responses import item_response, page_response
 from schemas.common import PageResponse, ResponseModel
 from schemas.user import UserResponse, UserStatus
 
-router = APIRouter(prefix="/users", tags=["users"], responses=ERROR_RESPONSES)
+router = APIRouter(
+    prefix="/users",
+    tags=["users"],
+    responses=ERROR_RESPONSES,
+    dependencies=[Depends(require_admin)],
+)
 
 
 @router.get("", response_model=ResponseModel[PageResponse[UserResponse]])

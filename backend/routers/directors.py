@@ -2,8 +2,9 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Path, Query, status
+from fastapi import APIRouter, Depends, Path, Query, status
 
+from auth.dependencies import require_admin, require_user
 from routers.dependencies import MasterDataServiceDependency
 from routers.errors import ERROR_RESPONSES
 from routers.responses import item_response, page_response
@@ -15,7 +16,12 @@ from schemas.master_data import (
     EntityStatus,
 )
 
-router = APIRouter(prefix="/directors", tags=["directors"], responses=ERROR_RESPONSES)
+router = APIRouter(
+    prefix="/directors",
+    tags=["directors"],
+    responses=ERROR_RESPONSES,
+    dependencies=[Depends(require_user)],
+)
 
 
 @router.get("", response_model=ResponseModel[PageResponse[DirectorResponse]])
@@ -47,6 +53,7 @@ def get_director(
     "",
     response_model=ResponseModel[DirectorResponse],
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_admin)],
 )
 def create_director(
     payload: DirectorCreate,
@@ -58,7 +65,11 @@ def create_director(
     )
 
 
-@router.put("/{director_id}", response_model=ResponseModel[DirectorResponse])
+@router.put(
+    "/{director_id}",
+    response_model=ResponseModel[DirectorResponse],
+    dependencies=[Depends(require_admin)],
+)
 def update_director(
     payload: DirectorUpdate,
     service: MasterDataServiceDependency,
@@ -73,7 +84,11 @@ def update_director(
     )
 
 
-@router.delete("/{director_id}", response_model=ResponseModel[DirectorResponse])
+@router.delete(
+    "/{director_id}",
+    response_model=ResponseModel[DirectorResponse],
+    dependencies=[Depends(require_admin)],
+)
 def delete_director(
     service: MasterDataServiceDependency,
     director_id: Annotated[int, Path(ge=1)],

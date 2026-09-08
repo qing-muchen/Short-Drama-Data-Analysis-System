@@ -2,15 +2,21 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Path, Query, status
+from fastapi import APIRouter, Depends, Path, Query, status
 
+from auth.dependencies import require_admin, require_user
 from routers.dependencies import MasterDataServiceDependency
 from routers.errors import ERROR_RESPONSES
 from routers.responses import item_response, page_response
 from schemas.common import PageResponse, ResponseModel
 from schemas.master_data import CompanyCreate, CompanyResponse, CompanyUpdate, EntityStatus
 
-router = APIRouter(prefix="/companies", tags=["companies"], responses=ERROR_RESPONSES)
+router = APIRouter(
+    prefix="/companies",
+    tags=["companies"],
+    responses=ERROR_RESPONSES,
+    dependencies=[Depends(require_user)],
+)
 
 
 @router.get("", response_model=ResponseModel[PageResponse[CompanyResponse]])
@@ -42,6 +48,7 @@ def get_company(
     "",
     response_model=ResponseModel[CompanyResponse],
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_admin)],
 )
 def create_company(
     payload: CompanyCreate,
@@ -53,7 +60,11 @@ def create_company(
     )
 
 
-@router.put("/{company_id}", response_model=ResponseModel[CompanyResponse])
+@router.put(
+    "/{company_id}",
+    response_model=ResponseModel[CompanyResponse],
+    dependencies=[Depends(require_admin)],
+)
 def update_company(
     payload: CompanyUpdate,
     service: MasterDataServiceDependency,
@@ -68,7 +79,11 @@ def update_company(
     )
 
 
-@router.delete("/{company_id}", response_model=ResponseModel[CompanyResponse])
+@router.delete(
+    "/{company_id}",
+    response_model=ResponseModel[CompanyResponse],
+    dependencies=[Depends(require_admin)],
+)
 def delete_company(
     service: MasterDataServiceDependency,
     company_id: Annotated[int, Path(ge=1)],

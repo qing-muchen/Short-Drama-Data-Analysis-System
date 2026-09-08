@@ -2,9 +2,10 @@
 
 from fastapi import APIRouter
 
-from routers import actors, companies, directors, dramas, platforms, tags, users
+from routers import auth, actors, companies, directors, dramas, platforms, tags, users
 
 api_v1_router = APIRouter(prefix="/api/v1")
+api_v1_router.include_router(auth.router)
 api_v1_router.include_router(users.router)
 api_v1_router.include_router(dramas.router)
 api_v1_router.include_router(actors.router)

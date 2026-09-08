@@ -8,6 +8,7 @@ from typing import Any
 
 from httpx import ASGITransport, AsyncClient
 
+from auth.dependencies import get_current_user
 from main import app
 from routers.dependencies import get_drama_service
 from services.exceptions import ConflictException, NotFoundException, PersistenceException
@@ -27,6 +28,10 @@ def _drama(*, status: str = "DRAFT") -> SimpleNamespace:
         created_at=now,
         updated_at=now,
     )
+
+
+def _identity(role: str = "ADMINISTRATOR") -> SimpleNamespace:
+    return SimpleNamespace(role_code=role, status="ACTIVE")
 
 
 class FakeDramaService:
@@ -81,10 +86,12 @@ def test_openapi_registers_only_authorized_basic_api_paths() -> None:
 
     assert set(paths["/api/v1/users"]) == {"get"}
     assert set(paths["/api/v1/users/{user_id}"]) == {"get"}
+    assert set(paths["/api/v1/auth/login"]) == {"post"}
+    assert set(paths["/api/v1/auth/me"]) == {"get"}
     assert not any(
         forbidden in path
         for path in paths
-        for forbidden in ("auth", "dashboard", "analytics", "import")
+        for forbidden in ("dashboard", "analytics", "import")
     )
     drama_errors = paths["/api/v1/dramas/{drama_id}"]["get"]["responses"]
     assert drama_errors["404"]["content"]["application/json"]["schema"]["$ref"].endswith(
@@ -104,6 +111,7 @@ def test_docs_and_openapi_are_available_without_database_access() -> None:
 
 def test_drama_crud_uses_schema_envelopes_with_service_override() -> None:
     app.dependency_overrides[get_drama_service] = FakeDramaService
+    app.dependency_overrides[get_current_user] = _identity
     try:
         list_status, list_body = _request("GET", "/api/v1/dramas?page=1&page_size=20")
         detail_status, detail_body = _request("GET", "/api/v1/dramas/1")
@@ -140,6 +148,7 @@ def test_service_exceptions_map_to_safe_error_response() -> None:
             raise ConflictException("Drama conflicts with existing data")
 
     app.dependency_overrides[get_drama_service] = MissingDramaService
+    app.dependency_overrides[get_current_user] = _identity
     try:
         missing_status, missing_body = _request("GET", "/api/v1/dramas/9")
         conflict_status, conflict_body = _request(
@@ -167,6 +176,7 @@ def test_persistence_exception_maps_to_safe_500_response() -> None:
             raise PersistenceException()
 
     app.dependency_overrides[get_drama_service] = FailedReadService
+    app.dependency_overrides[get_current_user] = _identity
     try:
         status_code, body = _request("GET", "/api/v1/dramas/1")
     finally:
@@ -181,7 +191,11 @@ def test_persistence_exception_maps_to_safe_500_response() -> None:
 
 
 def test_request_validation_uses_error_response() -> None:
-    status_code, body = _request("GET", "/api/v1/dramas?page=0")
+    app.dependency_overrides[get_current_user] = _identity
+    try:
+        status_code, body = _request("GET", "/api/v1/dramas?page=0")
+    finally:
+        app.dependency_overrides.clear()
 
     assert status_code == 422
     assert body["code"] == "REQUEST_VALIDATION_ERROR"
@@ -191,6 +205,7 @@ def test_request_validation_uses_error_response() -> None:
 def test_route_handlers_do_not_access_repository_or_orm_layers() -> None:
     router_path = Path(__file__).parents[1] / "routers"
     route_files = (
+        "auth.py",
         "users.py",
         "dramas.py",
         "actors.py",

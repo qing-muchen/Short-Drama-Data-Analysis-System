@@ -7,6 +7,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from auth.exceptions import AuthenticationException, AuthorizationException
 from schemas.common import ErrorResponse
 from services.exceptions import (
     BusinessException,
@@ -21,11 +22,17 @@ ERROR_RESPONSES: dict[int, dict[str, Any]] = {
     404: {"model": ErrorResponse, "description": "Resource not found"},
     409: {"model": ErrorResponse, "description": "Business conflict"},
     422: {"model": ErrorResponse, "description": "Request validation error"},
+    401: {"model": ErrorResponse, "description": "Authentication required"},
+    403: {"model": ErrorResponse, "description": "Permission denied"},
     500: {"model": ErrorResponse, "description": "Safe persistence error"},
 }
 
 
 def _status_for(error: BusinessException) -> int:
+    if isinstance(error, AuthenticationException):
+        return 401
+    if isinstance(error, AuthorizationException):
+        return 403
     if isinstance(error, NotFoundException):
         return 404
     if isinstance(error, ValidationException):
@@ -46,9 +53,15 @@ async def handle_business_exception(
         message=error.message,
         details=error.details or None,
     )
+    headers = (
+        {"WWW-Authenticate": "Bearer"}
+        if isinstance(error, AuthenticationException)
+        else None
+    )
     return JSONResponse(
         status_code=_status_for(error),
         content=jsonable_encoder(payload),
+        headers=headers,
     )
 
 

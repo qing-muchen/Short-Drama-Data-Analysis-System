@@ -9,10 +9,10 @@
 | 中文名称 | 短剧数据管理与分析系统 |
 | 英文名称 | Short Drama Data Management and Analysis System |
 | 软件版本 | V1.0 |
-| 文档版本 | V2.7 |
+| 文档版本 | V2.8 |
 | 当前 Phase | Phase 4 - In Progress |
-| 当前 Task | TASK-P4-06 |
-| 文档状态 | Basic API Layer Established |
+| 当前 Task | TASK-P4-07 |
+| 文档状态 | Authentication Authorization Baseline Established |
 | 下一阶段状态 | Waiting for Next Phase 4 Task |
 | 最近更新日期 | 2026-09-08 |
 
@@ -22,7 +22,7 @@
 - 【待后续设计】：需求方向明确，但具体技术设计尚未确定。
 - 【未来扩展】：不属于 V1.0 开发范围。
 
-本文档记录真实的软件工程设计与开发状态，不是课程设计报告正文。数据库、ORM、Repository、Service 与 DTO 基线保持冻结；TASK-P4-06 已建立 `/api/v1` Router 和基础 CRUD API 调用链，但未实现认证、Dashboard、Analytics 或数据导入接口。
+本文档记录真实的软件工程设计与开发状态，不是课程设计报告正文。数据库与后端分层基线保持冻结；TASK-P4-07 已建立 bcrypt 密码处理、JWT Access Token、Current User 和 ADMINISTRATOR/USER 后端授权基线，但未实现注册、第三方登录、Dashboard 或 Analytics。
 
 ## 1. 项目定义
 
@@ -2781,9 +2781,9 @@ Router 不得直接执行 SQL、持有事务或实现跨行业务规则。Servic
 #### 12.2.3 配置与 Secret 管理
 
 - `backend/config/settings.py` 使用 Pydantic Settings，从系统环境变量及被 Git 忽略的 `backend/.env` 读取配置。
-- 当前配置键为 `APP_NAME`、`APP_ENV`、`DATABASE_URL`、`SECRET_KEY_PLACEHOLDER`。
+- 当前配置键为 `APP_NAME`、`APP_ENV`、`DATABASE_URL`、必填 `SECRET_KEY` 和 `TOKEN_EXPIRE_MINUTES`；Secret 至少 32 字符且不提供源码默认值。
 - `backend/.env.example` 只包含明确占位值，不含真实数据库密码、Token 或 Secret；真实 `.env` 不得提交 Git。
-- development、test、production 是当前允许的环境名称；具体生产配置、认证 Secret 和会话安全留给后续明确 Task。
+- development、test、production 是当前允许的环境名称；JWT Secret 与过期分钟数均可由环境覆盖，生产环境必须自行提供强随机 Secret。
 
 #### 12.2.4 SQLAlchemy 基础
 
@@ -3162,6 +3162,97 @@ routers/
 
 本 Task 未修改 ORM Model、Repository 或数据库 Schema/DDL/Migration；未开发认证、Dashboard、Analytics、Import、Snapshot/关系 API 或前端代码。
 
+### 12.8 Authentication / Authorization Baseline V0.1【TASK-P4-07】
+
+#### 12.8.1 认证目录与职责
+
+```text
+auth/
+├── __init__.py
+├── security.py
+├── jwt.py
+├── dependencies.py
+├── password.py
+└── exceptions.py
+```
+
+- `password.py` 只负责 bcrypt Hash 与验证；`jwt.py` 只负责 Access Token 签发和严格解析。
+- `AuthService` 通过 UserRepository 查询用户并编排登录、ACTIVE 校验和 Token 身份重新加载；Router 不直接处理 Hash 或 JWT。
+- `dependencies.py` 负责 HTTP Bearer 提取、Current User 解析以及 ADMINISTRATOR/USER 权限依赖。
+- 本基线使用 HTTP Bearer 承载 JWT，不实现 OAuth 流程、第三方身份提供商或公开注册。
+
+#### 12.8.2 密码与Secret安全
+
+- 密码使用 bcrypt 单向 Hash；数据库继续只保存 `password_hash`，明文密码只在 LoginRequest → AuthService → verify 的单次调用链中短暂存在。
+- bcrypt 输入必须非空且不超过 72 bytes；验证失败、Hash格式异常和超长输入统一返回失败，不回显密码或 Hash。
+- `LoginRequest.password` 使用 Pydantic SecretStr，任何 User、CurrentUser、Token 和 Error Response 均不包含 `password_hash`。
+- 源码不提供默认 Secret。`SECRET_KEY` 必须由环境变量或未提交的 `backend/.env` 提供且至少 32 字符；`.env.example` 仅提供占位说明。
+- `TOKEN_EXPIRE_MINUTES` 默认 30，可通过环境变量在 1～1440 分钟内配置。密码、Hash、Token 和 Secret 禁止进入技术日志或 OperationLog。
+
+#### 12.8.3 JWT Access Token V1
+
+- 签名算法固定为 HS256；解码端只接受该算法，防止客户端通过 Header 选择算法。
+- 必须包含 `sub`、`user_id`、`username`、`role`、`iat` 和 `exp`；`sub` 固定为 user_id 的字符串形式并与 `user_id` 相互校验。
+- Token 不包含密码、password_hash、数据库凭证或其他 Secret；Token 只用于身份声明，不存储业务数据。
+- 签名错误、过期、缺失/非法 Claim、subject 不一致均转换为同一个 AuthenticationException，不泄露解析细节。
+- Current User 每次从数据库重新读取，并以数据库中的最新状态和角色授权；Token 中 role 用于可追溯身份声明，不覆盖数据库当前权限。
+
+#### 12.8.4 登录与Current User流程
+
+```text
+LoginRequest(username + password)
+→ AuthService / UserRepository
+→ bcrypt verify
+→ ACTIVE check
+→ JWT Access Token
+→ HTTP Authorization: Bearer <token>
+→ signature / exp / claims validation
+→ reload User by user_id
+→ ACTIVE check
+→ Current User
+```
+
+- `POST /api/v1/auth/login` 是唯一公开认证入口；成功返回 ResponseModel[TokenResponse]，包含 access_token、bearer 类型和过期秒数。
+- `GET /api/v1/auth/me` 返回 ResponseModel[CurrentUserResponse]；响应不含 password_hash。
+- 用户不存在、密码错误和 INACTIVE 均使用相同认证失败消息；未提供或无效 Bearer Token 返回 401 并附 `WWW-Authenticate: Bearer`。
+- 本 Task 不实现 Refresh Token、公开注册、修改密码或管理员重置密码；旧 Token 在密码变更后的主动失效机制仍属于认证后续专项设计。
+
+#### 12.8.5 权限模型与API保护
+
+| API能力 | 未认证 | USER | ADMINISTRATOR |
+| --- | --- | --- | --- |
+| 登录 | ✓ | ✓ | ✓ |
+| 查看本人信息 | × | ✓ | ✓ |
+| Drama/Actor/Director/Company/Platform/Tag 查询 | × | ✓ | ✓ |
+| 上述资源创建、更新、停用 | × | × | ✓ |
+| User 列表与详情 | × | × | ✓ |
+
+- `require_user` 允许 USER 与 ADMINISTRATOR；`require_admin` 只允许 ADMINISTRATOR。
+- 现有全部业务查询 Router 使用 Current User 保护；写路由额外要求 Admin；User Router 整体仅 Admin 可访问。
+- 认证失败映射 401，权限不足映射 403，均使用安全 ErrorResponse。前端隐藏菜单仍不构成权限边界。
+- 角色来自数据库中当前 User；V1.0 不创建动态角色、不实现复杂 RBAC。
+
+#### 12.8.6 验证证据
+
+测试使用环境变量、Mock Repository、Dependency Override 和内存 ASGI 调用，不连接或修改数据库：
+
+| 验证项 | 结果 |
+| --- | --- |
+| bcrypt Hash、正确/错误密码验证及长度边界 | PASS |
+| JWT签名、必需Claims、错误密钥与过期拒绝 | PASS |
+| SECRET_KEY无源码默认值且SecretStr不回显 | PASS |
+| ACTIVE登录与INACTIVE/未知用户统一拒绝 | PASS |
+| Current User重新读取数据库身份与当前角色 | PASS |
+| 缺失Token 401及Bearer Header | PASS |
+| USER查询允许、写入与User管理拒绝 | PASS |
+| ADMINISTRATOR权限 | PASS |
+| Login/CurrentUser响应无password_hash | PASS |
+| OpenAPI HTTP Bearer且无注册/OAuth路径 | PASS |
+| Python compileall / pip check | PASS |
+| 完整 pytest | 53/53 PASS |
+
+本 Task 未修改数据库 Schema、ORM Model、业务表、DDL 或 Migration；未实现注册、第三方登录、OAuth、Dashboard、Analytics、Import 或前端功能。
+
 ## 13. 技术栈
 
 ### 13.1 Web 技术栈【已冻结】
@@ -3528,12 +3619,13 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 | TASK-P4-04 | Service 业务层架构设计 V0.1 | Completed |
 | TASK-P4-05 | Pydantic Schema 层设计与 DTO 边界冻结 V0.1 | Completed |
 | TASK-P4-06 | Router 与基础 CRUD API 实现 V0.1 | Completed |
+| TASK-P4-07 | 用户认证与权限体系设计 V0.1 | Completed |
 
 - 当前 Phase：Phase 4 In Progress。
-- 文档版本：V2.7。
-- 文档状态：Basic API Layer Established。
+- 文档版本：V2.8。
+- 文档状态：Authentication Authorization Baseline Established。
 - 项目状态：Waiting for Next Phase 4 Task。
-- TASK-P4-06 已建立 `/api/v1` Router、32 个基础业务操作、Service CRUD 事务入口和统一 ErrorResponse 映射；完整 pytest 39/39 PASS，Uvicorn `/docs` 与 OpenAPI 实测 HTTP 200。未实现认证、Dashboard、Analytics、Import 或 Snapshot/关系 API。
+- TASK-P4-07 已建立 bcrypt、JWT Access Token、Current User、ADMINISTRATOR/USER后端授权和现有Router保护；完整 pytest 53/53 PASS。未实现注册、第三方登录、OAuth、Dashboard、Analytics 或 Import。
 
 ## 23. 设计决策记录
 
@@ -3854,6 +3946,19 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 8. **Decision：本基线不创建 Dashboard、Analytics、Import、Snapshot 或关系 API。Reason：**这些模块具有专项业务规则，必须由后续明确 Task 实现，不能机械套用通用 CRUD。
 9. **Decision：未认证的基础 API 只作为工程基线。Reason：**TASK-P4-06 明确禁止认证；在认证和授权 Task 完成前不得视为可部署的安全业务接口。
 
+### ADR-035：Authentication / Authorization Baseline V0.1【Phase 4 安全基线】
+
+1. **Decision：密码使用 bcrypt，数据库仅保存 password_hash。Reason：**密码必须采用成熟单向慢Hash，明文不允许持久化、记录或响应。
+2. **Decision：V1只签发JWT Access Token，默认30分钟。Reason：**满足当前无状态认证需求并控制凭证暴露窗口；Refresh Token不在本Task范围。
+3. **Decision：JWT使用HS256且解码算法固定。Reason：**单体V1部署使用环境Secret即可满足签名需求，固定算法防止客户端选择不安全算法。
+4. **Decision：SECRET_KEY为至少32字符的必填环境配置。Reason：**源码默认Secret会使部署共享已知凭证并违反配置安全基线。
+5. **Decision：Current User每次重新查询数据库。Reason：**禁用与角色变化需要即时影响权限，不能仅信任Token中的旧状态或角色。
+6. **Decision：用户名不存在、密码错误、INACTIVE及Token解析失败统一认证异常。Reason：**避免通过错误消息枚举账号或推断凭证状态。
+7. **Decision：业务查询使用require_user，写操作和User管理使用require_admin。Reason：**忠实执行Phase 1管理员写、普通用户只读权限矩阵。
+8. **Decision：使用HTTP Bearer而非OAuth2流程。Reason：**当前是本系统自有JSON登录与JWT校验，不接入OAuth授权服务器或第三方登录。
+9. **Decision：Token中的role不直接作为最终授权事实。Reason：**权限判断必须使用数据库重新加载后的当前User角色，防止角色调整等待旧Token过期。
+10. **Decision：本Task不实现注册、第三方登录、密码修改/重置和会话撤销。Reason：**注册/OAuth明确排除；密码命令与旧Token失效需要后续明确安全Task和可验证策略。
+
 ## 24. Bug 与技术债务
 
 - 当前无已确认的软件 Bug。
@@ -3868,9 +3973,10 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - 【非阻塞文档同步事项】`README.md` 仍显示 Phase 2 Completed / Waiting for Phase 3 Database Design；本 Task 未获授权修改 README，须由后续明确文档同步 Task 更新，不影响 Database Design Baseline V1.0。
 - 【非阻塞环境事项】宿主 PATH 当前未提供 `python`/`py` 命令；TASK-P4-01 使用 Codex 提供的 Python 3.12.14 创建被 Git 忽略的 `backend/.venv` 并完成验证。其他开发环境仍须自行提供 Python 3.12+。
 - 【待后续设计】Alembic 已初始化但没有业务 Revision；必须由后续明确 Task 决定其与已验证 V001～V006 SQL 基线的接管/对齐方式，不得直接 stamp 或 autogenerate。
-- 【非阻塞文档同步事项】`backend/README.md` 仍保留 TASK-P4-01“models/repositories/services 尚待后续实现”的阶段性描述；TASK-P4-02～P4-06 修改范围未包含该文件，应由后续明确文档同步 Task 更新，不影响 ORM、Repository、Service、Schema DTO 或 Basic API Baseline。
-- 【待后续设计】用户创建、登录、本人修改密码和管理员重置密码需要认证专项命令 DTO；该 DTO 可接受一次性明文密码输入，但必须与 ORM User DTO 分离、不得回显，也不得暴露 `password_hash`。
-- 【安全前置事项】TASK-P4-06 按任务禁止事项未实现认证与授权，当前基础 API 仅可用于工程联调和隔离测试；在认证专项 Task 完成前不得部署为对外可访问的业务服务。
+- 【非阻塞文档同步事项】`backend/README.md` 仍保留 TASK-P4-01“models/repositories/services 尚待后续实现”的阶段性描述；TASK-P4-02～P4-07 修改范围未包含该文件，应由后续明确文档同步 Task 更新，不影响 ORM、Repository、Service、Schema DTO、Basic API 或 Auth Baseline。
+- 【待后续设计】登录 DTO 已由 TASK-P4-07 完成；管理员创建用户、本人修改密码和管理员重置密码仍需要专项命令 DTO 与Service流程，且不得回显明文或 `password_hash`。
+- 【已关闭】TASK-P4-06 基础 API 未认证的安全前置事项已由 TASK-P4-07 关闭；现有业务查询要求 ACTIVE Current User，写操作与 User 查询要求 ADMINISTRATOR。
+- 【待后续设计】密码修改/重置后的旧 Access Token 主动失效机制尚未实现；当前 Token 仅在过期、签名/Claim无效、用户禁用或身份不匹配时失效，不得宣称已具备完整会话撤销能力。
 - 所有标记为【待后续设计】的事项属于计划内设计工作，不得误报为已实现功能或当前 Bug。
 
 ## 25. 最终报告 / 软著素材索引
@@ -3911,6 +4017,7 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 | Service Layer Baseline V0.1 | 已建立；BaseService、5类异常、8个业务Service职责骨架，pytest 19/19 PASS |
 | Pydantic Schema DTO Baseline V0.1 | 已建立；18 个 ORM 对象的 Create/Update/Response、通用响应与安全边界，pytest 27/27 PASS |
 | Basic API Layer V0.1 | 已建立；`/api/v1` 下 32 个基础业务操作、统一响应/异常映射，pytest 39/39 PASS |
+| Authentication / Authorization Baseline V0.1 | 已建立；bcrypt、JWT、Current User与ADMINISTRATOR/USER授权，pytest 53/53 PASS |
 | 数据字典 | 已纳入 MySQL Schema Design V1 字段规格，并由 DDL/Migration V1 实现 |
 | 3NF Review | 设计级 PASS；18 表物理实现一致性验证 PASS |
 | 主键 / 外键 / 完整性设计 | 已建立 V1 基线；18/18 主键、39/39 外键及约束验证 PASS |
@@ -4274,3 +4381,18 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - GitHub remote：以本 Task 实际检查结果为准。
 - 当前状态：Completed；Phase 4 In Progress；Waiting for Next Phase 4 Task。
 - Commit：`feat(backend): add basic crud api layer`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
+
+### TASK-P4-07
+
+- 日期：2026-09-08。
+- 任务：用户认证与权限体系设计 V0.1。
+- 完成内容：建立 `backend/auth/` 六个认证模块、AuthService、LoginRequest/TokenResponse/CurrentUserResponse、登录与当前用户接口；引入 bcrypt 与 PyJWT，并将Secret改为必填环境配置。
+- 密码安全：bcrypt只处理单向Hash与验证，72-byte边界明确；LoginRequest使用SecretStr；任何User、Token、CurrentUser和Error响应均不含password_hash，源码与日志不记录密码、Token或Secret。
+- JWT：HTTP Bearer承载HS256 Access Token，包含sub/user_id/username/role/iat/exp；默认30分钟且环境可配置；解析固定算法并验证签名、过期、必需Claims及subject一致性。
+- Current User与授权：每次通过UserRepository重新读取ACTIVE用户，数据库当前role为授权事实；require_user允许两类角色，require_admin仅允许ADMINISTRATOR；全部现有业务查询受保护，写路由与User查询仅Admin。
+- 异常：未知用户、错误密码、INACTIVE与无效Token统一认证失败；401携带Bearer Header，权限不足为403；均返回ErrorResponse且不泄露内部解析信息。
+- 实际验证：Python compileall、pip check PASS；bcrypt/JWT/过期/Secret/ACTIVE-INACTIVE/Current User/ADMIN-USER/API保护/无敏感响应/OpenAPI HTTP Bearer测试PASS；完整pytest 53/53 PASS；未连接或修改数据库。
+- 未执行内容：未修改数据库Schema、ORM、业务表、DDL或Migration；未实现注册、第三方登录、OAuth、Refresh Token、密码修改/重置、Dashboard、Analytics、Import或前端功能。
+- GitHub remote：以本 Task 实际检查结果为准。
+- 当前状态：Completed；Phase 4 In Progress；Waiting for Next Phase 4 Task。
+- Commit：`feat(backend): add authentication and authorization baseline`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。

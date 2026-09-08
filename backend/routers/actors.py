@@ -2,15 +2,21 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Path, Query, status
+from fastapi import APIRouter, Depends, Path, Query, status
 
+from auth.dependencies import require_admin, require_user
 from routers.dependencies import MasterDataServiceDependency
 from routers.errors import ERROR_RESPONSES
 from routers.responses import item_response, page_response
 from schemas.common import PageResponse, ResponseModel
 from schemas.master_data import ActorCreate, ActorResponse, ActorUpdate, EntityStatus
 
-router = APIRouter(prefix="/actors", tags=["actors"], responses=ERROR_RESPONSES)
+router = APIRouter(
+    prefix="/actors",
+    tags=["actors"],
+    responses=ERROR_RESPONSES,
+    dependencies=[Depends(require_user)],
+)
 
 
 @router.get("", response_model=ResponseModel[PageResponse[ActorResponse]])
@@ -42,6 +48,7 @@ def get_actor(
     "",
     response_model=ResponseModel[ActorResponse],
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_admin)],
 )
 def create_actor(
     payload: ActorCreate,
@@ -53,7 +60,11 @@ def create_actor(
     )
 
 
-@router.put("/{actor_id}", response_model=ResponseModel[ActorResponse])
+@router.put(
+    "/{actor_id}",
+    response_model=ResponseModel[ActorResponse],
+    dependencies=[Depends(require_admin)],
+)
 def update_actor(
     payload: ActorUpdate,
     service: MasterDataServiceDependency,
@@ -65,7 +76,11 @@ def update_actor(
     )
 
 
-@router.delete("/{actor_id}", response_model=ResponseModel[ActorResponse])
+@router.delete(
+    "/{actor_id}",
+    response_model=ResponseModel[ActorResponse],
+    dependencies=[Depends(require_admin)],
+)
 def delete_actor(
     service: MasterDataServiceDependency,
     actor_id: Annotated[int, Path(ge=1)],

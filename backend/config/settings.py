@@ -4,6 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
@@ -25,7 +26,8 @@ class Settings(BaseSettings):
         "mysql+pymysql://YOUR_USERNAME:YOUR_PASSWORD@127.0.0.1:3306/"
         "short_drama_analysis?charset=utf8mb4"
     )
-    secret_key_placeholder: str = "replace-with-a-local-secret"
+    secret_key: SecretStr = Field(min_length=32)
+    token_expire_minutes: int = Field(default=30, ge=1, le=1440)
 
 
 @lru_cache

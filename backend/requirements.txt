@@ -6,6 +6,8 @@ alembic>=1.13,<2.0
 pydantic>=2.9,<3.0
 pydantic-settings>=2.5,<3.0
 pymysql>=1.1,<2.0
+bcrypt>=4.2,<6.0
+PyJWT>=2.9,<3.0
 
 # Test baseline
 pytest>=8,<10

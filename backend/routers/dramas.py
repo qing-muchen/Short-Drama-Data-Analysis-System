@@ -2,15 +2,21 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Path, Query, status
+from fastapi import APIRouter, Depends, Path, Query, status
 
+from auth.dependencies import require_admin, require_user
 from routers.dependencies import DramaServiceDependency
 from routers.errors import ERROR_RESPONSES
 from routers.responses import item_response, page_response
 from schemas.common import PageResponse, ResponseModel
 from schemas.drama import DramaCreate, DramaResponse, DramaStatus, DramaUpdate
 
-router = APIRouter(prefix="/dramas", tags=["dramas"], responses=ERROR_RESPONSES)
+router = APIRouter(
+    prefix="/dramas",
+    tags=["dramas"],
+    responses=ERROR_RESPONSES,
+    dependencies=[Depends(require_user)],
+)
 
 
 @router.get("", response_model=ResponseModel[PageResponse[DramaResponse]])
@@ -42,6 +48,7 @@ def get_drama(
     "",
     response_model=ResponseModel[DramaResponse],
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_admin)],
 )
 def create_drama(
     payload: DramaCreate,
@@ -51,7 +58,11 @@ def create_drama(
     return item_response(entity, DramaResponse)
 
 
-@router.put("/{drama_id}", response_model=ResponseModel[DramaResponse])
+@router.put(
+    "/{drama_id}",
+    response_model=ResponseModel[DramaResponse],
+    dependencies=[Depends(require_admin)],
+)
 def update_drama(
     payload: DramaUpdate,
     service: DramaServiceDependency,
@@ -64,7 +75,11 @@ def update_drama(
     return item_response(entity, DramaResponse)
 
 
-@router.delete("/{drama_id}", response_model=ResponseModel[DramaResponse])
+@router.delete(
+    "/{drama_id}",
+    response_model=ResponseModel[DramaResponse],
+    dependencies=[Depends(require_admin)],
+)
 def delete_drama(
     service: DramaServiceDependency,
     drama_id: Annotated[int, Path(ge=1)],
