@@ -9,11 +9,11 @@
 | 中文名称 | 短剧数据管理与分析系统 |
 | 英文名称 | Short Drama Data Management and Analysis System |
 | 软件版本 | V1.0 |
-| 文档版本 | V3.1 |
-| 当前 Phase | Phase 4 - In Progress |
-| 当前 Task | TASK-P4-10 |
-| 文档状态 | Dashboard API Baseline Established |
-| 下一阶段状态 | Waiting for Next Phase 4 Task |
+| 文档版本 | V3.3 |
+| 当前 Phase | Phase 5 - In Progress |
+| 当前 Task | TASK-P5-02 |
+| 文档状态 | Frontend Authentication Baseline Established |
+| 下一阶段状态 | Waiting for Next Phase 5 Task |
 | 最近更新日期 | 2026-09-08 |
 
 状态标签：
@@ -22,7 +22,7 @@
 - 【待后续设计】：需求方向明确，但具体技术设计尚未确定。
 - 【未来扩展】：不属于 V1.0 开发范围。
 
-本文档记录真实的软件工程设计与开发状态，不是课程设计报告正文。数据库与后端分层基线保持冻结；TASK-P4-10 已在 Analytics Service 之上建立受认证的 Dashboard 概览、排行、趋势和质量 API，但未实现 Vue 前端、ECharts 页面、AI、预测或推荐。
+本文档记录真实的软件工程设计与开发状态，不是课程设计报告正文。数据库与后端分层基线保持冻结；TASK-P5-02 已建立登录页面、JWT 本地状态、当前用户加载、Axios 认证拦截器与基础路由保护，Dashboard、业务管理页面和 ECharts 仍未实现。
 
 ## 1. 项目定义
 
@@ -3387,6 +3387,38 @@ Analytics Repository 只读取 Observation Slot 的 current revision、DramaPlat
 
 本 Task 仅建立后端展示 API 与聚合服务，不创建 Vue 页面、ECharts 配置、Dashboard 缓存、AI 分析或新的业务指标。验证使用 Mock Service/Repository 与 FastAPI Dependency Override，不连接生产数据库。
 
+### 12.12 Vue3 Frontend Baseline V0.1【TASK-P5-01】
+
+#### 12.12.1 工程与技术边界
+
+新增 `frontend/` Vue 3 + Vite + TypeScript 工程，启用 TypeScript strict 模式，使用 Vue Router 4、Pinia、Axios 和 Element Plus。依赖清单与构建脚本由 `frontend/package.json` 管理；本 Task 不安装或引入 ECharts。
+
+#### 12.12.2 基础目录与路由
+
+`src/` 下建立 `main.ts`、`App.vue`、`router/`、`stores/`、`api/`、`layouts/`、`views/`、`components/`、`types/`、`utils/` 和 `assets/`。Router 使用 history 模式并提供 `/`、`/login`、`/dashboard` 三个占位路由；占位视图不包含登录、Dashboard、CRUD 或业务页面内容。
+
+#### 12.12.3 状态、请求与配置
+
+Pinia 仅完成应用实例初始化，业务 Store 留待后续 Task。Axios 统一实例从 `VITE_API_BASE_URL` 读取后端地址，配置请求/响应拦截器，并预留从浏览器存储注入 Access Token 的位置；不硬编码 Token、密码或 Secret。`frontend/.env.example` 仅包含本地 API 地址示例，真实 `.env` 不提交 Git。
+
+本 Task 的验收范围是工程文件、Router/Pinia/Axios 加载和 TypeScript/Vite 构建；不得将占位路由描述为已完成业务页面。登录、Dashboard、数据管理、API 业务调用和图表实现归后续前端 Task。
+
+### 12.13 Frontend Authentication Baseline V0.1【TASK-P5-02】
+
+#### 12.13.1 登录与用户状态
+
+新增 `types/auth.ts`、`api/auth.ts`、`stores/user.ts` 和 `views/Login.vue`。User Store 管理 `token`、`currentUser` 与派生状态 `isAuthenticated`，提供 `login`、`logout`、`fetchCurrentUser`；登录成功后先保存 Access Token，再调用 `/auth/me` 获取当前用户，任一步失败都会清理认证状态。密码只存在于登录请求期间，不写入 Store、localStorage 或日志。
+
+#### 12.13.2 Token 与 Axios 边界
+
+Access Token 使用 localStorage 键 `access_token`。存储操作集中在 `utils/auth-storage.ts`；Axios 请求拦截器按需添加 `Authorization: Bearer {token}`，不硬编码或打印 Token。响应拦截器遇到 401 时清除 Token，并通过应用启动时注册的 Unauthorized Handler 同步 User Store、跳转 `/login`，避免 Axios 与 Router/User Store 循环依赖。
+
+#### 12.13.3 页面与路由保护
+
+`/login` 使用 Element Plus 表单，包含用户名、密码、loading 和可理解错误提示；成功后进入原始 redirect 或 `/dashboard`。`/dashboard` 仍是占位视图并标记 `requiresAuth`：无 Token 跳转登录；有 Token 但缺少当前用户时先调用 `/auth/me`，失败则清理状态并返回登录；已认证用户访问登录路由会转向 Dashboard。
+
+前端类型严格匹配后端统一响应包装与 `LoginResponse`/`CurrentUserResponse` 字段，不使用 `any`。本 Task 不实现 Dashboard 内容、业务管理页面、图表、注册、第三方登录或其他认证方式。
+
 ## 13. 技术栈
 
 ### 13.1 Web 技术栈【已冻结】
@@ -3757,13 +3789,17 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 | TASK-P4-08 | 数据导入模块设计与实现 V0.1 | Completed |
 | TASK-P4-09 | Analytics Service实现 V0.1 | Completed |
 | TASK-P4-10 | Dashboard API设计与实现 V0.1 | Completed |
+| TASK-P5-01 | Vue3前端工程初始化与基础架构设计 V0.1 | Completed — 工程骨架已建立，npm 验证受环境阻塞 |
+| TASK-P5-02 | 登录页面与JWT状态管理实现 V0.1 | Completed — 源码完成，npm 构建验证受环境阻塞 |
 
-- 当前 Phase：Phase 4 In Progress。
-- 文档版本：V3.1。
-- 文档状态：Dashboard API Baseline Established。
-- 项目状态：Waiting for Next Phase 4 Task。
+- 当前 Phase：Phase 5 In Progress。
+- 文档版本：V3.3。
+- 文档状态：Frontend Authentication Baseline Established。
+- 项目状态：Waiting for Next Phase 5 Task。
 - TASK-P4-09 已按冻结 Analytics Design Baseline V1.0 建立 AnalysisContext、Metric/Growth/Heat/Potential/Insight 确定性实现、只读 Repository、AnalyticsService、DTO 与认证汇总 API；完整 pytest 72/72 PASS。未实现 Dashboard、前端、AI、预测或推荐。
 - TASK-P4-10 已在 AnalyticsService 之上建立受认证的 Dashboard 概览、Heat/Growth/Potential 排行、趋势和质量 API；DashboardService 仅负责展示组合，完整 pytest 74/74 PASS。未实现 Vue 页面、ECharts、AI 或推荐。
+- TASK-P5-01 已建立 Vue3 + Vite + TypeScript 工程、Router、Pinia、Axios、Element Plus 基础配置和占位路由；npm install/build 因当前环境权限/网络限制未完成，未实现登录、Dashboard、CRUD 或图表页面。
+- TASK-P5-02 已建立 Login 页面、认证 API、User Store、localStorage Token 管理、Axios 自动注入/401 清理和基础 Router Guard；依赖仍未安装，构建与运行测试须在 npm 环境恢复后重试。未实现 Dashboard 内容、业务管理或 ECharts。
 
 ## 23. 设计决策记录
 
@@ -4137,6 +4173,23 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 7. **Decision：空结果返回空列表或 NULL 指标。Reason：**Dashboard 不用 0 或伪造结论掩盖无数据，调用方可以明确呈现 Empty State。**
 8. **Decision：V1.0 不引入缓存、Vue/ECharts 页面、AI、预测或推荐。Reason：**本 Task 只建立可验证的后端聚合 API，不扩大实现边界。**
 
+### ADR-039：Vue3 Frontend Baseline V0.1【Phase 5 前端工程基线】
+
+1. **Decision：使用 Vue 3 + Vite + TypeScript，并启用 TypeScript strict 模式。Reason：**与已冻结 Web 技术栈一致，及早建立可维护的类型边界。**
+2. **Decision：Router、Pinia 和 Axios 只建立框架级入口，不实现业务 Store 或 API 调用。Reason：**本 Task 只完成工程初始化，登录、Dashboard 和 CRUD 页面由后续前端 Task 负责。**
+3. **Decision：Axios 地址来自 `VITE_API_BASE_URL`，只预留从浏览器存储注入 Access Token 的位置。Reason：**避免硬编码后端地址、Token、密码或 Secret，并为后续认证页面保留边界。**
+4. **Decision：提供 `/`、`/login` 和 `/dashboard` 占位路由，暂不实现页面内容。Reason：**验证路由框架即可，不将占位页面误报为业务功能。**
+5. **Decision：V1.0 前端基础工程不安装 ECharts。Reason：**图表依赖与 Dashboard 可视化属于后续任务，当前保持最小可验证依赖集合。**
+
+### ADR-040：Frontend Authentication Baseline V0.1【Phase 5 登录与状态基线】
+
+1. **Decision：Access Token 使用 localStorage 键 `access_token`，密码不持久化。Reason：**符合当前任务冻结方案，并避免将密码、Secret 或 Token 输出到日志。**
+2. **Decision：User Store 在登录后立即调用 `/auth/me`。Reason：**前端授权展示必须基于后端当前用户，而不是自行信任 JWT 中可能过期的角色信息。**
+3. **Decision：Axios 通过共享 Token 存储工具读写凭证，401 通过注册 Handler 清理 Store 并跳转登录。Reason：**同时保持状态一致与模块单向依赖，避免 Axios、Router、Store 循环导入。**
+4. **Decision：受保护路由在有 Token 但无当前用户时重新获取用户。Reason：**页面刷新后恢复 Current User，并让过期或无效 Token 通过后端校验失效。**
+5. **Decision：登录成功支持安全的站内 redirect，否则进入 `/dashboard`。Reason：**保留用户原始导航意图；Dashboard 目前仍为占位路由，不提前实现页面。**
+6. **Decision：前端 Route Guard 不是后端权限边界。Reason：**Guard 只改善导航体验，所有实际业务访问仍必须由 FastAPI 强制认证与授权。**
+
 ## 24. Bug 与技术债务
 
 - 当前无已确认的软件 Bug。
@@ -4156,6 +4209,7 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - 【已关闭】TASK-P4-06 基础 API 未认证的安全前置事项已由 TASK-P4-07 关闭；现有业务查询要求 ACTIVE Current User，写操作与 User 查询要求 ADMINISTRATOR。
 - 【待后续设计】密码修改/重置后的旧 Access Token 主动失效机制尚未实现；当前 Token 仅在过期、签名/Claim无效、用户禁用或身份不匹配时失效，不得宣称已具备完整会话撤销能力。
 - 【非阻塞部署事项】TASK-P4-08 的有效记录暂存位于单机应用临时目录；V1.0 单实例可用，但进程异常后的孤儿文件回收、多实例共享存储和定时清理须由后续部署/运维 Task 明确，当前不得宣称支持水平扩展导入。
+- 【环境阻塞 / 待重试】TASK-P5-01 的 `npm install` 在当前受限环境中因 npm 注册表/缓存访问权限未返回，提升权限请求又受使用额度限制；因此尚未生成 `node_modules`/lockfile，TASK-P5-01/P5-02 均未能完成 `npm run build`。前端源文件已建立，需在可访问 npm 的环境重试安装、构建和运行态认证测试。
 - 所有标记为【待后续设计】的事项属于计划内设计工作，不得误报为已实现功能或当前 Bug。
 
 ## 25. 最终报告 / 软著素材索引
@@ -4199,6 +4253,8 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 | Authentication / Authorization Baseline V0.1 | 已建立；bcrypt、JWT、Current User与ADMINISTRATOR/USER授权，pytest 53/53 PASS |
 | Import System Baseline V0.1 | 已建立；CSV/XLSX固定模板、两阶段校验/确认、ImportError、单事务正式写入与Admin API，pytest 65/65 PASS |
 | Dashboard API Baseline V0.1 | 已建立；概览、Heat/Growth/Potential 排行、趋势和质量 API，DashboardService 复用 AnalyticsService，pytest 74/74 PASS |
+| Vue3 Frontend Engineering Baseline V0.1 | 已建立；Vite + TypeScript、Router、Pinia、Axios、Element Plus 与占位路由；npm 安装/构建待环境恢复后验证 |
+| Frontend Authentication Baseline V0.1 | 已建立；Login、User Store、Auth API、JWT localStorage、Axios 401 处理与 Router Guard；npm 构建待环境恢复后验证 |
 | 数据字典 | 已纳入 MySQL Schema Design V1 字段规格，并由 DDL/Migration V1 实现 |
 | 3NF Review | 设计级 PASS；18 表物理实现一致性验证 PASS |
 | 主键 / 外键 / 完整性设计 | 已建立 V1 基线；18/18 主键、39/39 外键及约束验证 PASS |
@@ -4616,3 +4672,28 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - GitHub remote：以本 Task 实际检查结果为准。
 - 当前状态：Completed；Phase 4 In Progress；Waiting for Next Phase 4 Task。
 - Commit：`feat(backend): add dashboard api baseline`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
+
+### TASK-P5-01
+
+- 日期：2026-09-08。
+- 任务：Vue3前端工程初始化与基础架构设计 V0.1。
+- 完成内容：建立 `frontend/` Vue 3 + Vite + TypeScript 工程骨架，启用 strict 模式；配置 Vue Router 4、Pinia、Axios、Element Plus、环境变量示例和 `/`、`/login`、`/dashboard` 占位路由。
+- 工程边界：Axios 统一实例从 `VITE_API_BASE_URL` 读取地址并预留 Access Token 注入拦截器；未创建业务 Store、API 调用、登录页、Dashboard 页、CRUD 页或 ECharts 依赖。
+- 实际验证：文件结构与配置审阅完成；`npm install` 在当前环境因注册表/缓存权限与网络限制未完成，未能执行 `npm run build`，不得宣称前端构建验证通过。
+- 未执行内容：未修改后端、数据库、ORM、DDL 或 Migration；未开发业务页面、图表、认证流程或 API 集成。
+- GitHub remote：以本 Task 实际检查结果为准。
+- 当前状态：工程骨架完成；npm 安装/构建验证待环境恢复后重试；Phase 5 In Progress；Waiting for Next Phase 5 Task。
+- Commit：`feat(frontend): initialize vue frontend baseline`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
+
+### TASK-P5-02
+
+- 日期：2026-09-08。
+- 任务：登录页面与JWT状态管理实现 V0.1。
+- 完成内容：新增认证类型、Auth API、User Pinia Store、Token 存储工具和 Element Plus Login 页面；更新 Axios 请求/响应拦截器、应用初始化及 Router Guard。
+- 登录流程：POST `/auth/login` 获取 Access Token 并写入 `access_token`，随后 GET `/auth/me` 加载当前用户；任一步失败清除 Token 和用户状态，成功后安全跳转 redirect 或 `/dashboard`。
+- 安全边界：密码不进入 Store/localStorage/日志；Token 不打印或硬编码；401 清除认证状态并跳转登录；Route Guard 仅为前端导航保护，后端仍是最终权限边界。
+- 实际验证：Node 24 对 `src/` 下 9 个 TypeScript 模块完成语法检查；因 P5-01 npm 依赖仍未安装，无法执行 `npm run build`、组件加载和运行态 Store/Axios/Router 测试，未伪造成功结果。
+- 未执行内容：未修改 backend、database、DDL、Migration 或 ORM；未开发 Dashboard 内容、业务管理页面、CRUD、图表或 ECharts。
+- GitHub remote：以本 Task 实际检查结果为准。
+- 当前状态：源码完成；npm 构建验证待环境恢复后重试；Phase 5 In Progress；Waiting for Next Phase 5 Task。
+- Commit：`feat(frontend): add authentication flow`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
