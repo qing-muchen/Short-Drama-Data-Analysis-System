@@ -33,6 +33,24 @@ const router = createRouter({
       component: () => import('../views/master/PlatformList.vue'),
       meta: { requiresAuth: true },
     },
+    {
+      path: '/imports',
+      name: 'imports',
+      component: () => import('../views/import/ImportUpload.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/imports/:id',
+      name: 'import-job',
+      component: () => import('../views/import/ImportJobs.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/imports/:id/errors',
+      name: 'import-errors',
+      component: () => import('../views/import/ImportErrors.vue'),
+      meta: { requiresAuth: true },
+    },
   ],
 })
 

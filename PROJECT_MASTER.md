@@ -9,10 +9,10 @@
 | 中文名称 | 短剧数据管理与分析系统 |
 | 英文名称 | Short Drama Data Management and Analysis System |
 | 软件版本 | V1.0 |
-| 文档版本 | V3.5 |
+| 文档版本 | V3.6 |
 | 当前 Phase | Phase 5 - In Progress |
-| 当前 Task | TASK-P5-04 |
-| 文档状态 | Data Management Frontend Baseline Established |
+| 当前 Task | TASK-P5-05 |
+| 文档状态 | Import Frontend Baseline Established |
 | 下一阶段状态 | Waiting for Next Phase 5 Task |
 | 最近更新日期 | 2026-09-08 |
 
@@ -22,7 +22,7 @@
 - 【待后续设计】：需求方向明确，但具体技术设计尚未确定。
 - 【未来扩展】：不属于 V1.0 开发范围。
 
-本文档记录真实的软件工程设计与开发状态，不是课程设计报告正文。数据库与后端分层基线保持冻结；TASK-P5-04 已建立短剧、演员和平台数据管理页面、类型化 CRUD API 封装、服务端分页查询及前端角色展示控制，导入页面与分析中心仍未实现。
+本文档记录真实的软件工程设计与开发状态，不是课程设计报告正文。数据库与后端分层基线保持冻结；TASK-P5-05 已建立管理员 CSV/XLSX 上传、导入任务详情、错误分页和确认导入页面；分析中心仍未实现，导入任务全量列表与普通用户读权限受当前后端契约限制。
 
 ## 1. 项目定义
 
@@ -3449,6 +3449,24 @@ Access Token 使用 localStorage 键 `access_token`。存储操作集中在 `uti
 
 新增泛型 `Pagination<T>`、Drama/Actor/Platform 实体、状态、查询参数和写入 DTO，字段严格匹配后端 Pydantic Schema，不使用业务 `any`。Node.js 24.11.1、npm 11.6.2 环境下 `npm run build` PASS，共转换 2296 个模块；三个管理页面 Chunk 分别约 6.56 KB、6.62 KB 和 7.38 KB。Element Plus 全局依赖与 Dashboard/ECharts Chunk 仍有大于 500 KB 的非阻塞警告。本 Task 未修改后端、数据库、DDL、Migration 或 ORM，未开发导入页面、分析中心或软著材料。
 
+### 12.16 Import Frontend Baseline V0.1【TASK-P5-05】
+
+#### 12.16.1 上传与两阶段导入流程
+
+新增 `views/import/ImportUpload.vue`、`ImportJobs.vue` 和 `ImportErrors.vue`，分别负责文件选择/任务创建、单个任务状态与确认、校验错误分页。上传页支持固定模板 `.csv`/`.xlsx`，客户端先检查扩展名和 20 MiB 上限，并提示后端最多 50,000 行；文件使用 FormData 传给独立 `api/import.ts`，由后端完成真实解析、校验与 ImportError 持久化。任务进入 READY 后，管理员二次确认才发送 `{confirm: true}` 触发单事务正式导入。
+
+#### 12.16.2 状态、错误与隐私
+
+前端覆盖 PENDING_VALIDATION、VALIDATION_FAILED、READY、IMPORTING、COMPLETED、COMPLETED_WITH_ERRORS、FAILED 七种冻结状态，展示任务编号、文件名、类型、格式、创建时间、总/有效/错误/已导入行数及处理时间。错误页只展示源行号、字段、错误类型和消息，不声明或展示后端响应中的原始值。上传、详情、错误均处理 loading、Empty State、错误提示和重试，确认操作必须二次确认。
+
+#### 12.16.3 路由、权限与后端契约限制
+
+新增受登录保护的 `/imports`、`/imports/:id`、`/imports/:id/errors` 懒加载路由，Dashboard 仅为 ADMINISTRATOR 显示入口。前端根据 `role_code` 控制上传和确认；但当前后端四个 Import API 均使用 `AdministratorDependency`，并未提供普通 USER 读取能力，因此 USER 页面明确显示权限说明而不发起必然 403 的请求。当前后端也没有 ImportJob 全量列表端点，`/imports` 仅保存本浏览器最近 10 个已访问任务用于快捷导航，并明确不是系统全量任务列表；全量列表和 USER 只读权限必须由后续后端 Task 决定。
+
+#### 12.16.4 类型与构建验证
+
+新增 ImportJob、ImportErrorItem、ImportStatus、ImportType、ImportFileFormat 类型及通用 API Error 类型，API/页面无业务 `any`。Node.js 24.11.1、npm 11.6.2 环境下 `npm run build` PASS，共转换 2307 个模块；三个 Import 页面形成独立 Chunk。本 Task 未修改后端、数据库、DDL、Migration 或 ORM，未开发分析中心、软著材料或课程设计报告。
+
 ## 13. 技术栈
 
 ### 13.1 Web 技术栈【已冻结】
@@ -3823,10 +3841,11 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 | TASK-P5-02 | 登录页面与JWT状态管理实现 V0.1 | Completed — 源码完成并由 P5-03 完成构建回归 |
 | TASK-P5-03 | Dashboard可视化页面实现 V0.1 | Completed — 六类 Dashboard API、三类排行与 ECharts 趋势构建 PASS |
 | TASK-P5-04 | 短剧数据管理页面实现 V0.1 | Completed — Drama/Actor/Platform 管理页与构建验证 PASS |
+| TASK-P5-05 | 数据导入页面实现 V0.1 | Completed — 管理员上传/任务/错误/确认流程构建 PASS，后端列表与USER读权限待补 |
 
 - 当前 Phase：Phase 5 In Progress。
-- 文档版本：V3.5。
-- 文档状态：Data Management Frontend Baseline Established。
+- 文档版本：V3.6。
+- 文档状态：Import Frontend Baseline Established。
 - 项目状态：Waiting for Next Phase 5 Task。
 - TASK-P4-09 已按冻结 Analytics Design Baseline V1.0 建立 AnalysisContext、Metric/Growth/Heat/Potential/Insight 确定性实现、只读 Repository、AnalyticsService、DTO 与认证汇总 API；完整 pytest 72/72 PASS。未实现 Dashboard、前端、AI、预测或推荐。
 - TASK-P4-10 已在 AnalyticsService 之上建立受认证的 Dashboard 概览、Heat/Growth/Potential 排行、趋势和质量 API；DashboardService 仅负责展示组合，完整 pytest 74/74 PASS。未实现 Vue 页面、ECharts、AI 或推荐。
@@ -3834,6 +3853,7 @@ Read PROJECT_MASTER → Inspect Repository → Confirm Task Scope
 - TASK-P5-02 已建立 Login 页面、认证 API、User Store、localStorage Token 管理、Axios 自动注入/401 清理和基础 Router Guard；相关代码已随本 Task 完整 TypeScript/Vite 构建通过。
 - TASK-P5-03 已建立 Dashboard 页面、六类类型化 API 封装、八项概览、三类 Top 10、双折线趋势与质量摘要；`npm run build` PASS，未开发数据管理或导入页面。
 - TASK-P5-04 已建立短剧、演员和平台列表、查询、分页、新增、编辑及逻辑停用页面；ADMINISTRATOR 可见写操作，USER 只读，`npm run build` PASS。未开发导入页面或分析中心。
+- TASK-P5-05 已建立管理员 CSV/XLSX 上传、任务详情、错误分页、READY 确认及状态/失败处理页面，`npm run build` PASS；当前后端无全量任务列表且四个接口均仅管理员可用，USER 只读要求待后端专项补齐。
 
 ## 23. 设计决策记录
 
@@ -4242,6 +4262,15 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 5. **Decision：`drama_code` 在表单中只读并由后端生成，简介使用后端 `synopsis` 字段。Reason：**忠实遵守已冻结 Pydantic/Service 契约，避免客户端提交未知字段导致 422。**
 6. **Decision：新增管理路由采用动态导入。Reason：**页面彼此独立且不是每次会话都需要加载，路由拆分可控制首屏资源并为后续扩展建立惯例。**
 
+### ADR-043：Import Frontend Baseline V0.1【Phase 5 导入前端基线】
+
+1. **Decision：上传仅接受 `.csv`/`.xlsx`，客户端执行格式和 20 MiB 上限预检。Reason：**与冻结后端范围一致并尽早反馈明显错误；50,000 行及文件内容仍由后端权威校验。**
+2. **Decision：任务状态与错误证据完全使用后端响应，前端不解析或自行判定文件行。Reason：**ImportJob 生命周期、固定模板规则和 ImportError 追溯必须由后端统一执行。**
+3. **Decision：READY 状态才显示确认按钮，并在确认后发送固定 `{confirm: true}`。Reason：**保持预校验与正式单事务导入的两阶段边界，避免误触或绕过确认。**
+4. **Decision：错误页面不展示 `raw_value`。Reason：**任务只要求定位字段和错误原因，原始值可能包含敏感业务数据。**
+5. **Decision：普通 USER 不调用当前 Import API。Reason：**后端四个端点均强制 AdministratorDependency；前端不能把隐藏按钮伪装成已经存在的读权限。**
+6. **Decision：用本浏览器最近任务记录提供临时导航并明确非全量列表。Reason：**当前后端没有任务列表端点，前端不得用本地缓存冒充权威系统记录。**
+
 ## 24. Bug 与技术债务
 
 - 当前无已确认的软件 Bug。
@@ -4263,6 +4292,7 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - 【非阻塞部署事项】TASK-P4-08 的有效记录暂存位于单机应用临时目录；V1.0 单实例可用，但进程异常后的孤儿文件回收、多实例共享存储和定时清理须由后续部署/运维 Task 明确，当前不得宣称支持水平扩展导入。
 - 【已关闭】TASK-P5-01/P5-02 的 npm 依赖与构建验证阻塞已在 TASK-P5-03 关闭；已生成 lockfile，并完成 Vue/TypeScript/Router/Axios/ECharts 生产构建验证。
 - 【非阻塞性能事项】TASK-P5-04 已完成路由级拆分，三个管理页面均小于 8 KB；Element Plus 全局入口约 1.09 MB、Dashboard/ECharts Chunk 约 1.13 MB，仍超过 500 KB，后续可通过 Element Plus/ECharts 按需引入和 manualChunks 继续优化。
+- 【后端契约待补】TASK-P5-05 需求期望 ImportJob 全量列表和普通 USER 只读；当前后端只有按 ID 获取任务/错误，且创建、获取、错误、确认四个端点全部要求 ADMINISTRATOR。前端已如实限制能力，后续若确认需求仍有效，必须通过后端专项 Task 增加列表查询及相应读权限并补充 API/权限测试。
 - 所有标记为【待后续设计】的事项属于计划内设计工作，不得误报为已实现功能或当前 Bug。
 
 ## 25. 最终报告 / 软著素材索引
@@ -4310,6 +4340,7 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 | Frontend Authentication Baseline V0.1 | 已建立；Login、User Store、Auth API、JWT localStorage、Axios 401 处理与 Router Guard；构建回归 PASS |
 | Dashboard Frontend Baseline V0.1 | 已建立；概览、Heat/Growth/Potential 排行、趋势图和质量摘要；TypeScript/Vite 生产构建 PASS |
 | Data Management Frontend Baseline V0.1 | 已建立；Drama/Actor/Platform 查询、分页、管理员写入和逻辑停用；TypeScript/Vite 构建 PASS |
+| Import Frontend Baseline V0.1 | 已建立；管理员 CSV/XLSX 上传、任务详情、错误分页与确认导入；TypeScript/Vite 构建 PASS，列表/USER读权限待后端补齐 |
 | 数据字典 | 已纳入 MySQL Schema Design V1 字段规格，并由 DDL/Migration V1 实现 |
 | 3NF Review | 设计级 PASS；18 表物理实现一致性验证 PASS |
 | 主键 / 外键 / 完整性设计 | 已建立 V1 基线；18/18 主键、39/39 外键及约束验证 PASS |
@@ -4777,3 +4808,16 @@ Dashboard 必须支持时间范围、平台和标签/题材筛选。理由：三
 - GitHub remote：以本 Task 实际检查结果为准。
 - 当前状态：Completed；Phase 5 In Progress；Waiting for Next Phase 5 Task。
 - Commit：`feat(frontend): implement data management pages`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。
+
+### TASK-P5-05
+
+- 日期：2026-09-08。
+- 任务：数据导入页面实现 V0.1。
+- 完成内容：新增类型化 Import API、DTO、本地近期任务导航以及上传、任务详情、错误分页三个页面；实现 CSV/XLSX 与 20 MiB 客户端预检、七状态展示、READY 二次确认和 `{confirm: true}` 正式导入请求。
+- 权限与隐私：Dashboard 仅向 ADMINISTRATOR 展示入口，页面按 `role_code` 控制上传/确认；错误表不展示 `raw_value`；普通 USER 因后端 AdministratorDependency 限制仅看到明确权限说明。
+- 后端契约限制：当前无 ImportJob 全量列表接口，近期任务仅是本浏览器最近 10 个任务的非权威快捷导航；普通 USER 只读与全量列表进入后端待办，不修改本 Task 禁止触碰的后端。
+- 实际验证：Node.js 24.11.1、npm 11.6.2 下 `npm run build` PASS，2307 modules transformed；三个 Import 页面均生成独立懒加载 Chunk。
+- 未执行内容：未修改 backend、database、DDL、Migration 或 ORM；未开发分析中心、软著材料或课程设计报告。
+- GitHub remote：以本 Task 实际检查结果为准。
+- 当前状态：Completed；Phase 5 In Progress；Waiting for Next Phase 5 Task。
+- Commit：`feat(frontend): implement import pages`（本 Task 提交，Commit Hash 以 Git 历史记录为准）。

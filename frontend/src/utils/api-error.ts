@@ -1,11 +1,8 @@
 import axios from 'axios'
-
-interface ErrorBody {
-  message?: string
-}
+import type { ApiErrorBody } from '../types/api'
 
 export function getApiErrorMessage(error: unknown, fallback: string): string {
-  if (axios.isAxiosError<ErrorBody>(error)) {
+  if (axios.isAxiosError<ApiErrorBody>(error)) {
     return error.response?.data?.message || fallback
   }
   return error instanceof Error ? error.message : fallback

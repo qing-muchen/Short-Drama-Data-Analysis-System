@@ -12,6 +12,7 @@ import {
   getQuality,
   getTrend,
 } from '../api/dashboard'
+import { useUserStore } from '../stores/user'
 import type {
   DashboardOverview,
   QualitySummary,
@@ -29,6 +30,8 @@ interface QualityCard {
   tone: 'success' | 'info' | 'warning' | 'danger'
 }
 
+const userStore = useUserStore()
+const isAdmin = computed(() => userStore.currentUser?.role_code === 'ADMINISTRATOR')
 const loading = ref(false)
 const errorMessage = ref('')
 const overview = ref<DashboardOverview | null>(null)
@@ -195,6 +198,7 @@ onUnmounted(() => {
         <router-link to="/dramas"><el-button>短剧管理</el-button></router-link>
         <router-link to="/actors"><el-button>演员管理</el-button></router-link>
         <router-link to="/platforms"><el-button>平台管理</el-button></router-link>
+        <router-link v-if="isAdmin" to="/imports"><el-button>数据导入</el-button></router-link>
         <el-button :icon="Refresh" :loading="loading" @click="loadDashboard">刷新数据</el-button>
       </div>
     </header>

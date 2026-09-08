@@ -9,3 +9,9 @@ export interface Pagination<T> {
   total: number
   items: T[]
 }
+
+export interface ApiErrorBody {
+  code?: string
+  message?: string
+  details?: Record<string, unknown> | null
+}

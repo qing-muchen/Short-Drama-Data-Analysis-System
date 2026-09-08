@@ -10,4 +10,5 @@ export {
   getTrend,
 } from './dashboard'
 export { createDrama, deactivateDrama, getDramas, updateDrama } from './drama'
+export { confirmImportJob, createImportJob, getImportErrors, getImportJob } from './import'
 export { createPlatform, deactivatePlatform, getPlatforms, updatePlatform } from './platform'
