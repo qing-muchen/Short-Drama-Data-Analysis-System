@@ -20,6 +20,7 @@ if TYPE_CHECKING:
         DramaPlatform,
         DramaTag,
     )
+    from models.score import DramaScore
 
 
 class Drama(CreatedUpdatedAtMixin, Base):
@@ -90,3 +91,4 @@ class Drama(CreatedUpdatedAtMixin, Base):
         back_populates="target_drama",
         foreign_keys="OperationLog.target_drama_id",
     )
+    scores: Mapped[list["DramaScore"]] = relationship(back_populates="drama")

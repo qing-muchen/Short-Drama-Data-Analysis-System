@@ -12,6 +12,7 @@ from models.relations import (
     DramaPlatform,
     DramaTag,
 )
+from models.score import DramaScore
 from models.snapshot import DramaMetricSnapshot, DramaMetricSnapshotRevision
 from models.user import User
 
@@ -27,6 +28,7 @@ __all__ = [
     "DramaMetricSnapshot",
     "DramaMetricSnapshotRevision",
     "DramaPlatform",
+    "DramaScore",
     "DramaTag",
     "ImportError",
     "ImportJob",

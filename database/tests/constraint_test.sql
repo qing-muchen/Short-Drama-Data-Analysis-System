@@ -1,5 +1,5 @@
--- TASK-P3-06R constraint test suite (write-only in this Task; do not execute here)
--- Prerequisite: run 001_create_database.sql and DDL 002..007, or migrations V001..V006.
+-- Database constraint regression suite for the schema through Migration V008.
+-- Prerequisite: run 001_create_database.sql and migrations V001..V008.
 -- The test uses a transaction and rolls business data back. Results are kept in a
 -- temporary MEMORY table so expected failures can be reported after the rollback.
 
@@ -48,6 +48,10 @@ SET @test_user_id = LAST_INSERT_ID();
 INSERT INTO dramas (drama_code, drama_name, status)
 VALUES ('__CONSTRAINT_DRAMA__', 'Constraint Drama', 'SERIALIZING');
 SET @test_drama_id = LAST_INSERT_ID();
+
+INSERT INTO dramas (drama_code, drama_name, status)
+VALUES ('__SCORE_ONLY_DRAMA__', 'Score-only Constraint Drama', 'COMPLETED');
+SET @test_score_drama_id = LAST_INSERT_ID();
 
 INSERT INTO actors (actor_name) VALUES ('Constraint Actor');
 SET @test_actor_id = LAST_INSERT_ID();
@@ -124,6 +128,43 @@ CALL assert_sql_fails('UNIQUE drama_tags pair', CONCAT(
   'INSERT INTO drama_tags (drama_id, tag_id) VALUES (', @test_drama_id, ',', @test_tag_id, ')'));
 CALL assert_sql_fails('UNIQUE drama_platforms pair', CONCAT(
   'INSERT INTO drama_platforms (drama_id, platform_id) VALUES (', @test_drama_id, ',', @test_platform_id, ')'));
+
+-- DramaScore identity, fixed ALL scope, score bounds, and dictionaries.
+INSERT INTO drama_scores (
+  drama_id, score_date, score_scope_type, score_scope_id, analysis_as_of,
+  heat_score, growth_score, engagement_score, lifecycle_score, total_score,
+  level, algorithm_version
+) VALUES (
+  @test_score_drama_id, '2026-01-02', 'ALL', 0, '2026-01-02 12:00:00.000000',
+  80.00, 70.00, 60.00, 40.00, 68.00,
+  'B', 'Composite Score V1.0'
+);
+INSERT INTO constraint_test_results VALUES
+  ('DramaScore valid ALL scope allowed', 'ACCEPTED', 'ACCEPTED', 'PASS');
+
+CALL assert_sql_fails('UNIQUE DramaScore identity', CONCAT(
+  'INSERT INTO drama_scores (drama_id,score_date,score_scope_type,score_scope_id,analysis_as_of,heat_score,growth_score,engagement_score,lifecycle_score,total_score,level,algorithm_version) VALUES (',
+  @test_score_drama_id, ',''2026-01-02'',''ALL'',0,''2026-01-02 12:00:00'',80,70,60,40,68,''B'',''Composite Score V1.0'')'));
+CALL assert_sql_fails('CHECK DramaScore scope type', CONCAT(
+  'INSERT INTO drama_scores (drama_id,score_date,score_scope_type,score_scope_id,analysis_as_of,heat_score,growth_score,engagement_score,lifecycle_score,total_score,level,algorithm_version) VALUES (',
+  @test_score_drama_id, ',''2026-01-03'',''PLATFORM'',1,''2026-01-03 12:00:00'',80,70,60,40,68,''B'',''Composite Score V1.0'')'));
+CALL assert_sql_fails('CHECK DramaScore ALL scope id', CONCAT(
+  'INSERT INTO drama_scores (drama_id,score_date,score_scope_type,score_scope_id,analysis_as_of,heat_score,growth_score,engagement_score,lifecycle_score,total_score,level,algorithm_version) VALUES (',
+  @test_score_drama_id, ',''2026-01-04'',''ALL'',1,''2026-01-04 12:00:00'',80,70,60,40,68,''B'',''Composite Score V1.0'')'));
+CALL assert_sql_fails('CHECK DramaScore component bounds', CONCAT(
+  'INSERT INTO drama_scores (drama_id,score_date,score_scope_type,score_scope_id,analysis_as_of,heat_score,growth_score,engagement_score,lifecycle_score,total_score,level,algorithm_version) VALUES (',
+  @test_score_drama_id, ',''2026-01-05'',''ALL'',0,''2026-01-05 12:00:00'',-0.01,70,60,40,68,''B'',''Composite Score V1.0'')'));
+CALL assert_sql_fails('CHECK DramaScore total bounds', CONCAT(
+  'INSERT INTO drama_scores (drama_id,score_date,score_scope_type,score_scope_id,analysis_as_of,heat_score,growth_score,engagement_score,lifecycle_score,total_score,level,algorithm_version) VALUES (',
+  @test_score_drama_id, ',''2026-01-06'',''ALL'',0,''2026-01-06 12:00:00'',80,70,60,40,100.01,''S'',''Composite Score V1.0'')'));
+CALL assert_sql_fails('CHECK DramaScore level', CONCAT(
+  'INSERT INTO drama_scores (drama_id,score_date,score_scope_type,score_scope_id,analysis_as_of,heat_score,growth_score,engagement_score,lifecycle_score,total_score,level,algorithm_version) VALUES (',
+  @test_score_drama_id, ',''2026-01-07'',''ALL'',0,''2026-01-07 12:00:00'',80,70,60,40,68,''D'',''Composite Score V1.0'')'));
+CALL assert_sql_fails('CHECK DramaScore algorithm version', CONCAT(
+  'INSERT INTO drama_scores (drama_id,score_date,score_scope_type,score_scope_id,analysis_as_of,heat_score,growth_score,engagement_score,lifecycle_score,total_score,level,algorithm_version) VALUES (',
+  @test_score_drama_id, ',''2026-01-08'',''ALL'',0,''2026-01-08 12:00:00'',80,70,60,40,68,''B'',''   '')'));
+CALL assert_sql_fails('FK rejects orphan DramaScore',
+  'INSERT INTO drama_scores (drama_id,score_date,score_scope_type,score_scope_id,analysis_as_of,heat_score,growth_score,engagement_score,lifecycle_score,total_score,level,algorithm_version) VALUES (999999999999,''2026-01-09'',''ALL'',0,''2026-01-09 12:00:00'',80,70,60,40,68,''B'',''Composite Score V1.0'')');
 
 -- CHECK constraints for statuses and value dictionaries.
 CALL assert_sql_fails('CHECK users status',
@@ -249,6 +290,8 @@ CALL assert_sql_fails('RESTRICT Drama referenced by relations', CONCAT(
   'DELETE FROM dramas WHERE drama_id = ', @test_drama_id));
 CALL assert_sql_fails('RESTRICT ImportJob referenced by ImportError', CONCAT(
   'DELETE FROM import_jobs WHERE import_job_id = ', @test_import_job_id));
+CALL assert_sql_fails('RESTRICT Drama referenced by DramaScore', CONCAT(
+  'DELETE FROM dramas WHERE drama_id = ', @test_score_drama_id));
 
 ROLLBACK;
 

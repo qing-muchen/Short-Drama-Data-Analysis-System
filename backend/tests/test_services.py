@@ -46,6 +46,8 @@ def test_service_package_exports_structural_baseline() -> None:
         "PlatformService",
         "QualityService",
         "RepositorySessionMismatchError",
+        "ScoreCalculationResult",
+        "ScoreService",
         "SnapshotService",
         "UserService",
         "ValidationException",

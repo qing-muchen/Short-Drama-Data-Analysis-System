@@ -1,4 +1,4 @@
-"""Import-only verification for the frozen 18-table ORM mapping."""
+"""Import-only verification for the current 19-table ORM mapping."""
 
 from sqlalchemy import CheckConstraint, ForeignKeyConstraint, UniqueConstraint, inspect
 from sqlalchemy.dialects.mysql import BIGINT
@@ -23,6 +23,7 @@ EXPECTED_TABLES = {
     "drama_platforms",
     "drama_metric_snapshots",
     "drama_metric_snapshot_revisions",
+    "drama_scores",
     "import_jobs",
     "import_errors",
     "data_quality_issues",
@@ -33,7 +34,7 @@ EXPECTED_TABLES = {
 def test_all_models_import_and_configure() -> None:
     """All model classes load and every relationship resolves without a DB."""
 
-    assert len(models.__all__) == 18
+    assert len(models.__all__) == 19
     configure_mappers()
     assert {
         "actor_relations",
@@ -48,6 +49,8 @@ def test_all_models_import_and_configure() -> None:
         "current_revision",
         "source_import_job",
     }.issubset(inspect(models.DramaMetricSnapshot).relationships.keys())
+    assert "scores" in inspect(models.Drama).relationships
+    assert "drama" in inspect(models.DramaScore).relationships
     assert "errors" in inspect(models.ImportJob).relationships
 
 
@@ -82,15 +85,15 @@ def test_metadata_matches_frozen_schema_shape() -> None:
         for constraint in table.constraints
     )
 
-    assert foreign_keys == 39
+    assert foreign_keys == 40
     assert all(
         constraint.name is not None
         for table in tables
         for constraint in table.foreign_key_constraints
     )
-    assert checks == 58
-    assert uniques == 16
-    assert sum(len(table.indexes) for table in tables) == 46
+    assert checks == 63
+    assert uniques == 17
+    assert sum(len(table.indexes) for table in tables) == 48
     assert all(
         foreign_key.ondelete == "RESTRICT" and foreign_key.onupdate == "RESTRICT"
         for table in tables
@@ -105,6 +108,7 @@ def test_snapshot_and_governance_models_remain_separate() -> None:
     revision = Base.metadata.tables["drama_metric_snapshot_revisions"]
     quality = Base.metadata.tables["data_quality_issues"]
     operation = Base.metadata.tables["operation_logs"]
+    score = Base.metadata.tables["drama_scores"]
 
     assert "current_revision_id" in snapshot.c
     assert "revision_action" in revision.c
@@ -116,3 +120,13 @@ def test_snapshot_and_governance_models_remain_separate() -> None:
     assert "target_type" not in quality.c
     assert "target_id" not in quality.c
     assert "target_json" not in operation.c
+    assert {
+        "score_scope_type",
+        "score_scope_id",
+        "analysis_as_of",
+        "algorithm_version",
+    }.issubset(score.c.keys())
+    assert "calculated_by_user_id" not in score.c
+    assert set(score.c.keys()).isdisjoint(
+        {"drama_name", "play_count", "like_count", "comment_count"}
+    )
