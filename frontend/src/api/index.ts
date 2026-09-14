@@ -13,3 +13,9 @@ export {
 export { createDrama, deactivateDrama, getDrama, getDramas, updateDrama } from './drama'
 export { confirmImportJob, createImportJob, getImportErrors, getImportJob } from './import'
 export { createPlatform, deactivatePlatform, getPlatforms, updatePlatform } from './platform'
+export {
+  calculateScores,
+  getDramaScore,
+  getScoreLevelDistribution,
+  getScoreRanking,
+} from './score'
