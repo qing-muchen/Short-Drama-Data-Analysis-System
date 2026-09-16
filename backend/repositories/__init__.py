@@ -5,6 +5,11 @@ from repositories.analytics_repository import AnalyticsRecord, AnalyticsReposito
 from repositories.dashboard_repository import DashboardCounts, DashboardRepository
 from repositories.base import BaseRepository, Page
 from repositories.company_repository import CompanyRepository
+from repositories.data_quality_repository import (
+    DataQualityRuleRepository,
+    DataQualityRuleResultRepository,
+    DataQualityScoreRepository,
+)
 from repositories.director_repository import DirectorRepository
 from repositories.drama_repository import DramaRepository
 from repositories.import_repository import (
@@ -25,6 +30,9 @@ __all__ = [
     "ActorRepository",
     "BaseRepository",
     "CompanyRepository",
+    "DataQualityRuleRepository",
+    "DataQualityRuleResultRepository",
+    "DataQualityScoreRepository",
     "DashboardCounts",
     "DashboardRepository",
     "DirectorRepository",
