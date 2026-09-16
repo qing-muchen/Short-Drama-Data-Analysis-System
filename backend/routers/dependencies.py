@@ -9,6 +9,11 @@ from database.session import get_db_session
 from repositories.actor_repository import ActorRepository
 from repositories.analytics_repository import AnalyticsRepository
 from repositories.company_repository import CompanyRepository
+from repositories.data_quality_repository import (
+    DataQualityRuleRepository,
+    DataQualityRuleResultRepository,
+    DataQualityScoreRepository,
+)
 from repositories.director_repository import DirectorRepository
 from repositories.drama_repository import DramaRepository
 from repositories.import_repository import (
@@ -26,6 +31,7 @@ from services.analytics_service import AnalyticsService
 from dashboard.service import DashboardService
 from repositories.dashboard_repository import DashboardRepository
 from services.import_service import ImportService
+from services.data_quality_service import DataQualityService
 from services.master_data_service import MasterDataService
 from services.platform_service import PlatformService
 from services.score_service import ScoreService
@@ -98,6 +104,24 @@ def get_score_service(session: DatabaseSession) -> ScoreService:
     )
 
 
+def get_data_quality_service(session: DatabaseSession) -> DataQualityService:
+    """Compose the quality workflow with one request-scoped Session.
+
+    V1 rule evaluators are registered separately from the HTTP layer. Until a
+    configured registry is supplied, the Service still provides its persisted
+    read APIs and reports unsupported evaluator keys during calculation.
+    """
+
+    return DataQualityService(
+        session,
+        DataQualityRuleRepository(session),
+        DataQualityRuleResultRepository(session),
+        DataQualityScoreRepository(session),
+        OperationLogRepository(session),
+        {},
+    )
+
+
 UserServiceDependency = Annotated[UserService, Depends(get_user_service)]
 DramaServiceDependency = Annotated[DramaService, Depends(get_drama_service)]
 MasterDataServiceDependency = Annotated[
@@ -118,3 +142,7 @@ DashboardServiceDependency = Annotated[
     Depends(get_dashboard_service),
 ]
 ScoreServiceDependency = Annotated[ScoreService, Depends(get_score_service)]
+DataQualityServiceDependency = Annotated[
+    DataQualityService,
+    Depends(get_data_quality_service),
+]

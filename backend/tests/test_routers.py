@@ -103,6 +103,10 @@ def test_openapi_registers_only_authorized_basic_api_paths() -> None:
     assert set(paths["/api/v1/scores/ranking"]) == {"get"}
     assert set(paths["/api/v1/scores/level-distribution"]) == {"get"}
     assert set(paths["/api/v1/scores/{drama_id}"]) == {"get"}
+    assert set(paths["/api/v1/data-quality/calculate"]) == {"post"}
+    assert set(paths["/api/v1/data-quality/score"]) == {"get"}
+    assert set(paths["/api/v1/data-quality/history"]) == {"get"}
+    assert set(paths["/api/v1/data-quality/rules"]) == {"get"}
     drama_errors = paths["/api/v1/dramas/{drama_id}"]["get"]["responses"]
     assert drama_errors["404"]["content"]["application/json"]["schema"]["$ref"].endswith(
         "/ErrorResponse"
@@ -227,6 +231,7 @@ def test_route_handlers_do_not_access_repository_or_orm_layers() -> None:
         "analytics.py",
         "dashboard.py",
         "scores.py",
+        "data_quality.py",
     )
     source = "\n".join(
         (router_path / file_name).read_text(encoding="utf-8")
