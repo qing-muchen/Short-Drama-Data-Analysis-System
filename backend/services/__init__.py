@@ -3,6 +3,10 @@
 from services.analytics_service import AnalyticsService, AnalyticsSummary
 from dashboard.service import DashboardService
 from services.base import BaseService, RepositorySessionMismatchError
+from services.data_quality_service import (
+    DataQualityService,
+    QualityScoreCalculationResult,
+)
 from services.drama_service import DramaService
 from services.exceptions import (
     BusinessException,
@@ -14,7 +18,6 @@ from services.exceptions import (
 from services.import_service import ImportService
 from services.master_data_service import MasterDataService
 from services.platform_service import PlatformService
-from services.quality_service import QualityService
 from services.score_service import ScoreCalculationResult, ScoreService
 from services.snapshot_service import SnapshotService
 from services.user_service import UserService
@@ -23,6 +26,7 @@ __all__ = [
     "AnalyticsService",
     "AnalyticsSummary",
     "DashboardService",
+    "DataQualityService",
     "BaseService",
     "BusinessException",
     "ConflictException",
@@ -32,7 +36,7 @@ __all__ = [
     "NotFoundException",
     "PersistenceException",
     "PlatformService",
-    "QualityService",
+    "QualityScoreCalculationResult",
     "RepositorySessionMismatchError",
     "ScoreCalculationResult",
     "ScoreService",
