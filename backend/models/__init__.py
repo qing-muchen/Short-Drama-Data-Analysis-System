@@ -1,6 +1,11 @@
 """Schema-faithful SQLAlchemy mappings for all frozen MySQL tables."""
 
 from models.drama import Drama
+from models.data_quality import (
+    DataQualityRule,
+    DataQualityRuleResult,
+    DataQualityScore,
+)
 from models.import_job import ImportError, ImportJob
 from models.master_data import Actor, Company, Director, Platform, Tag
 from models.operation_log import OperationLog
@@ -20,6 +25,9 @@ __all__ = [
     "Actor",
     "Company",
     "DataQualityIssue",
+    "DataQualityRule",
+    "DataQualityRuleResult",
+    "DataQualityScore",
     "Director",
     "Drama",
     "DramaActor",

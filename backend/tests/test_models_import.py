@@ -1,4 +1,4 @@
-"""Import-only verification for the current 19-table ORM mapping."""
+"""Import-only verification for the current 22-table ORM mapping."""
 
 from sqlalchemy import CheckConstraint, ForeignKeyConstraint, UniqueConstraint, inspect
 from sqlalchemy.dialects.mysql import BIGINT
@@ -27,6 +27,9 @@ EXPECTED_TABLES = {
     "import_jobs",
     "import_errors",
     "data_quality_issues",
+    "data_quality_rules",
+    "data_quality_rule_results",
+    "data_quality_scores",
     "operation_logs",
 }
 
@@ -34,7 +37,7 @@ EXPECTED_TABLES = {
 def test_all_models_import_and_configure() -> None:
     """All model classes load and every relationship resolves without a DB."""
 
-    assert len(models.__all__) == 19
+    assert len(models.__all__) == 22
     configure_mappers()
     assert {
         "actor_relations",
@@ -52,6 +55,11 @@ def test_all_models_import_and_configure() -> None:
     assert "scores" in inspect(models.Drama).relationships
     assert "drama" in inspect(models.DramaScore).relationships
     assert "errors" in inspect(models.ImportJob).relationships
+    assert "results" in inspect(models.DataQualityRule).relationships
+    assert {"rule", "score"}.issubset(
+        inspect(models.DataQualityRuleResult).relationships.keys()
+    )
+    assert "rule_results" in inspect(models.DataQualityScore).relationships
 
 
 def test_metadata_matches_frozen_schema_shape() -> None:
@@ -85,20 +93,31 @@ def test_metadata_matches_frozen_schema_shape() -> None:
         for constraint in table.constraints
     )
 
-    assert foreign_keys == 40
+    assert foreign_keys == 42
     assert all(
         constraint.name is not None
         for table in tables
         for constraint in table.foreign_key_constraints
     )
-    assert checks == 63
-    assert uniques == 17
-    assert sum(len(table.indexes) for table in tables) == 48
+    assert checks == 86
+    assert uniques == 20
+    assert sum(len(table.indexes) for table in tables) == 57
     assert all(
-        foreign_key.ondelete == "RESTRICT" and foreign_key.onupdate == "RESTRICT"
+        foreign_key.ondelete in {"RESTRICT", "CASCADE"}
+        and foreign_key.onupdate == "RESTRICT"
         for table in tables
         for foreign_key in table.foreign_keys
     )
+
+    cascade_foreign_keys = [
+        foreign_key
+        for table in tables
+        for foreign_key in table.foreign_keys
+        if foreign_key.ondelete == "CASCADE"
+    ]
+    assert len(cascade_foreign_keys) == 1
+    assert cascade_foreign_keys[0].parent.table.name == "data_quality_rule_results"
+    assert cascade_foreign_keys[0].column.table.name == "data_quality_scores"
 
 
 def test_snapshot_and_governance_models_remain_separate() -> None:

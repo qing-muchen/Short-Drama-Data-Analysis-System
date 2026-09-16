@@ -1,5 +1,5 @@
--- Database constraint regression suite for the schema through Migration V008.
--- Prerequisite: run 001_create_database.sql and migrations V001..V008.
+-- Database constraint regression suite for the schema through Migration V009.
+-- Prerequisite: run 001_create_database.sql and migrations V001..V009.
 -- The test uses a transaction and rolls business data back. Results are kept in a
 -- temporary MEMORY table so expected failures can be reported after the rollback.
 
@@ -112,6 +112,63 @@ UPDATE drama_metric_snapshots
 SET current_revision_id = @test_revision_1_id
 WHERE snapshot_id = @test_snapshot_id;
 
+INSERT INTO data_quality_rules (
+  rule_code, rule_version, rule_name, dimension, target_entity_type,
+  evaluator_key, scoring_method, weight, severity, configuration,
+  status, valid_from, description
+) VALUES (
+  'DQ_TEST_COMPLETENESS', '1.0', 'Constraint completeness rule',
+  'COMPLETENESS', 'DRAMA', 'required_field', 'PASS_RATE', 1.000000,
+  'ERROR', JSON_OBJECT('field', 'drama_name'), 'ACTIVE',
+  '2026-01-01 00:00:00.000000', 'Constraint test rule'
+);
+SET @test_quality_rule_id = LAST_INSERT_ID();
+
+INSERT INTO data_quality_rules (
+  rule_code, rule_version, rule_name, dimension, target_entity_type,
+  evaluator_key, scoring_method, weight, severity, configuration,
+  status, valid_from
+) VALUES (
+  'DQ_TEST_NA', '1.0', 'Constraint not-applicable rule',
+  'TIMELINESS', 'SNAPSHOT', 'snapshot_freshness', 'BUCKET_AVERAGE', 1.000000,
+  'WARNING', JSON_OBJECT('hours', 24), 'ACTIVE',
+  '2026-01-01 00:00:00.000000'
+);
+SET @test_quality_na_rule_id = LAST_INSERT_ID();
+
+INSERT INTO data_quality_scores (
+  score_date, score_scope_type, score_scope_id, analysis_as_of,
+  completeness_score, accuracy_score, consistency_score, timeliness_score,
+  total_score, quality_grade, algorithm_version, rule_set_version,
+  rule_set_hash, evaluated_entity_count, open_issue_count, source_watermark
+) VALUES (
+  '2026-01-02', 'ALL', 0, '2026-01-02 23:59:59.999999',
+  80.00, 90.00, 85.00, 70.00, 83.00, 'A',
+  'Quality Score V1.0', 'DQ Rules 1.0', REPEAT('a', 64),
+  10, 1, JSON_OBJECT('snapshot_revision_id', @test_revision_1_id)
+);
+SET @test_quality_score_id = LAST_INSERT_ID();
+
+INSERT INTO data_quality_rule_results (
+  quality_score_id, quality_rule_id, result_status,
+  applicable_count, passed_count, failed_count, rule_score, evidence_summary
+) VALUES (
+  @test_quality_score_id, @test_quality_rule_id, 'APPLIED',
+  10, 8, 2, 80.00, 'Eight of ten records passed'
+);
+
+INSERT INTO data_quality_rule_results (
+  quality_score_id, quality_rule_id, result_status,
+  applicable_count, passed_count, failed_count, rule_score,
+  not_applicable_reason
+) VALUES (
+  @test_quality_score_id, @test_quality_na_rule_id, 'NOT_APPLICABLE',
+  0, 0, 0, NULL, 'No eligible snapshot in the evaluation window'
+);
+
+INSERT INTO constraint_test_results VALUES
+  ('DataQuality V009 valid graph allowed', 'ACCEPTED', 'ACCEPTED', 'PASS');
+
 -- UNIQUE constraints.
 CALL assert_sql_fails('UNIQUE users.username',
   'INSERT INTO users (username, password_hash) VALUES (''__constraint_admin__'', ''$other_hash$'')');
@@ -128,6 +185,102 @@ CALL assert_sql_fails('UNIQUE drama_tags pair', CONCAT(
   'INSERT INTO drama_tags (drama_id, tag_id) VALUES (', @test_drama_id, ',', @test_tag_id, ')'));
 CALL assert_sql_fails('UNIQUE drama_platforms pair', CONCAT(
   'INSERT INTO drama_platforms (drama_id, platform_id) VALUES (', @test_drama_id, ',', @test_platform_id, ')'));
+CALL assert_sql_fails('UNIQUE quality rule code version',
+  'INSERT INTO data_quality_rules (rule_code,rule_version,rule_name,dimension,target_entity_type,evaluator_key,scoring_method,weight,severity,configuration,status,valid_from) VALUES (''DQ_TEST_COMPLETENESS'',''1.0'',''Duplicate'',''COMPLETENESS'',''DRAMA'',''required_field'',''PASS_RATE'',1,''ERROR'',JSON_OBJECT(),''ACTIVE'',''2026-01-01'')');
+CALL assert_sql_fails('UNIQUE quality score identity',
+  'INSERT INTO data_quality_scores (score_date,score_scope_type,score_scope_id,analysis_as_of,completeness_score,accuracy_score,consistency_score,timeliness_score,total_score,quality_grade,algorithm_version,rule_set_version,rule_set_hash) VALUES (''2026-01-02'',''ALL'',0,''2026-01-02 23:59:59'',80,90,85,70,83,''A'',''Quality Score V1.0'',''DQ Rules 1.0'',REPEAT(''a'',64))');
+CALL assert_sql_fails('UNIQUE quality result score rule', CONCAT(
+  'INSERT INTO data_quality_rule_results (quality_score_id,quality_rule_id,result_status,applicable_count,passed_count,failed_count,rule_score) VALUES (',
+  @test_quality_score_id, ',', @test_quality_rule_id, ',''APPLIED'',10,8,2,80)'));
+
+-- Data-quality rule dictionaries, weights, and validity.
+CALL assert_sql_fails('CHECK quality rule dimension',
+  'INSERT INTO data_quality_rules (rule_code,rule_version,rule_name,dimension,target_entity_type,evaluator_key,scoring_method,weight,severity,configuration,status,valid_from) VALUES (''DQ_BAD_DIM'',''1.0'',''Bad dimension'',''INVALID'',''DRAMA'',''required_field'',''PASS_RATE'',1,''ERROR'',JSON_OBJECT(),''ACTIVE'',''2026-01-01'')');
+CALL assert_sql_fails('CHECK quality rule target',
+  'INSERT INTO data_quality_rules (rule_code,rule_version,rule_name,dimension,target_entity_type,evaluator_key,scoring_method,weight,severity,configuration,status,valid_from) VALUES (''DQ_BAD_TARGET'',''1.0'',''Bad target'',''ACCURACY'',''PLATFORM'',''range_check'',''PASS_RATE'',1,''ERROR'',JSON_OBJECT(),''ACTIVE'',''2026-01-01'')');
+CALL assert_sql_fails('CHECK quality rule weight',
+  'INSERT INTO data_quality_rules (rule_code,rule_version,rule_name,dimension,target_entity_type,evaluator_key,scoring_method,weight,severity,configuration,status,valid_from) VALUES (''DQ_BAD_WEIGHT'',''1.0'',''Bad weight'',''ACCURACY'',''DRAMA'',''range_check'',''PASS_RATE'',0,''ERROR'',JSON_OBJECT(),''ACTIVE'',''2026-01-01'')');
+CALL assert_sql_fails('CHECK quality rule evaluator',
+  'INSERT INTO data_quality_rules (rule_code,rule_version,rule_name,dimension,target_entity_type,evaluator_key,scoring_method,weight,severity,configuration,status,valid_from) VALUES (''DQ_BAD_EVAL'',''1.0'',''Bad evaluator'',''ACCURACY'',''DRAMA'',''   '',''PASS_RATE'',1,''ERROR'',JSON_OBJECT(),''ACTIVE'',''2026-01-01'')');
+CALL assert_sql_fails('CHECK quality rule validity',
+  'INSERT INTO data_quality_rules (rule_code,rule_version,rule_name,dimension,target_entity_type,evaluator_key,scoring_method,weight,severity,configuration,status,valid_from,valid_to) VALUES (''DQ_BAD_TIME'',''1.0'',''Bad validity'',''TIMELINESS'',''SNAPSHOT'',''freshness'',''BUCKET_AVERAGE'',1,''WARNING'',JSON_OBJECT(),''ACTIVE'',''2026-01-02'',''2026-01-01'')');
+
+-- Global quality-score scope, bounds, identity fields, and counts.
+CALL assert_sql_fails('CHECK quality score scope type',
+  'INSERT INTO data_quality_scores (score_date,score_scope_type,score_scope_id,analysis_as_of,completeness_score,accuracy_score,consistency_score,timeliness_score,total_score,quality_grade,algorithm_version,rule_set_version,rule_set_hash) VALUES (''2026-01-03'',''DRAMA'',1,''2026-01-03 23:59:59'',80,90,85,70,83,''A'',''Quality Score V1.0'',''DQ Rules 1.0'',REPEAT(''b'',64))');
+CALL assert_sql_fails('CHECK quality score scope id',
+  'INSERT INTO data_quality_scores (score_date,score_scope_type,score_scope_id,analysis_as_of,completeness_score,accuracy_score,consistency_score,timeliness_score,total_score,quality_grade,algorithm_version,rule_set_version,rule_set_hash) VALUES (''2026-01-03'',''ALL'',1,''2026-01-03 23:59:59'',80,90,85,70,83,''A'',''Quality Score V1.0'',''DQ Rules 1.0'',REPEAT(''b'',64))');
+CALL assert_sql_fails('CHECK quality score dimension bounds',
+  'INSERT INTO data_quality_scores (score_date,analysis_as_of,completeness_score,accuracy_score,consistency_score,timeliness_score,total_score,quality_grade,algorithm_version,rule_set_version,rule_set_hash) VALUES (''2026-01-03'',''2026-01-03 23:59:59'',100.01,90,85,70,83,''A'',''Quality Score V1.0'',''DQ Rules 1.0'',REPEAT(''b'',64))');
+CALL assert_sql_fails('CHECK quality score total bounds',
+  'INSERT INTO data_quality_scores (score_date,analysis_as_of,completeness_score,accuracy_score,consistency_score,timeliness_score,total_score,quality_grade,algorithm_version,rule_set_version,rule_set_hash) VALUES (''2026-01-03'',''2026-01-03 23:59:59'',80,90,85,70,-0.01,''C'',''Quality Score V1.0'',''DQ Rules 1.0'',REPEAT(''b'',64))');
+CALL assert_sql_fails('CHECK quality score grade',
+  'INSERT INTO data_quality_scores (score_date,analysis_as_of,completeness_score,accuracy_score,consistency_score,timeliness_score,total_score,quality_grade,algorithm_version,rule_set_version,rule_set_hash) VALUES (''2026-01-03'',''2026-01-03 23:59:59'',80,90,85,70,83,''D'',''Quality Score V1.0'',''DQ Rules 1.0'',REPEAT(''b'',64))');
+CALL assert_sql_fails('CHECK quality score algorithm',
+  'INSERT INTO data_quality_scores (score_date,analysis_as_of,completeness_score,accuracy_score,consistency_score,timeliness_score,total_score,quality_grade,algorithm_version,rule_set_version,rule_set_hash) VALUES (''2026-01-03'',''2026-01-03 23:59:59'',80,90,85,70,83,''A'',''   '',''DQ Rules 1.0'',REPEAT(''b'',64))');
+CALL assert_sql_fails('CHECK quality score hash',
+  'INSERT INTO data_quality_scores (score_date,analysis_as_of,completeness_score,accuracy_score,consistency_score,timeliness_score,total_score,quality_grade,algorithm_version,rule_set_version,rule_set_hash) VALUES (''2026-01-03'',''2026-01-03 23:59:59'',80,90,85,70,83,''A'',''Quality Score V1.0'',''DQ Rules 1.0'',''short'')');
+
+-- Rule-result count invariants and APPLIED/N/A tuples.
+INSERT INTO data_quality_scores (
+  score_date, analysis_as_of, completeness_score, accuracy_score,
+  consistency_score, timeliness_score, total_score, quality_grade,
+  algorithm_version, rule_set_version, rule_set_hash
+) VALUES (
+  '2026-01-05', '2026-01-05 23:59:59.999999',
+  80, 90, 85, 70, 83, 'A', 'Quality Score V1.0', 'DQ Rules 1.0', REPEAT('d', 64)
+);
+SET @test_invalid_result_score_id = LAST_INSERT_ID();
+CALL assert_sql_fails('CHECK quality result count identity', CONCAT(
+  'INSERT INTO data_quality_rule_results (quality_score_id,quality_rule_id,result_status,applicable_count,passed_count,failed_count,rule_score) VALUES (',
+  @test_invalid_result_score_id, ',', @test_quality_rule_id, ',''APPLIED'',10,8,1,80)'));
+CALL assert_sql_fails('CHECK quality result score bounds', CONCAT(
+  'INSERT INTO data_quality_rule_results (quality_score_id,quality_rule_id,result_status,applicable_count,passed_count,failed_count,rule_score) VALUES (',
+  @test_invalid_result_score_id, ',', @test_quality_rule_id, ',''APPLIED'',10,8,2,100.01)'));
+CALL assert_sql_fails('CHECK quality result APPLIED tuple', CONCAT(
+  'INSERT INTO data_quality_rule_results (quality_score_id,quality_rule_id,result_status,applicable_count,passed_count,failed_count,rule_score) VALUES (',
+  @test_invalid_result_score_id, ',', @test_quality_rule_id, ',''APPLIED'',0,0,0,100)'));
+CALL assert_sql_fails('CHECK quality result N/A tuple', CONCAT(
+  'INSERT INTO data_quality_rule_results (quality_score_id,quality_rule_id,result_status,applicable_count,passed_count,failed_count,rule_score,not_applicable_reason) VALUES (',
+  @test_invalid_result_score_id, ',', @test_quality_rule_id, ',''NOT_APPLICABLE'',1,1,0,NULL,''Not applicable'')'));
+CALL assert_sql_fails('CHECK quality result N/A reason', CONCAT(
+  'INSERT INTO data_quality_rule_results (quality_score_id,quality_rule_id,result_status,applicable_count,passed_count,failed_count,rule_score,not_applicable_reason) VALUES (',
+  @test_invalid_result_score_id, ',', @test_quality_rule_id, ',''NOT_APPLICABLE'',0,0,0,NULL,''   '')'));
+CALL assert_sql_fails('CHECK quality result status', CONCAT(
+  'INSERT INTO data_quality_rule_results (quality_score_id,quality_rule_id,result_status,applicable_count,passed_count,failed_count,rule_score) VALUES (',
+  @test_invalid_result_score_id, ',', @test_quality_rule_id, ',''INVALID'',1,1,0,100)'));
+CALL assert_sql_fails('FK quality result score', CONCAT(
+  'INSERT INTO data_quality_rule_results (quality_score_id,quality_rule_id,result_status,applicable_count,passed_count,failed_count,rule_score) VALUES (999999999999,',
+  @test_quality_rule_id, ',''APPLIED'',1,1,0,100)'));
+CALL assert_sql_fails('FK quality result rule', CONCAT(
+  'INSERT INTO data_quality_rule_results (quality_score_id,quality_rule_id,result_status,applicable_count,passed_count,failed_count,rule_score) VALUES (',
+  @test_invalid_result_score_id, ',999999999999,''APPLIED'',1,1,0,100)'));
+CALL assert_sql_fails('RESTRICT referenced quality rule', CONCAT(
+  'DELETE FROM data_quality_rules WHERE quality_rule_id = ', @test_quality_rule_id));
+
+-- Rule results are composition children and are removed with their score.
+INSERT INTO data_quality_scores (
+  score_date, analysis_as_of, completeness_score, accuracy_score,
+  consistency_score, timeliness_score, total_score, quality_grade,
+  algorithm_version, rule_set_version, rule_set_hash
+) VALUES (
+  '2026-01-04', '2026-01-04 23:59:59.999999',
+  80, 90, 85, 70, 83, 'A', 'Quality Score V1.0', 'DQ Rules 1.0', REPEAT('c', 64)
+);
+SET @test_cascade_score_id = LAST_INSERT_ID();
+INSERT INTO data_quality_rule_results (
+  quality_score_id, quality_rule_id, result_status,
+  applicable_count, passed_count, failed_count, rule_score
+) VALUES (
+  @test_cascade_score_id, @test_quality_rule_id, 'APPLIED', 1, 1, 0, 100
+);
+DELETE FROM data_quality_scores WHERE quality_score_id = @test_cascade_score_id;
+INSERT INTO constraint_test_results
+SELECT 'CASCADE quality score rule results', 'ACCEPTED',
+       IF(COUNT(*) = 0, 'ACCEPTED', 'CHILD_REMAINS'),
+       IF(COUNT(*) = 0, 'PASS', 'FAIL')
+FROM data_quality_rule_results
+WHERE quality_score_id = @test_cascade_score_id;
 
 -- DramaScore identity, fixed ALL scope, score bounds, and dictionaries.
 INSERT INTO drama_scores (
