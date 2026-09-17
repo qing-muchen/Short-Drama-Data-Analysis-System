@@ -193,6 +193,7 @@ onUnmounted(() => {
         <router-link to="/platforms"><el-button>平台管理</el-button></router-link>
         <router-link to="/analytics"><el-button type="primary" plain>分析中心</el-button></router-link>
         <router-link to="/scores"><el-button type="success" plain>综合评分</el-button></router-link>
+        <router-link to="/data-quality"><el-button type="warning" plain>数据质量治理</el-button></router-link>
         <router-link v-if="isAdmin" to="/imports"><el-button>数据导入</el-button></router-link>
         <el-button :icon="Refresh" :loading="loading" @click="loadDashboard">刷新数据</el-button>
       </div>

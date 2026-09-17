@@ -63,6 +63,12 @@ const router = createRouter({
       component: () => import('../views/score/ScoreAnalysis.vue'),
       meta: { requiresAuth: true },
     },
+    {
+      path: '/data-quality',
+      name: 'data-quality',
+      component: () => import('../views/dataQuality/DataQualityAnalysis.vue'),
+      meta: { requiresAuth: true },
+    },
   ],
 })
 
