@@ -45,6 +45,8 @@ def test_service_package_exports_structural_baseline() -> None:
         "NotFoundException",
         "PersistenceException",
         "PlatformService",
+        "PredictionService",
+        "PredictionServiceResult",
         "QualityScoreCalculationResult",
         "RepositorySessionMismatchError",
         "ScoreCalculationResult",

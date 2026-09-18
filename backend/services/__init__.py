@@ -18,6 +18,7 @@ from services.exceptions import (
 from services.import_service import ImportService
 from services.master_data_service import MasterDataService
 from services.platform_service import PlatformService
+from services.prediction_service import PredictionService, PredictionServiceResult
 from services.score_service import ScoreCalculationResult, ScoreService
 from services.snapshot_service import SnapshotService
 from services.user_service import UserService
@@ -36,6 +37,8 @@ __all__ = [
     "NotFoundException",
     "PersistenceException",
     "PlatformService",
+    "PredictionService",
+    "PredictionServiceResult",
     "QualityScoreCalculationResult",
     "RepositorySessionMismatchError",
     "ScoreCalculationResult",
