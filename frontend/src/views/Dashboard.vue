@@ -194,6 +194,7 @@ onUnmounted(() => {
         <router-link to="/analytics"><el-button type="primary" plain>分析中心</el-button></router-link>
         <router-link to="/scores"><el-button type="success" plain>综合评分</el-button></router-link>
         <router-link to="/data-quality"><el-button type="warning" plain>数据质量治理</el-button></router-link>
+        <router-link to="/predictions"><el-button type="info" plain>播放趋势预测</el-button></router-link>
         <router-link v-if="isAdmin" to="/imports"><el-button>数据导入</el-button></router-link>
         <el-button :icon="Refresh" :loading="loading" @click="loadDashboard">刷新数据</el-button>
       </div>
@@ -218,6 +219,16 @@ onUnmounted(() => {
         <strong class="metric-value">{{ card.value }}</strong>
       </el-card>
     </section>
+
+    <el-card shadow="never" class="prediction-entry">
+      <div class="prediction-entry-content">
+        <div>
+          <strong>播放趋势预测</strong>
+          <p>查看单剧下一日累计播放量预测与历史预测趋势。</p>
+        </div>
+        <router-link to="/predictions"><el-button type="primary" plain>进入预测分析</el-button></router-link>
+      </div>
+    </el-card>
 
     <section class="ranking-grid">
       <el-card shadow="never">
@@ -356,6 +367,26 @@ h1 {
   margin-bottom: 20px;
 }
 
+.prediction-entry {
+  margin-bottom: 20px;
+}
+
+.prediction-entry-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.prediction-entry-content strong {
+  font-size: 18px;
+}
+
+.prediction-entry-content p {
+  margin: 8px 0 0;
+  color: var(--el-text-color-secondary);
+}
+
 .detail-grid {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr);
@@ -403,6 +434,11 @@ h1 {
 
   .page-header {
     align-items: stretch;
+    flex-direction: column;
+  }
+
+  .prediction-entry-content {
+    align-items: flex-start;
     flex-direction: column;
   }
 
