@@ -19,6 +19,7 @@ from repositories.import_repository import (
     OperationLogRepository,
 )
 from repositories.platform_repository import PlatformRepository
+from repositories.prediction_repository import PredictionRepository
 from repositories.score_repository import ScoreRepository
 from repositories.snapshot_repository import SnapshotRepository
 from repositories.tag_repository import TagRepository
@@ -43,6 +44,7 @@ __all__ = [
     "OperationLogRepository",
     "Page",
     "PlatformRepository",
+    "PredictionRepository",
     "ScoreRepository",
     "SnapshotRepository",
     "TagRepository",
