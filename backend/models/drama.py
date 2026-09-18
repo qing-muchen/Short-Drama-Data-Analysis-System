@@ -12,6 +12,7 @@ from models.common import CreatedUpdatedAtMixin
 
 if TYPE_CHECKING:
     from models.operation_log import OperationLog
+    from models.prediction import PredictionResult
     from models.quality import DataQualityIssue
     from models.relations import (
         DramaActor,
@@ -81,6 +82,9 @@ class Drama(CreatedUpdatedAtMixin, Base):
     )
     tag_relations: Mapped[list["DramaTag"]] = relationship(back_populates="drama")
     platform_relations: Mapped[list["DramaPlatform"]] = relationship(
+        back_populates="drama"
+    )
+    predictions: Mapped[list["PredictionResult"]] = relationship(
         back_populates="drama"
     )
     quality_issues: Mapped[list["DataQualityIssue"]] = relationship(

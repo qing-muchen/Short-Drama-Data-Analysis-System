@@ -1,5 +1,5 @@
--- Database constraint regression suite for the schema through Migration V009.
--- Prerequisite: run 001_create_database.sql and migrations V001..V009.
+-- Database constraint regression suite for the schema through Migration V010.
+-- Prerequisite: run 001_create_database.sql and migrations V001..V010.
 -- The test uses a transaction and rolls business data back. Results are kept in a
 -- temporary MEMORY table so expected failures can be reported after the rollback.
 
@@ -318,6 +318,32 @@ CALL assert_sql_fails('CHECK DramaScore algorithm version', CONCAT(
   @test_score_drama_id, ',''2026-01-08'',''ALL'',0,''2026-01-08 12:00:00'',80,70,60,40,68,''B'',''   '')'));
 CALL assert_sql_fails('FK rejects orphan DramaScore',
   'INSERT INTO drama_scores (drama_id,score_date,score_scope_type,score_scope_id,analysis_as_of,heat_score,growth_score,engagement_score,lifecycle_score,total_score,level,algorithm_version) VALUES (999999999999,''2026-01-09'',''ALL'',0,''2026-01-09 12:00:00'',80,70,60,40,68,''B'',''Composite Score V1.0'')');
+
+-- PredictionResult identity, non-negative value, dictionaries, and drama FK.
+INSERT INTO prediction_results (
+  drama_id, metric_type, prediction_date, target_date, predicted_value,
+  algorithm_version, analysis_as_of
+) VALUES (
+  @test_score_drama_id, 'PLAY_COUNT', '2026-01-08', '2026-01-09', 12345.67,
+  'Moving Average V1.0', '2026-01-08 23:59:59.999999'
+);
+INSERT INTO constraint_test_results VALUES
+  ('PredictionResult valid row allowed', 'ACCEPTED', 'ACCEPTED', 'PASS');
+
+CALL assert_sql_fails('UNIQUE PredictionResult identity ignores prediction date', CONCAT(
+  'INSERT INTO prediction_results (drama_id,metric_type,prediction_date,target_date,predicted_value,algorithm_version,analysis_as_of) VALUES (',
+  @test_score_drama_id, ',''PLAY_COUNT'',''2026-01-07'',''2026-01-09'',12346.00,''Moving Average V1.0'',''2026-01-07 23:59:59.999999'')'));
+CALL assert_sql_fails('CHECK PredictionResult metric type', CONCAT(
+  'INSERT INTO prediction_results (drama_id,metric_type,prediction_date,target_date,predicted_value,algorithm_version,analysis_as_of) VALUES (',
+  @test_score_drama_id, ',''   '',''2026-01-09'',''2026-01-10'',12346.00,''Moving Average V1.0'',''2026-01-09 23:59:59.999999'')'));
+CALL assert_sql_fails('CHECK PredictionResult predicted value', CONCAT(
+  'INSERT INTO prediction_results (drama_id,metric_type,prediction_date,target_date,predicted_value,algorithm_version,analysis_as_of) VALUES (',
+  @test_score_drama_id, ',''PLAY_COUNT'',''2026-01-09'',''2026-01-10'',-0.01,''Moving Average V1.0'',''2026-01-09 23:59:59.999999'')'));
+CALL assert_sql_fails('CHECK PredictionResult algorithm version', CONCAT(
+  'INSERT INTO prediction_results (drama_id,metric_type,prediction_date,target_date,predicted_value,algorithm_version,analysis_as_of) VALUES (',
+  @test_score_drama_id, ',''PLAY_COUNT'',''2026-01-09'',''2026-01-10'',12346.00,''   '',''2026-01-09 23:59:59.999999'')'));
+CALL assert_sql_fails('FK rejects orphan PredictionResult',
+  'INSERT INTO prediction_results (drama_id,metric_type,prediction_date,target_date,predicted_value,algorithm_version,analysis_as_of) VALUES (999999999999,''PLAY_COUNT'',''2026-01-09'',''2026-01-10'',12346.00,''Moving Average V1.0'',''2026-01-09 23:59:59.999999'')');
 
 -- CHECK constraints for statuses and value dictionaries.
 CALL assert_sql_fails('CHECK users status',

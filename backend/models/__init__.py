@@ -9,6 +9,7 @@ from models.data_quality import (
 from models.import_job import ImportError, ImportJob
 from models.master_data import Actor, Company, Director, Platform, Tag
 from models.operation_log import OperationLog
+from models.prediction import PredictionResult
 from models.quality import DataQualityIssue
 from models.relations import (
     DramaActor,
@@ -42,6 +43,7 @@ __all__ = [
     "ImportJob",
     "OperationLog",
     "Platform",
+    "PredictionResult",
     "Tag",
     "User",
 ]
