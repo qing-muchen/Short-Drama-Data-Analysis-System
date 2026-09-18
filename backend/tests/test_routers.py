@@ -231,6 +231,7 @@ def test_route_handlers_do_not_access_repository_or_orm_layers() -> None:
         "analytics.py",
         "dashboard.py",
         "scores.py",
+        "prediction.py",
         "data_quality.py",
     )
     source = "\n".join(

@@ -13,6 +13,7 @@ from routers import (
     dramas,
     imports,
     platforms,
+    prediction,
     scores,
     tags,
     users,
@@ -31,6 +32,7 @@ api_v1_router.include_router(platforms.router)
 api_v1_router.include_router(tags.router)
 api_v1_router.include_router(imports.router)
 api_v1_router.include_router(scores.router)
+api_v1_router.include_router(prediction.router)
 api_v1_router.include_router(data_quality.router)
 
 __all__ = ["api_v1_router"]

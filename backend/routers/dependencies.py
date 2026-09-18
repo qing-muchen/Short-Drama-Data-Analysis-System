@@ -1,8 +1,11 @@
 """Request-scoped composition root for Service and Repository objects."""
 
+from datetime import UTC, datetime
 from typing import Annotated
+from zoneinfo import ZoneInfo
 
 from fastapi import Depends
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from database.session import get_db_session
@@ -23,6 +26,7 @@ from repositories.import_repository import (
     OperationLogRepository,
 )
 from repositories.platform_repository import PlatformRepository
+from repositories.prediction_repository import PredictionRepository
 from repositories.score_repository import ScoreRepository
 from repositories.tag_repository import TagRepository
 from repositories.user_repository import UserRepository
@@ -34,10 +38,84 @@ from services.import_service import ImportService
 from services.data_quality_service import DataQualityService
 from services.master_data_service import MasterDataService
 from services.platform_service import PlatformService
+from services.prediction_service import PredictionObservation, PredictionService
 from services.score_service import ScoreService
 from services.user_service import UserService
+from models.master_data import Platform
+from models.relations import DramaPlatform
+from models.snapshot import DramaMetricSnapshot, DramaMetricSnapshotRevision
 
 DatabaseSession = Annotated[Session, Depends(get_db_session)]
+BUSINESS_TIME_ZONE = ZoneInfo("Asia/Shanghai")
+
+
+class _PredictionHistoryProvider:
+    """Compose strict as-of revision input without changing existing Analytics APIs."""
+
+    def __init__(self, session: Session) -> None:
+        self.session = session
+
+    def get_prediction_history(
+        self,
+        *,
+        drama_id: int,
+        analysis_as_of: datetime,
+    ) -> list[PredictionObservation]:
+        statement = (
+            select(
+                DramaMetricSnapshot,
+                DramaMetricSnapshotRevision,
+                DramaPlatform,
+                Platform,
+            )
+            .join(
+                DramaMetricSnapshotRevision,
+                DramaMetricSnapshotRevision.snapshot_id
+                == DramaMetricSnapshot.snapshot_id,
+            )
+            .join(
+                DramaPlatform,
+                DramaPlatform.drama_platform_id
+                == DramaMetricSnapshot.drama_platform_id,
+            )
+            .join(Platform, Platform.platform_id == DramaPlatform.platform_id)
+            .where(
+                DramaPlatform.drama_id == drama_id,
+                DramaMetricSnapshot.snapshot_time <= analysis_as_of,
+                DramaMetricSnapshotRevision.changed_at <= analysis_as_of,
+            )
+            .order_by(
+                DramaMetricSnapshot.snapshot_time,
+                DramaMetricSnapshot.snapshot_id,
+                DramaMetricSnapshotRevision.changed_at,
+                DramaMetricSnapshotRevision.version_no,
+            )
+        )
+        rows = self.session.execute(statement).all()
+        observations: list[PredictionObservation] = []
+        for row in rows:
+            snapshot = row.DramaMetricSnapshot
+            revision = row.DramaMetricSnapshotRevision
+            snapshot_time = snapshot.snapshot_time
+            if snapshot_time.tzinfo is None:
+                snapshot_time = snapshot_time.replace(tzinfo=UTC)
+            observations.append(
+                PredictionObservation(
+                    observation_date=snapshot_time.astimezone(
+                        BUSINESS_TIME_ZONE
+                    ).date(),
+                    platform_id=row.DramaPlatform.platform_id,
+                    play_count=revision.play_count,
+                    changed_at=revision.changed_at,
+                    revision_id=revision.snapshot_revision_id,
+                    revision_action=revision.revision_action,
+                    platform_active=(
+                        row.DramaPlatform.status == "ONLINE"
+                        and row.Platform.status == "ACTIVE"
+                    ),
+                )
+            )
+        return observations
 
 
 def get_user_service(session: DatabaseSession) -> UserService:
@@ -104,6 +182,17 @@ def get_score_service(session: DatabaseSession) -> ScoreService:
     )
 
 
+def get_prediction_service(session: DatabaseSession) -> PredictionService:
+    """Compose PredictionService with one Session and strict as-of input reads."""
+
+    return PredictionService(
+        session,
+        _PredictionHistoryProvider(session),
+        PredictionRepository(session),
+        OperationLogRepository(session),
+    )
+
+
 def get_data_quality_service(session: DatabaseSession) -> DataQualityService:
     """Compose the quality workflow with one request-scoped Session.
 
@@ -142,6 +231,10 @@ DashboardServiceDependency = Annotated[
     Depends(get_dashboard_service),
 ]
 ScoreServiceDependency = Annotated[ScoreService, Depends(get_score_service)]
+PredictionServiceDependency = Annotated[
+    PredictionService,
+    Depends(get_prediction_service),
+]
 DataQualityServiceDependency = Annotated[
     DataQualityService,
     Depends(get_data_quality_service),

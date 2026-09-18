@@ -93,6 +93,13 @@ from schemas.platform import (
     PlatformResponse,
     PlatformUpdate,
 )
+from schemas.prediction import (
+    PredictionAlgorithmVersion,
+    PredictionCalculateRequest,
+    PredictionHistoryResponse,
+    PredictionMetric,
+    PredictionResponse,
+)
 from schemas.quality import (
     DataQualityIssueCreate,
     DataQualityIssueResponse,
@@ -197,6 +204,11 @@ __all__ = [
     "PlatformResponse",
     "PlatformUpdate",
     "PotentialResponse",
+    "PredictionAlgorithmVersion",
+    "PredictionCalculateRequest",
+    "PredictionHistoryResponse",
+    "PredictionMetric",
+    "PredictionResponse",
     "QualityDimension",
     "QualityGrade",
     "QualityResultStatus",
