@@ -1,6 +1,11 @@
 """Transport-neutral SQLAlchemy repositories."""
 
 from repositories.actor_repository import ActorRepository
+from repositories.anomaly_repository import (
+    AnomalyRepository,
+    AnomalyStatistics,
+    AnomalyTrendPoint,
+)
 from repositories.analytics_repository import AnalyticsRecord, AnalyticsRepository
 from repositories.dashboard_repository import DashboardCounts, DashboardRepository
 from repositories.base import BaseRepository, Page
@@ -29,6 +34,9 @@ __all__ = [
     "AnalyticsRecord",
     "AnalyticsRepository",
     "ActorRepository",
+    "AnomalyRepository",
+    "AnomalyStatistics",
+    "AnomalyTrendPoint",
     "BaseRepository",
     "CompanyRepository",
     "DataQualityRuleRepository",
