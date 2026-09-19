@@ -1,5 +1,6 @@
 """Schema-faithful SQLAlchemy mappings for all frozen MySQL tables."""
 
+from models.anomaly import DataAnomalyRecord
 from models.drama import Drama
 from models.data_quality import (
     DataQualityRule,
@@ -25,6 +26,7 @@ from models.user import User
 __all__ = [
     "Actor",
     "Company",
+    "DataAnomalyRecord",
     "DataQualityIssue",
     "DataQualityRule",
     "DataQualityRuleResult",

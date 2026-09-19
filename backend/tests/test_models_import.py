@@ -1,4 +1,4 @@
-"""Import-only verification for the current 23-table ORM mapping."""
+"""Import-only verification for the current 24-table ORM mapping."""
 
 from sqlalchemy import CheckConstraint, ForeignKeyConstraint, UniqueConstraint, inspect
 from sqlalchemy.dialects.mysql import BIGINT
@@ -32,13 +32,14 @@ EXPECTED_TABLES = {
     "data_quality_scores",
     "operation_logs",
     "prediction_results",
+    "data_anomaly_records",
 }
 
 
 def test_all_models_import_and_configure() -> None:
     """All model classes load and every relationship resolves without a DB."""
 
-    assert len(models.__all__) == 23
+    assert len(models.__all__) == 24
     configure_mappers()
     assert {
         "actor_relations",
@@ -63,6 +64,8 @@ def test_all_models_import_and_configure() -> None:
     assert "rule_results" in inspect(models.DataQualityScore).relationships
     assert "predictions" in inspect(models.Drama).relationships
     assert "drama" in inspect(models.PredictionResult).relationships
+    assert "anomaly_records" in inspect(models.Drama).relationships
+    assert "drama" in inspect(models.DataAnomalyRecord).relationships
 
 
 def test_metadata_matches_frozen_schema_shape() -> None:
@@ -96,15 +99,15 @@ def test_metadata_matches_frozen_schema_shape() -> None:
         for constraint in table.constraints
     )
 
-    assert foreign_keys == 43
+    assert foreign_keys == 44
     assert all(
         constraint.name is not None
         for table in tables
         for constraint in table.foreign_key_constraints
     )
-    assert checks == 89
-    assert uniques == 21
-    assert sum(len(table.indexes) for table in tables) == 59
+    assert checks == 94
+    assert uniques == 22
+    assert sum(len(table.indexes) for table in tables) == 61
     assert all(
         foreign_key.ondelete in {"RESTRICT", "CASCADE"}
         and foreign_key.onupdate == "RESTRICT"

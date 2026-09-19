@@ -11,6 +11,7 @@ from database.base import Base
 from models.common import CreatedUpdatedAtMixin
 
 if TYPE_CHECKING:
+    from models.anomaly import DataAnomalyRecord
     from models.operation_log import OperationLog
     from models.prediction import PredictionResult
     from models.quality import DataQualityIssue
@@ -96,3 +97,6 @@ class Drama(CreatedUpdatedAtMixin, Base):
         foreign_keys="OperationLog.target_drama_id",
     )
     scores: Mapped[list["DramaScore"]] = relationship(back_populates="drama")
+    anomaly_records: Mapped[list["DataAnomalyRecord"]] = relationship(
+        back_populates="drama"
+    )

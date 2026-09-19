@@ -1,5 +1,5 @@
--- Database constraint regression suite for the schema through Migration V010.
--- Prerequisite: run 001_create_database.sql and migrations V001..V010.
+-- Database constraint regression suite for the schema through Migration V011.
+-- Prerequisite: run 001_create_database.sql and migrations V001..V011.
 -- The test uses a transaction and rolls business data back. Results are kept in a
 -- temporary MEMORY table so expected failures can be reported after the rollback.
 
@@ -344,6 +344,43 @@ CALL assert_sql_fails('CHECK PredictionResult algorithm version', CONCAT(
   @test_score_drama_id, ',''PLAY_COUNT'',''2026-01-09'',''2026-01-10'',12346.00,''   '',''2026-01-09 23:59:59.999999'')'));
 CALL assert_sql_fails('FK rejects orphan PredictionResult',
   'INSERT INTO prediction_results (drama_id,metric_type,prediction_date,target_date,predicted_value,algorithm_version,analysis_as_of) VALUES (999999999999,''PLAY_COUNT'',''2026-01-09'',''2026-01-10'',12346.00,''Moving Average V1.0'',''2026-01-09 23:59:59.999999'')');
+
+-- DataAnomalyRecord identity, dictionaries, evidence, and drama FK.
+INSERT INTO data_anomaly_records (
+  drama_id, metric_type, anomaly_type, severity, status,
+  analysis_as_of, detected_at, algorithm_version,
+  baseline_value, actual_value, deviation_value, evidence_summary
+) VALUES (
+  @test_score_drama_id, 'PLAY_COUNT', 'PLAY_COUNT_GROWTH_ANOMALY', 'A', 'OPEN',
+  '2026-01-09 23:59:59.999999', '2026-01-10 00:00:00.000000',
+  'Rule-based Detection V1.0', 100.0000, 260.0000, 160.0000,
+  '{"window_size":7,"threshold_mode":"Z_SCORE"}'
+);
+SET @test_anomaly_id = LAST_INSERT_ID();
+INSERT INTO constraint_test_results VALUES
+  ('DataAnomalyRecord valid row allowed', 'ACCEPTED', 'ACCEPTED', 'PASS');
+
+CALL assert_sql_fails('UNIQUE DataAnomalyRecord identity', CONCAT(
+  'INSERT INTO data_anomaly_records (drama_id,metric_type,anomaly_type,severity,status,analysis_as_of,detected_at,algorithm_version,baseline_value,actual_value,deviation_value,evidence_summary) VALUES (',
+  @test_score_drama_id, ',''PLAY_COUNT'',''PLAY_COUNT_GROWTH_ANOMALY'',''A'',''OPEN'',''2026-01-09 23:59:59.999999'',''2026-01-10 00:00:01'',',
+  '''Rule-based Detection V1.0'',100,260,160,''duplicate identity'')'));
+CALL assert_sql_fails('CHECK DataAnomalyRecord metric type', CONCAT(
+  'INSERT INTO data_anomaly_records (drama_id,metric_type,anomaly_type,severity,status,analysis_as_of,detected_at,algorithm_version,evidence_summary) VALUES (',
+  @test_score_drama_id, ',''PLAY_COUNT_TOTAL'',''PLAY_COUNT_GROWTH_ANOMALY'',''A'',''OPEN'',''2026-01-10 00:00:00'',''2026-01-10 00:00:00'',''Rule-based Detection V1.0'',''invalid metric'')'));
+CALL assert_sql_fails('CHECK DataAnomalyRecord anomaly type', CONCAT(
+  'INSERT INTO data_anomaly_records (drama_id,metric_type,anomaly_type,severity,status,analysis_as_of,detected_at,algorithm_version,evidence_summary) VALUES (',
+  @test_score_drama_id, ',''PLAY_COUNT'',''UNKNOWN_ANOMALY'',''A'',''OPEN'',''2026-01-11 00:00:00'',''2026-01-11 00:00:00'',''Rule-based Detection V1.0'',''invalid anomaly'')'));
+CALL assert_sql_fails('CHECK DataAnomalyRecord severity', CONCAT(
+  'INSERT INTO data_anomaly_records (drama_id,metric_type,anomaly_type,severity,status,analysis_as_of,detected_at,algorithm_version,evidence_summary) VALUES (',
+  @test_score_drama_id, ',''PLAY_COUNT'',''PLAY_COUNT_DROP_ANOMALY'',''D'',''OPEN'',''2026-01-12 00:00:00'',''2026-01-12 00:00:00'',''Rule-based Detection V1.0'',''invalid severity'')'));
+CALL assert_sql_fails('CHECK DataAnomalyRecord status', CONCAT(
+  'INSERT INTO data_anomaly_records (drama_id,metric_type,anomaly_type,severity,status,analysis_as_of,detected_at,algorithm_version,evidence_summary) VALUES (',
+  @test_score_drama_id, ',''PLAY_COUNT'',''PLAY_COUNT_DROP_ANOMALY'',''B'',''INVALID'',''2026-01-13 00:00:00'',''2026-01-13 00:00:00'',''Rule-based Detection V1.0'',''invalid status'')'));
+CALL assert_sql_fails('CHECK DataAnomalyRecord algorithm version', CONCAT(
+  'INSERT INTO data_anomaly_records (drama_id,metric_type,anomaly_type,severity,status,analysis_as_of,detected_at,algorithm_version,evidence_summary) VALUES (',
+  @test_score_drama_id, ',''PLAY_COUNT'',''DATA_SPIKE_ANOMALY'',''C'',''OPEN'',''2026-01-14 00:00:00'',''2026-01-14 00:00:00'',''   '',''invalid version'')'));
+CALL assert_sql_fails('FK rejects orphan DataAnomalyRecord',
+  'INSERT INTO data_anomaly_records (drama_id,metric_type,anomaly_type,severity,status,analysis_as_of,detected_at,algorithm_version,evidence_summary) VALUES (999999999999,''PLAY_COUNT'',''PLAY_COUNT_GROWTH_ANOMALY'',''A'',''OPEN'',''2026-01-15 00:00:00'',''2026-01-15 00:00:00'',''Rule-based Detection V1.0'',''orphan drama'')');
 
 -- CHECK constraints for statuses and value dictionaries.
 CALL assert_sql_fails('CHECK users status',
