@@ -233,6 +233,7 @@ def test_route_handlers_do_not_access_repository_or_orm_layers() -> None:
         "scores.py",
         "prediction.py",
         "data_quality.py",
+        "anomaly.py",
     )
     source = "\n".join(
         (router_path / file_name).read_text(encoding="utf-8")

@@ -5,12 +5,13 @@ from typing import Annotated
 from zoneinfo import ZoneInfo
 
 from fastapi import Depends
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from database.session import get_db_session
 from repositories.actor_repository import ActorRepository
 from repositories.analytics_repository import AnalyticsRepository
+from repositories.anomaly_repository import AnomalyRepository
 from repositories.company_repository import CompanyRepository
 from repositories.data_quality_repository import (
     DataQualityRuleRepository,
@@ -31,6 +32,7 @@ from repositories.score_repository import ScoreRepository
 from repositories.tag_repository import TagRepository
 from repositories.user_repository import UserRepository
 from services.drama_service import DramaService
+from services.anomaly_service import AnomalyObservation, AnomalyService
 from services.analytics_service import AnalyticsService
 from dashboard.service import DashboardService
 from repositories.dashboard_repository import DashboardRepository
@@ -44,6 +46,7 @@ from services.user_service import UserService
 from models.master_data import Platform
 from models.relations import DramaPlatform
 from models.snapshot import DramaMetricSnapshot, DramaMetricSnapshotRevision
+from models.quality import DataQualityIssue
 
 DatabaseSession = Annotated[Session, Depends(get_db_session)]
 BUSINESS_TIME_ZONE = ZoneInfo("Asia/Shanghai")
@@ -116,6 +119,141 @@ class _PredictionHistoryProvider:
                 )
             )
         return observations
+
+
+class _AnomalyHistoryProvider:
+    """Compose revision-aware multi-platform inputs for anomaly detection."""
+
+    def __init__(self, session: Session) -> None:
+        self.session = session
+
+    def get_anomaly_history(
+        self,
+        *,
+        analysis_as_of: datetime,
+    ) -> list[AnomalyObservation]:
+        statement = (
+            select(
+                DramaMetricSnapshot,
+                DramaMetricSnapshotRevision,
+                DramaPlatform,
+                Platform,
+            )
+            .join(
+                DramaMetricSnapshotRevision,
+                DramaMetricSnapshotRevision.snapshot_id
+                == DramaMetricSnapshot.snapshot_id,
+            )
+            .join(
+                DramaPlatform,
+                DramaPlatform.drama_platform_id
+                == DramaMetricSnapshot.drama_platform_id,
+            )
+            .join(Platform, Platform.platform_id == DramaPlatform.platform_id)
+            .where(
+                DramaMetricSnapshot.snapshot_time <= analysis_as_of,
+                DramaMetricSnapshotRevision.changed_at <= analysis_as_of,
+            )
+            .order_by(
+                DramaMetricSnapshot.snapshot_time,
+                DramaMetricSnapshot.snapshot_id,
+                DramaMetricSnapshotRevision.changed_at,
+                DramaMetricSnapshotRevision.version_no,
+            )
+        )
+        rows = self.session.execute(statement).all()
+        if not rows:
+            return []
+
+        revision_ids = {
+            row.DramaMetricSnapshotRevision.snapshot_revision_id
+            for row in rows
+        }
+        platform_ids = {
+            row.DramaPlatform.drama_platform_id for row in rows
+        }
+        drama_ids = {
+            row.DramaPlatform.drama_id for row in rows
+        }
+        issues = self.session.scalars(
+            select(DataQualityIssue).where(
+                DataQualityIssue.status.in_(("OPEN", "CONFIRMED")),
+                or_(
+                    DataQualityIssue.target_snapshot_revision_id.in_(revision_ids),
+                    DataQualityIssue.target_drama_platform_id.in_(platform_ids),
+                    DataQualityIssue.target_drama_id.in_(drama_ids),
+                ),
+            )
+        ).all()
+        revision_quality: dict[int, tuple[int, int]] = {}
+        platform_quality: dict[int, tuple[int, int]] = {}
+        drama_quality: dict[int, tuple[int, int]] = {}
+        for issue in issues:
+            key = (
+                1 if issue.severity == "ERROR" else 0,
+                1 if issue.severity == "WARNING" else 0,
+            )
+            if issue.target_snapshot_revision_id is not None:
+                revision_quality[issue.target_snapshot_revision_id] = _quality_add(
+                    revision_quality.get(issue.target_snapshot_revision_id), key
+                )
+            if issue.target_drama_platform_id is not None:
+                platform_quality[issue.target_drama_platform_id] = _quality_add(
+                    platform_quality.get(issue.target_drama_platform_id), key
+                )
+            if issue.target_drama_id is not None:
+                drama_quality[issue.target_drama_id] = _quality_add(
+                    drama_quality.get(issue.target_drama_id), key
+                )
+
+        observations: list[AnomalyObservation] = []
+        for row in rows:
+            snapshot = row.DramaMetricSnapshot
+            revision = row.DramaMetricSnapshotRevision
+            snapshot_time = snapshot.snapshot_time
+            if snapshot_time.tzinfo is None:
+                snapshot_time = snapshot_time.replace(tzinfo=UTC)
+            error_count, warning_count = (0, 0)
+            for counts in (
+                revision_quality.get(revision.snapshot_revision_id),
+                platform_quality.get(row.DramaPlatform.drama_platform_id),
+                drama_quality.get(row.DramaPlatform.drama_id),
+            ):
+                if counts is not None:
+                    error_count += counts[0]
+                    warning_count += counts[1]
+            observations.append(
+                AnomalyObservation(
+                    drama_id=row.DramaPlatform.drama_id,
+                    observation_date=snapshot_time.astimezone(
+                        BUSINESS_TIME_ZONE
+                    ).date(),
+                    changed_at=revision.changed_at,
+                    platform_id=row.DramaPlatform.platform_id,
+                    play_count=revision.play_count,
+                    like_count=revision.like_count,
+                    comment_count=revision.comment_count,
+                    favorite_count=revision.favorite_count,
+                    share_count=revision.share_count,
+                    revision_id=revision.snapshot_revision_id,
+                    revision_action=revision.revision_action,
+                    platform_active=(
+                        row.DramaPlatform.status == "ONLINE"
+                        and row.Platform.status == "ACTIVE"
+                    ),
+                    error_count=error_count,
+                    warning_count=warning_count,
+                )
+            )
+        return observations
+
+
+def _quality_add(
+    current: tuple[int, int] | None,
+    value: tuple[int, int],
+) -> tuple[int, int]:
+    previous = current or (0, 0)
+    return previous[0] + value[0], previous[1] + value[1]
 
 
 def get_user_service(session: DatabaseSession) -> UserService:
@@ -193,6 +331,17 @@ def get_prediction_service(session: DatabaseSession) -> PredictionService:
     )
 
 
+def get_anomaly_service(session: DatabaseSession) -> AnomalyService:
+    """Compose AnomalyService with one Session and as-of history provider."""
+
+    return AnomalyService(
+        session,
+        _AnomalyHistoryProvider(session),
+        AnomalyRepository(session),
+        OperationLogRepository(session),
+    )
+
+
 def get_data_quality_service(session: DatabaseSession) -> DataQualityService:
     """Compose the quality workflow with one request-scoped Session.
 
@@ -234,6 +383,10 @@ ScoreServiceDependency = Annotated[ScoreService, Depends(get_score_service)]
 PredictionServiceDependency = Annotated[
     PredictionService,
     Depends(get_prediction_service),
+]
+AnomalyServiceDependency = Annotated[
+    AnomalyService,
+    Depends(get_anomaly_service),
 ]
 DataQualityServiceDependency = Annotated[
     DataQualityService,

@@ -4,6 +4,7 @@ from fastapi import APIRouter
 
 from routers import (
     actors,
+    anomaly,
     analytics,
     dashboard,
     auth,
@@ -34,5 +35,6 @@ api_v1_router.include_router(imports.router)
 api_v1_router.include_router(scores.router)
 api_v1_router.include_router(prediction.router)
 api_v1_router.include_router(data_quality.router)
+api_v1_router.include_router(anomaly.router)
 
 __all__ = ["api_v1_router"]
