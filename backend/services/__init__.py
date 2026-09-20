@@ -1,6 +1,13 @@
 """Transport-neutral Service boundaries and transaction primitives."""
 
 from services.analytics_service import AnalyticsService, AnalyticsSummary
+from services.anomaly_service import (
+    AnomalyDetectionResult,
+    AnomalyDetectionServiceResult,
+    AnomalyHistoryProvider,
+    AnomalyObservation,
+    AnomalyService,
+)
 from dashboard.service import DashboardService
 from services.base import BaseService, RepositorySessionMismatchError
 from services.data_quality_service import (
@@ -26,6 +33,11 @@ from services.user_service import UserService
 __all__ = [
     "AnalyticsService",
     "AnalyticsSummary",
+    "AnomalyDetectionResult",
+    "AnomalyDetectionServiceResult",
+    "AnomalyHistoryProvider",
+    "AnomalyObservation",
+    "AnomalyService",
     "DashboardService",
     "DataQualityService",
     "BaseService",

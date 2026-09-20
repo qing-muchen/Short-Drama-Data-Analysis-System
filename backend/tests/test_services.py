@@ -34,6 +34,11 @@ def test_service_package_exports_structural_baseline() -> None:
     assert set(services.__all__) == {
         "AnalyticsService",
         "AnalyticsSummary",
+        "AnomalyDetectionResult",
+        "AnomalyDetectionServiceResult",
+        "AnomalyHistoryProvider",
+        "AnomalyObservation",
+        "AnomalyService",
         "BaseService",
         "BusinessException",
         "ConflictException",
