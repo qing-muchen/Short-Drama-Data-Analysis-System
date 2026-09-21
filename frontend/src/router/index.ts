@@ -75,6 +75,12 @@ const router = createRouter({
       component: () => import('../views/prediction/PredictionAnalysis.vue'),
       meta: { requiresAuth: true },
     },
+    {
+      path: '/anomalies',
+      name: 'anomalies',
+      component: () => import('../views/anomaly/AnomalyAnalysis.vue'),
+      meta: { requiresAuth: true },
+    },
   ],
 })
 
