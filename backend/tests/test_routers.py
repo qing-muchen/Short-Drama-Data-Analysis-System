@@ -102,6 +102,12 @@ def test_openapi_registers_only_authorized_basic_api_paths() -> None:
     assert set(paths["/api/v1/scores/calculate"]) == {"post"}
     assert set(paths["/api/v1/scores/ranking"]) == {"get"}
     assert set(paths["/api/v1/scores/level-distribution"]) == {"get"}
+    assert set(paths["/api/v1/operation-actions"]) == {"get", "post"}
+    assert set(paths["/api/v1/operation-actions/statistics"]) == {"get"}
+    assert set(paths["/api/v1/operation-actions/{action_id}"]) == {"get"}
+    assert set(paths["/api/v1/operation-actions/{action_id}/status"]) == {"patch"}
+    assert set(paths["/api/v1/operation-actions/{action_id}/assign"]) == {"patch"}
+    assert set(paths["/api/v1/operation-actions/{action_id}/comments"]) == {"post"}
     assert set(paths["/api/v1/scores/{drama_id}"]) == {"get"}
     assert set(paths["/api/v1/data-quality/calculate"]) == {"post"}
     assert set(paths["/api/v1/data-quality/score"]) == {"get"}

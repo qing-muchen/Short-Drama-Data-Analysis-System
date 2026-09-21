@@ -27,6 +27,11 @@ from repositories.import_repository import (
     OperationLogRepository,
 )
 from repositories.platform_repository import PlatformRepository
+from repositories.operation_action_repository import (
+    OperationActionHistoryRepository,
+    OperationActionRepository,
+    OperationActionSourceRepository,
+)
 from repositories.prediction_repository import PredictionRepository
 from repositories.score_repository import ScoreRepository
 from repositories.tag_repository import TagRepository
@@ -43,6 +48,7 @@ from services.platform_service import PlatformService
 from services.prediction_service import PredictionObservation, PredictionService
 from services.score_service import ScoreService
 from services.user_service import UserService
+from services.operation_action_service import OperationActionService
 from models.master_data import Platform
 from models.relations import DramaPlatform
 from models.snapshot import DramaMetricSnapshot, DramaMetricSnapshotRevision
@@ -360,6 +366,17 @@ def get_data_quality_service(session: DatabaseSession) -> DataQualityService:
     )
 
 
+def get_operation_action_service(session: DatabaseSession) -> OperationActionService:
+    """Compose the action workflow with one request-scoped Session."""
+    return OperationActionService(
+        session,
+        OperationActionRepository(session),
+        OperationActionSourceRepository(session),
+        OperationActionHistoryRepository(session),
+        OperationLogRepository(session),
+    )
+
+
 UserServiceDependency = Annotated[UserService, Depends(get_user_service)]
 DramaServiceDependency = Annotated[DramaService, Depends(get_drama_service)]
 MasterDataServiceDependency = Annotated[
@@ -391,4 +408,8 @@ AnomalyServiceDependency = Annotated[
 DataQualityServiceDependency = Annotated[
     DataQualityService,
     Depends(get_data_quality_service),
+]
+OperationActionServiceDependency = Annotated[
+    OperationActionService,
+    Depends(get_operation_action_service),
 ]
