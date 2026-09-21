@@ -23,6 +23,11 @@ from repositories.import_repository import (
     ImportJobRepository,
     OperationLogRepository,
 )
+from repositories.operation_action_repository import (
+    OperationActionHistoryRepository,
+    OperationActionRepository,
+    OperationActionSourceRepository,
+)
 from repositories.platform_repository import PlatformRepository
 from repositories.prediction_repository import PredictionRepository
 from repositories.score_repository import ScoreRepository
@@ -50,6 +55,9 @@ __all__ = [
     "ImportErrorRepository",
     "ImportJobRepository",
     "OperationLogRepository",
+    "OperationActionRepository",
+    "OperationActionSourceRepository",
+    "OperationActionHistoryRepository",
     "Page",
     "PlatformRepository",
     "PredictionRepository",
