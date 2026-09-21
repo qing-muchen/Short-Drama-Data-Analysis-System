@@ -196,6 +196,7 @@ onUnmounted(() => {
         <router-link to="/data-quality"><el-button type="warning" plain>数据质量治理</el-button></router-link>
         <router-link to="/predictions"><el-button type="info" plain>播放趋势预测</el-button></router-link>
         <router-link to="/anomalies"><el-button type="danger" plain>异常检测分析</el-button></router-link>
+        <router-link to="/operation-actions"><el-button type="primary" plain>运营行动中心</el-button></router-link>
         <router-link v-if="isAdmin" to="/imports"><el-button>数据导入</el-button></router-link>
         <el-button :icon="Refresh" :loading="loading" @click="loadDashboard">刷新数据</el-button>
       </div>

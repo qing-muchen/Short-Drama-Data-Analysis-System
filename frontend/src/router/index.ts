@@ -81,6 +81,12 @@ const router = createRouter({
       component: () => import('../views/anomaly/AnomalyAnalysis.vue'),
       meta: { requiresAuth: true },
     },
+    {
+      path: '/operation-actions',
+      name: 'operation-actions',
+      component: () => import('../views/operationAction/OperationActionAnalysis.vue'),
+      meta: { requiresAuth: true },
+    },
   ],
 })
 
