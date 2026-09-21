@@ -495,6 +495,66 @@ INSERT INTO operation_logs (
 INSERT INTO constraint_test_results VALUES
   ('OperationLog one operator and target', 'ACCEPTED', 'ACCEPTED', 'PASS');
 
+-- OperationAction V012 constraints and logical source snapshots.
+INSERT INTO operation_actions (
+  drama_id, title, description, priority, status, assignee_user_id,
+  created_by_user_id, due_date
+) VALUES (
+  @test_drama_id, 'Anomaly action', 'Handle the detected anomaly', 'HIGH', 'OPEN',
+  @test_user_id, @test_user_id, CURRENT_DATE
+);
+SET @test_action_id = LAST_INSERT_ID();
+INSERT INTO constraint_test_results VALUES
+  ('OperationAction valid row allowed', 'ACCEPTED', 'ACCEPTED', 'PASS');
+CALL assert_sql_fails('CHECK action status', CONCAT(
+  'INSERT INTO operation_actions (title,priority,status,created_by_user_id) VALUES (''Invalid status'',''LOW'',''INVALID'',',
+  @test_user_id, ')'));
+CALL assert_sql_fails('CHECK action priority', CONCAT(
+  'INSERT INTO operation_actions (title,priority,status,created_by_user_id) VALUES (''Invalid priority'',''INVALID'',''OPEN'',',
+  @test_user_id, ')'));
+CALL assert_sql_fails('CHECK source type', CONCAT(
+  'INSERT INTO operation_action_sources (action_id,source_type,source_evidence_summary) VALUES (',
+  @test_action_id, ',''INVALID'',''Invalid source'')'));
+CALL assert_sql_fails('CHECK history event type', CONCAT(
+  'INSERT INTO operation_action_history (action_id,event_type,operator_user_id) VALUES (',
+  @test_action_id, ',''INVALID'',', @test_user_id, ')'));
+INSERT INTO operation_action_sources (
+  action_id, source_type, source_reference_id, source_evidence_summary,
+  source_analysis_as_of, source_algorithm_version
+) VALUES (
+  @test_action_id, 'ANOMALY', 123, 'Anomaly evidence snapshot',
+  UTC_TIMESTAMP(6), 'Rule-based Detection V1.0'
+);
+CALL assert_sql_fails('Duplicate action source', CONCAT(
+  'INSERT INTO operation_action_sources (action_id,source_type,source_reference_id,source_evidence_summary) VALUES (',
+  @test_action_id, ',''ANOMALY'',123,''Duplicate source'')'));
+INSERT INTO operation_action_history (
+  action_id, event_type, old_status, new_status, operator_user_id, comment
+) VALUES (
+  @test_action_id, 'CREATE', NULL, 'OPEN', @test_user_id, 'Created by constraint test'
+);
+INSERT INTO constraint_test_results VALUES
+  ('Action source and history valid rows allowed', 'ACCEPTED', 'ACCEPTED', 'PASS');
+
+INSERT INTO operation_actions (title, priority, status, created_by_user_id)
+VALUES ('Cascade action', 'LOW', 'OPEN', @test_user_id);
+SET @test_cascade_action_id = LAST_INSERT_ID();
+INSERT INTO operation_action_sources (
+  action_id, source_type, source_evidence_summary
+) VALUES (@test_cascade_action_id, 'MANUAL', 'Manual action reason');
+INSERT INTO operation_action_history (
+  action_id, event_type, operator_user_id, comment
+) VALUES (@test_cascade_action_id, 'COMMENT', @test_user_id, 'Cascade test');
+DELETE FROM operation_actions WHERE action_id = @test_cascade_action_id;
+INSERT INTO constraint_test_results
+SELECT 'Action delete cascades source and history', 'ACCEPTED',
+       IF((SELECT COUNT(*) FROM operation_action_sources WHERE action_id = @test_cascade_action_id) = 0
+          AND (SELECT COUNT(*) FROM operation_action_history WHERE action_id = @test_cascade_action_id) = 0,
+          'ACCEPTED', 'RETAINED'),
+       IF((SELECT COUNT(*) FROM operation_action_sources WHERE action_id = @test_cascade_action_id) = 0
+          AND (SELECT COUNT(*) FROM operation_action_history WHERE action_id = @test_cascade_action_id) = 0,
+          'PASS', 'FAIL');
+
 -- Real foreign keys and RESTRICT delete behavior.
 CALL assert_sql_fails('FK rejects orphan relation',
   'INSERT INTO drama_actors (drama_id, actor_id) VALUES (999999999999,999999999999)');

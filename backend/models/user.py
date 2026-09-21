@@ -11,8 +11,10 @@ from database.base import Base
 from models.common import CreatedUpdatedAtMixin
 
 if TYPE_CHECKING:
+    from models.import_batch import ImportBatch
     from models.import_job import ImportJob
     from models.operation_log import OperationLog
+    from models.operation_action import OperationAction, OperationActionHistory
     from models.quality import DataQualityIssue
     from models.snapshot import DramaMetricSnapshotRevision
 
@@ -61,6 +63,9 @@ class User(CreatedUpdatedAtMixin, Base):
     initiated_import_jobs: Mapped[list["ImportJob"]] = relationship(
         back_populates="initiated_by"
     )
+    created_import_batches: Mapped[list["ImportBatch"]] = relationship(
+        back_populates="created_by"
+    )
     changed_snapshot_revisions: Mapped[list["DramaMetricSnapshotRevision"]] = (
         relationship(back_populates="changed_by")
     )
@@ -74,4 +79,16 @@ class User(CreatedUpdatedAtMixin, Base):
     targeted_operations: Mapped[list["OperationLog"]] = relationship(
         back_populates="target_user",
         foreign_keys="OperationLog.target_user_id",
+    )
+    assigned_actions: Mapped[list["OperationAction"]] = relationship(
+        back_populates="assignee",
+        foreign_keys="OperationAction.assignee_user_id",
+    )
+    created_actions: Mapped[list["OperationAction"]] = relationship(
+        back_populates="created_by",
+        foreign_keys="OperationAction.created_by_user_id",
+    )
+    action_history: Mapped[list["OperationActionHistory"]] = relationship(
+        back_populates="operator",
+        foreign_keys="OperationActionHistory.operator_user_id",
     )

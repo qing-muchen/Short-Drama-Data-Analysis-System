@@ -12,7 +12,9 @@ from models.common import CreatedUpdatedAtMixin
 
 if TYPE_CHECKING:
     from models.anomaly import DataAnomalyRecord
+    from models.master_data import Platform, Tag
     from models.operation_log import OperationLog
+    from models.operation_action import OperationAction
     from models.prediction import PredictionResult
     from models.quality import DataQualityIssue
     from models.relations import (
@@ -100,3 +102,26 @@ class Drama(CreatedUpdatedAtMixin, Base):
     anomaly_records: Mapped[list["DataAnomalyRecord"]] = relationship(
         back_populates="drama"
     )
+    operation_actions: Mapped[list["OperationAction"]] = relationship(
+        back_populates="drama"
+    )
+
+    @property
+    def tags(self) -> list["Tag"]:
+        """Expose active tag master records for API serialization."""
+
+        return [
+            relation.tag
+            for relation in self.tag_relations
+            if relation.relation_status == "ACTIVE" and relation.tag.status == "ACTIVE"
+        ]
+
+    @property
+    def platforms(self) -> list["Platform"]:
+        """Expose active platform master records without denormalizing Drama."""
+
+        return [
+            relation.platform
+            for relation in self.platform_relations
+            if relation.platform.status == "ACTIVE"
+        ]

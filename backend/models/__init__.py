@@ -7,9 +7,15 @@ from models.data_quality import (
     DataQualityRuleResult,
     DataQualityScore,
 )
+from models.import_batch import ImportBatch
 from models.import_job import ImportError, ImportJob
 from models.master_data import Actor, Company, Director, Platform, Tag
 from models.operation_log import OperationLog
+from models.operation_action import (
+    OperationAction,
+    OperationActionHistory,
+    OperationActionSource,
+)
 from models.prediction import PredictionResult
 from models.quality import DataQualityIssue
 from models.relations import (
@@ -42,8 +48,12 @@ __all__ = [
     "DramaScore",
     "DramaTag",
     "ImportError",
+    "ImportBatch",
     "ImportJob",
     "OperationLog",
+    "OperationAction",
+    "OperationActionHistory",
+    "OperationActionSource",
     "Platform",
     "PredictionResult",
     "Tag",

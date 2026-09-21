@@ -1,4 +1,4 @@
-"""Import-only verification for the current 24-table ORM mapping."""
+"""Import-only verification for the current 28-table ORM mapping."""
 
 from sqlalchemy import CheckConstraint, ForeignKeyConstraint, UniqueConstraint, inspect
 from sqlalchemy.dialects.mysql import BIGINT
@@ -25,6 +25,7 @@ EXPECTED_TABLES = {
     "drama_metric_snapshot_revisions",
     "drama_scores",
     "import_jobs",
+    "import_batches",
     "import_errors",
     "data_quality_issues",
     "data_quality_rules",
@@ -33,13 +34,16 @@ EXPECTED_TABLES = {
     "operation_logs",
     "prediction_results",
     "data_anomaly_records",
+    "operation_actions",
+    "operation_action_sources",
+    "operation_action_history",
 }
 
 
 def test_all_models_import_and_configure() -> None:
     """All model classes load and every relationship resolves without a DB."""
 
-    assert len(models.__all__) == 24
+    assert len(models.__all__) == 28
     configure_mappers()
     assert {
         "actor_relations",
@@ -62,10 +66,17 @@ def test_all_models_import_and_configure() -> None:
         inspect(models.DataQualityRuleResult).relationships.keys()
     )
     assert "rule_results" in inspect(models.DataQualityScore).relationships
+    assert "files" in inspect(models.ImportBatch).relationships
     assert "predictions" in inspect(models.Drama).relationships
     assert "drama" in inspect(models.PredictionResult).relationships
     assert "anomaly_records" in inspect(models.Drama).relationships
     assert "drama" in inspect(models.DataAnomalyRecord).relationships
+    assert "operation_actions" in inspect(models.Drama).relationships
+    assert {"sources", "history", "drama", "assignee", "created_by"}.issubset(
+        inspect(models.OperationAction).relationships.keys()
+    )
+    assert "action" in inspect(models.OperationActionSource).relationships
+    assert "action" in inspect(models.OperationActionHistory).relationships
 
 
 def test_metadata_matches_frozen_schema_shape() -> None:
@@ -99,15 +110,15 @@ def test_metadata_matches_frozen_schema_shape() -> None:
         for constraint in table.constraints
     )
 
-    assert foreign_keys == 44
+    assert foreign_keys == 52
     assert all(
         constraint.name is not None
         for table in tables
         for constraint in table.foreign_key_constraints
     )
-    assert checks == 94
-    assert uniques == 22
-    assert sum(len(table.indexes) for table in tables) == 61
+    assert checks == 110
+    assert uniques == 26
+    assert sum(len(table.indexes) for table in tables) == 70
     assert all(
         foreign_key.ondelete in {"RESTRICT", "CASCADE"}
         and foreign_key.onupdate == "RESTRICT"
@@ -121,9 +132,14 @@ def test_metadata_matches_frozen_schema_shape() -> None:
         for foreign_key in table.foreign_keys
         if foreign_key.ondelete == "CASCADE"
     ]
-    assert len(cascade_foreign_keys) == 1
-    assert cascade_foreign_keys[0].parent.table.name == "data_quality_rule_results"
-    assert cascade_foreign_keys[0].column.table.name == "data_quality_scores"
+    assert len(cascade_foreign_keys) == 3
+    cascade_pairs = {
+        (foreign_key.parent.table.name, foreign_key.column.table.name)
+        for foreign_key in cascade_foreign_keys
+    }
+    assert ("data_quality_rule_results", "data_quality_scores") in cascade_pairs
+    assert ("operation_action_sources", "operation_actions") in cascade_pairs
+    assert ("operation_action_history", "operation_actions") in cascade_pairs
 
 
 def test_snapshot_and_governance_models_remain_separate() -> None:
