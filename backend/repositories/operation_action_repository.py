@@ -91,6 +91,16 @@ class OperationActionRepository(BaseRepository[OperationAction]):
         self.session.flush()
         return entity
 
+    def update_status(self, *, action_id: int, status: str) -> OperationAction | None:
+        """Persist a Service-validated status without applying transition rules."""
+
+        entity = self.session.get(OperationAction, action_id)
+        if entity is None:
+            return None
+        entity.status = status
+        self.session.flush()
+        return entity
+
     def count_statistics(self) -> dict[str, int]:
         statement = select(OperationAction.status, func.count(OperationAction.action_id)).group_by(
             OperationAction.status
@@ -141,6 +151,25 @@ class OperationActionSourceRepository(BaseRepository[OperationActionSource]):
             else OperationActionSource.source_reference_id.is_(None),
         )
         return bool(self.session.scalar(statement) or 0)
+
+    def find_open_action_id(
+        self, *, source_type: str, source_reference_id: int | None
+    ) -> int | None:
+        """Return one open action for a logical source, if present."""
+
+        statement = (
+            select(OperationActionSource.action_id)
+            .join(OperationAction, OperationAction.action_id == OperationActionSource.action_id)
+            .where(
+                OperationActionSource.source_type == source_type,
+                OperationActionSource.source_reference_id == source_reference_id
+                if source_reference_id is not None
+                else OperationActionSource.source_reference_id.is_(None),
+                OperationAction.status.in_(("OPEN", "IN_PROGRESS")),
+            )
+            .limit(1)
+        )
+        return self.session.scalar(statement)
 
 
 class OperationActionHistoryRepository(BaseRepository[OperationActionHistory]):

@@ -91,6 +91,17 @@ def test_source_create_query_and_exists_are_scoped_to_action() -> None:
     )
 
 
+def test_find_open_action_id_uses_source_and_open_statuses() -> None:
+    session = session_mock()
+    session.scalar.return_value = 8
+    result = OperationActionSourceRepository(session).find_open_action_id(
+        source_type="ANOMALY", source_reference_id=12
+    )
+    assert result == 8
+    statement = session.scalar.call_args.args[0]
+    assert isinstance(statement, Select)
+
+
 def test_history_create_and_query_are_chronological() -> None:
     session = session_mock()
     history = OperationActionHistory(action_id=1, event_type="COMMENT", operator_user_id=2)
