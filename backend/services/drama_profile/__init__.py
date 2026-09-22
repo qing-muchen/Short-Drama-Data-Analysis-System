@@ -12,6 +12,15 @@ from services.drama_profile.contracts import (
     QualityProfileSummary,
     ScoreProfileSummary,
 )
+from services.drama_profile.providers import (
+    ActionProfileProvider,
+    AnomalyProfileProvider,
+    ExplanationProfileProvider,
+    PredictionProfileProvider,
+    ProfileProvider,
+    QualityProfileProvider,
+    ScoreProfileProvider,
+)
 
 __all__ = [
     "ActionProfileSummary",
@@ -24,4 +33,11 @@ __all__ = [
     "PredictionProfileSummary",
     "QualityProfileSummary",
     "ScoreProfileSummary",
+    "ActionProfileProvider",
+    "AnomalyProfileProvider",
+    "ExplanationProfileProvider",
+    "PredictionProfileProvider",
+    "ProfileProvider",
+    "QualityProfileProvider",
+    "ScoreProfileProvider",
 ]
