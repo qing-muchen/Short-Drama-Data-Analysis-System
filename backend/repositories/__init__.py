@@ -21,6 +21,10 @@ from repositories.explanation_repository import (
     AnalysisExplanationRepository,
     AnalysisLineageRepository,
 )
+from repositories.explanation_query_repository import (
+    AnalysisExplanationQueryRepository,
+    AnalysisLineageQueryRepository,
+)
 from repositories.import_repository import (
     ImportDataRepository,
     ImportErrorRepository,
@@ -57,6 +61,8 @@ __all__ = [
     "DramaRepository",
     "AnalysisExplanationRepository",
     "AnalysisLineageRepository",
+    "AnalysisExplanationQueryRepository",
+    "AnalysisLineageQueryRepository",
     "ImportDataRepository",
     "ImportErrorRepository",
     "ImportJobRepository",
