@@ -22,6 +22,12 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      path: '/dramas/:id/profile',
+      name: 'drama-profile',
+      component: () => import('../views/dramaProfile/DramaProfile.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/actors',
       name: 'actors',
       component: () => import('../views/master/ActorList.vue'),
