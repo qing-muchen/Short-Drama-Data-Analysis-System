@@ -1,241 +1,398 @@
 # Phase 8 Short Drama Operation Analytics Center Architecture Review
 
+> 审查对象：`PHASE8_OPERATION_ANALYTICS_DESIGN_V2.md`
+>
+> 审查范围：架构、数据来源、确定性规则、Availability、只读 API 与数据库影响。
+>
+> 本文不授权创建 Migration、数据库表或业务代码。
+
 ## 1. Review 结论
 
-Phase 8 Design Proposal 的定位、依赖方向和业务价值与 Phase 1–7 兼容，审查结论为：**有条件通过，允许进入 Design V2**。
+Phase 8 Design V2 已将 Design Proposal 和前次 Review 中的核心约束转化为可实现契约：固定窗口、明确公式、版本常量、Availability、revision/as-of 规则、分层边界和只读 API 均已定义。
 
-进入实现前必须在 Design V2 中冻结行动效果口径、生命周期阶段规则、Benchmark 比较范围、Availability 状态和 revision/as-of 选择方式。当前不允许直接进入 Backend、Frontend 或数据库实现。
+审查选择：**Option A——允许进入 Implementation Planning，不要求 Design V3。**
 
-## 2. 核心架构原则审查
+该结论不等于允许立即编码。Implementation Planning 必须先把本文“实现前冻结条件”落实到 Contracts、Rule Component、Provider 和 API Schema 的文件级计划中。两个 TBD 已被限定为 V1 排除项，不阻塞已冻结范围；任何实现不得绕过排除项自行推断。
 
-Phase 8 保持 Read Model / Analytics Layer 定位，只消费：
+## 2. 模块定位审查
 
-- Prediction；
-- Anomaly；
-- Operation Action；
-- Drama Profile；
-- revision-aware 历史运营指标。
+Phase 8 定位保持为运营分析与复盘层，属于 Read Model / Analytics Layer。它在请求期间消费已有事实和版本化结果，返回临时分析 DTO，不产生新的业务事实。
 
-它不修改 Score、Prediction、Anomaly、Action、Explanation 或 Profile 结果，也不重新执行评分、预测和异常检测。
+V1 实际使用的数据域包括：
 
-该边界符合现有分层设计，能够避免 Phase 8 成为新的业务事实中心或跨模块编排中心。
+- Operation Action 与 Action History；
+- Anomaly records；
+- revision-aware Historical Metrics；
+- Drama 与 DramaPlatform 的结构化基础信息。
+
+Prediction、Score 和 Drama Profile 属于可复用的现有能力，但 Design V2 的三套 V1 公式并不依赖它们。实现不得为了“覆盖模块列表”而额外调用 PredictionService、ScoreService 或 DramaProfileService。未来如将其纳入计算，必须升级相应规则版本并重新评审口径。
+
+Phase 8 不替代 Phase 3 Prediction、Phase 4 Anomaly、Phase 5 Operation Action 或 Phase 7 Drama Profile。此项通过。
 
 ## 3. AI 边界审查
 
-Phase 8 V1 明确排除：
+Design V2 明确排除 LLM、AI Agent、自动运营助手、自动策略生成、推荐算法、机器学习模型和自动分类模型。
 
-- LLM；
-- AI Agent；
-- 自动运营建议；
-- 自动决策；
-- 推荐系统；
-- 机器学习模型。
-
-所有输出必须来自明确指标、固定规则和可解释统计逻辑。生命周期阶段属于规则分类，不得描述为智能识别或预测模型；Benchmark 不得生成推荐结论。
+Action Effect 使用固定统计公式，Lifecycle 使用确定性阈值规则，Benchmark 使用明确组内统计。所有结论均可由输入 DTO、公式和版本复现。生命周期“分类”是规则分类，不得在 API、文档或页面中表述为 AI 识别。
 
 此项通过。
 
-## 4. 子模块审查
+## 4. 架构依赖审查
 
-### 4.1 Operation Effectiveness Analysis
-
-输入由 Operation Action、Action History、Before Metrics 和 After Metrics 组成，输出只描述行动前后指标变化。
-
-必须冻结：
-
-- 锚点事件：V1 建议使用行动 `COMPLETED`/`CLOSE` 事件时间；
-- 默认窗口：行动前后各 7 个完整日点；
-- 指标：V1 建议限定为累计播放量对应的日增量、互动率和异常数量；
-- 聚合口径：全部有效平台，revision 满足 `changed_at <= analysis_as_of`；
-- 缺失状态：`INSUFFICIENT_HISTORY`、`INCOMPLETE_BEFORE_WINDOW`、`INCOMPLETE_AFTER_WINDOW`；
-- 非因果措辞：只使用“行动发生前后变化”，禁止“导致”“贡献”“提升来源”。
-
-V1 不需要新增 `operation_outcomes` 表。效果结果可实时计算为只读 DTO；若未来需要发布和锁定复盘报告，应另行设计持久化模型。
-
-### 4.2 Drama Lifecycle Analysis
-
-阶段集合可以保留：
-
-```text
-LAUNCH / GROWTH / STABLE / DECLINE / ARCHIVED
-```
-
-但 Proposal 尚未冻结每个阶段的严格规则。Design V2 必须明确：
-
-- 发布后天数边界；
-- 所需最小历史日点；
-- 增长率、连续增长/下降天数和稳定区间阈值；
-- `ARCHIVED` 是显式业务状态还是规则推导；
-- 多条件冲突时的阶段优先级；
-- `lifecycle_rule_version`；
-- 零增长、数据缺口、累计值回退和历史不足处理。
-
-禁止机器学习分类。规则计算应放在纯规则模块，不应由 Provider、Repository、Router 或前端实现。
-
-### 4.3 Drama Benchmark Analysis
-
-Benchmark 只提供统计比较，不产生“最佳短剧”、价值判断或推荐排序。
-
-Design V2 必须冻结：
-
-- V1 指标集合：播放规模、日增量、互动率、异常频率、生命周期阶段、数据质量；
-- 比较组形成方式：显式 drama IDs，或相同平台/标签的受限筛选组；
-- 时间口径：同一 `analysis_as_of` 或明确可比较窗口；
-- 版本口径：不得混用不同算法版本后直接比较；
-- 缺失数据：保留不可用状态，不以 0 填充；
-- 排序：仅按用户选择的客观指标排序，不提供价值排名。
-
-比较指标可统一后进入 V1，但不应直接复用 Profile 页面显示值作为不可追溯的输入。Provider 应从原结果 Repository 读取版本化数据。
-
-## 5. 数据库影响审查
-
-Phase 8 V1 应继续保持无 Migration 方案：
-
-- 不新增 `operation_outcomes`；
-- 不新增 `lifecycle_snapshot`；
-- 不新增 `benchmark_snapshot`；
-- 不修改 V001–V013。
-
-三类分析均可由现有事实表和历史数据实时形成 Read Model。提前持久化会产生重算、版本同步和历史冲突风险。
-
-若未来出现发布复盘报告、长期生命周期快照或大规模 Benchmark 物化需求，必须重新进入 Migration Review，并明确结果身份、版本和失效策略。
-
-数据库审查结论：**V1 不需要 V014 Migration**。
-
-## 6. 架构依赖审查
-
-冻结架构：
+冻结依赖方向：
 
 ```text
 Operation Analytics API
           ↓
 OperationAnalyticsService
           ↓
-Analysis Providers / Pure Rules
-          ↓
-Existing Repositories
+Pure Rule Components ← Analysis Providers
+                              ↓
+                    Existing Repositories
 ```
 
-禁止 `OperationAnalyticsService` 调用 ScoreService、PredictionService、AnomalyService、OperationActionService 或 DramaProfileService。
+禁止 `OperationAnalyticsService` 调用 ScoreService、PredictionService、AnomalyService、OperationActionService、DramaProfileService 或 ExplanationService。
 
-Service 负责参数校验、Provider 编排、口径一致性和响应聚合。Repository 负责数据访问；纯生命周期规则负责确定性计算。依赖保持单向，不反向修改 Phase 1–7。
+Service 负责冻结 `analysis_as_of`、编排、规则调用、口径校验和响应组装；Provider 读取数据；Rule Component 纯计算；Repository 执行只读查询。该方向不会形成业务 Service 之间的循环依赖。
 
-## 7. Provider 设计审查
+此项通过。
 
-建议 V1 Provider：
+## 5. Provider 与 Rule Component 审查
 
-- `OperationEffectivenessProvider`：读取行动事件和前后窗口；
-- `LifecycleInputProvider`：读取生命周期规则所需的版本化输入；
-- `BenchmarkProvider`：批量读取统一口径的比较数据。
+### 5.1 OperationEffectivenessProvider
 
-Provider 必须：
+只负责批量读取 Action 与历史事件、完成时间锚点候选、重叠 Action、前后窗口累计指标、窗口内 Anomaly records、输入 revision 与来源版本。
+
+它不计算差值、不判断方向、不判断行动成功、不执行因果分析、不推荐后续动作。
+
+### 5.2 LifecycleInputProvider
+
+Design V2 中的名称和边界应保留为 `LifecycleInputProvider`，不应改成负责分类的 `LifecycleProvider`。它只读取 Drama 状态、release time 和连续累计日点。
+
+生命周期阶段必须由纯 `LifecycleClassifier` 输出。把分类规则放入 Provider 会破坏“读取与计算分离”，因此该替代方案不通过。
+
+### 5.3 BenchmarkProvider
+
+只负责批量读取显式比较组的统一平台、统一日期窗口数据、异常记录和来源版本。它不计算中位数、不排序价值、不产生名次或推荐。
+
+### 5.4 统一边界
+
+所有 Provider 必须：
 
 - 只读；
-- 返回 DTO；
-- 不向上返回 ORM 对象；
+- 返回 Contracts DTO；
+- 不向上返回 ORM；
+- 不写数据库；
+- 不 commit/rollback；
 - 不调用业务 Service；
-- 不执行写入或事务提交；
-- 不承载复杂业务流程。
+- 不承载统计公式或状态分类。
 
-生命周期阶段判断不应放入 Provider，应由纯规则组件处理。行动效果的前后差值可以由纯统计组件处理，Provider 只准备窗口数据。
+此项通过，但 Contracts 和源码边界测试必须锁定上述职责。
 
-## 8. API 设计审查
+## 6. Operation Effectiveness Analysis 审查
 
-### 行动效果
+### 6.1 数据来源
+
+V1 输入冻结为：
+
+- `operation_actions`；
+- `operation_action_history`；
+- `drama_metric_snapshots` 及其 revision；
+- `data_anomaly_records`。
+
+Prediction 结果不参与 V1 Action Effect 公式。不得把预测值与实际值混合为行动效果，也不得调用 PredictionService。
+
+### 6.2 Action 资格与锚点
+
+一次 Action 由唯一 `action_id` 标识。V1 只分析 `drama_id` 非空、截止 `analysis_as_of` 已存在第一次进入 `COMPLETED` 的历史事件、且可以构建固定窗口的 Action。
+
+时间锚点冻结为：
 
 ```text
+T0 = 第一次进入 COMPLETED 的历史事件 created_at
+```
+
+若 `CLOSE` 和 `STATUS_CHANGE -> COMPLETED` 同时存在，按 `created_at ASC, history_id ASC` 选择第一条。
+
+由于当前没有实际活动开始时间，结果语义必须写作“完成时间前后指标变化”或 “post-completion metric movement”，不能写作完整活动周期的 before/after effect。`operation_actions.created_at` 到 T0 仅是记录生命周期，不能当作活动 duration。
+
+### 6.3 固定窗口
+
+按 Asia/Shanghai 业务日冻结：
+
+```text
+Before = T0 所在业务日前第 7 日至前第 1 日
+After  = T0 所在业务日后第 1 日至后第 7 日
+```
+
+Anchor Day 不进入任一窗口。V1 不接受客户端覆盖窗口长度，不插值、不补 0。`analysis_as_of` 早于 After 最后一个完整日结束时间时，返回 `INSUFFICIENT / INCOMPLETE_AFTER_WINDOW`。
+
+### 6.4 指标口径
+
+以下指标冻结：
+
+1. `views_change`：两个 7 日窗口播放增量总和之差和相对变化；
+2. `engagement_change`：两个窗口“互动增量总和 / 播放增量总和”之差；
+3. `growth_rate_change`：两个窗口日均播放增量的相对变化；
+4. `anomaly_count_change`：两个窗口 Anomaly record 数量之差。
+
+累计指标必须先按相邻日末值做差，再跨固定平台集合聚合。负增量不截断为 0，而是返回 `INVALID_CUMULATIVE_SEQUENCE`。Before 分母为 0 时相对值为 null，并返回 `ZERO_BASELINE`。
+
+输出方向只允许 `INCREASED`、`UNCHANGED`、`DECREASED`、`UNAVAILABLE`。不允许 `SUCCESSFUL`、`EFFECTIVE`、`IMPROVED` 等价值或因果结论。
+
+允许文案：“观察到行动完成后 7 日播放增量较完成前 7 日变化 12%。”
+
+禁止文案：“该行动导致播放提升 12%。”
+
+### 6.5 重叠行动
+
+同一 Drama 的其他 Action 锚点落入任一窗口时，结果可以返回，但必须标记 `PARTIAL / OVERLAPPING_ACTIONS` 并列出重叠 action IDs。V1 不做影响分摊或归因。
+
+### 6.6 缺失处理
+
+| 情况 | Availability |
+|---|---|
+| Action 尚未完成或无完成事件 | `INSUFFICIENT / NOT_COMPLETED` |
+| 全局 Action 无 `drama_id` | `NOT_AVAILABLE / GLOBAL_ACTION_UNSUPPORTED` |
+| Before 日点不足 | `INSUFFICIENT / INCOMPLETE_BEFORE_WINDOW` |
+| After 日点不足 | `INSUFFICIENT / INCOMPLETE_AFTER_WINDOW` |
+| 必需指标缺失 | 单项 `INSUFFICIENT / MISSING_METRIC` |
+| 累计序列回退 | `NOT_AVAILABLE / INVALID_CUMULATIVE_SEQUENCE` |
+
+Action Effect 设计具备实现条件。
+
+## 7. Lifecycle Analysis 审查
+
+### 7.1 阶段与输入
+
+阶段冻结为：
+
+```text
+LAUNCH / GROWTH / STABLE / DECLINE / ARCHIVED
+```
+
+输入冻结为 Drama status、release time 和连续 15 个累计播放量日点，由此生成连续 14 个日增量，并划分为前后两个 7 日窗口。
+
+### 7.2 分类规则
+
+规则冻结为：
+
+1. `dramas.status = INACTIVE` → `ARCHIVED`；
+2. 非 INACTIVE 且距 release time 为 0–14 个完整业务日 → `LAUNCH`；
+3. 其他情况缺少连续 15 日点 → 不分类，返回 `INSUFFICIENT_HISTORY`；
+4. 前窗均值为 0、后窗均值大于 0 → `GROWTH`；
+5. 前后窗均值均为 0 → `STABLE`；
+6. 前窗均值大于 0时，变化率 `>= +0.10` → `GROWTH`；
+7. 变化率 `<= -0.10` → `DECLINE`；
+8. 其余 → `STABLE`。
+
+优先级冻结为：
+
+```text
+ARCHIVED > LAUNCH > 输入有效性 > GROWTH/DECLINE/STABLE
+```
+
+`release_time` 缺失、晚于 `analysis_as_of` 或无法形成合法业务日时，不得猜测阶段，必须返回 `NOT_AVAILABLE`。这一边界应写入 Contracts 测试。
+
+### 7.3 版本与状态语义
+
+版本冻结为：
+
+```text
+lifecycle_rule_version = "Lifecycle Rules V1.0"
+```
+
+V1 是指定 `analysis_as_of` 的点时分类，不持久化状态，也不提供历史状态转换事件。页面不得把两次独立查询描述为已审计的状态迁移。
+
+Lifecycle 设计为确定性规则，不含机器学习，具备实现条件。
+
+## 8. Benchmark Analysis 审查
+
+### 8.1 比较组
+
+V1 冻结为调用方显式传入 2–20 个不同 Drama IDs，并要求单一 `platform_id`。不自动选择相似 Drama，不使用全库平均，不按 category 或 tag 自动分组。
+
+至少需要 2 个 Availability 为 AVAILABLE 或 PARTIAL 且指标可比的成员，才能计算组中位数。否则返回 `INCOMPARABLE_SCOPE`。
+
+### 8.2 时间范围
+
+Benchmark 时间口径是**滚动 30 个完整自然业务日**：截止 `analysis_as_of` 前一完整业务日，向前取连续 30 日；需要连续 31 个累计日末点生成 30 个增量。
+
+它不是固定自然月，也不是从每个 Drama 上线日开始的相对 30 日。V1 不允许请求改成 7 日或 90 日。
+
+### 8.3 指标与缺失值
+
+冻结指标：
+
+- `play_increment_total`；
+- `mean_daily_play_increment`；
+- `engagement_rate`；
+- `anomaly_frequency`；
+- `lifecycle_state`。
+
+数值指标返回成员原始值和可比成员组中位数。缺失成员保留在响应中并携带 Availability，但不以 0 填充，也不进入该指标的中位数。V1 不返回综合分、名次、赢家、推荐或价值标签。
+
+全局 Data Quality Score 是 `ALL / 0` 口径，不能复制为 Drama 级 Benchmark 指标。此排除合理。
+
+### 8.4 版本
+
+冻结：
+
+```text
+benchmark_version = "Benchmark Comparison V1.0"
+```
+
+来源异常算法版本混合时必须显式返回版本集合和 PARTIAL 状态，不可静默合并为单一版本。
+
+Benchmark 设计具备实现条件。
+
+## 9. Availability 协议审查
+
+顶层和指标级统一使用：
+
+```json
+{
+  "status": "AVAILABLE",
+  "reasons": []
+}
+```
+
+状态冻结为 `AVAILABLE`、`PARTIAL`、`INSUFFICIENT`、`NOT_AVAILABLE`。
+
+原因码至少包含 Design V2 已列出的 `NOT_CALCULATED`、`INSUFFICIENT_HISTORY`、前后窗口不足、不可比较、指标缺失、零基线、重叠行动、混合版本、无效累计序列、未完成和全局行动不支持。
+
+合法真实零值与缺失必须区分：真实零值可以在 AVAILABLE 状态下返回 0；数据不足必须返回 null 加原因，不得返回伪造的 0。此项通过。
+
+## 10. Revision 与历史追溯审查
+
+`analysis_as_of` 是硬截止时间；snapshot revision 必须满足 `changed_at <= analysis_as_of`，并按槽位选择截止时点可见的最高版本。VOID 排除，未来修订不可见。
+
+规则版本冻结：
+
+- `Action Effect Analysis V1.0`；
+- `Lifecycle Rules V1.0`；
+- `Benchmark Comparison V1.0`。
+
+`analysis_revision` 使用稳定 canonical JSON 的 SHA-256，覆盖请求参数、`analysis_as_of`、输入 revision IDs、来源结果 IDs/版本和规则版本。该值只存在于响应，不写数据库。
+
+规则、阈值、窗口或公式变化时必须升级版本，不得静默替换。此项通过。
+
+## 11. 数据库影响审查
+
+Phase 8 V1 继续保持实时 Read Model：
+
+- 不创建 V014 Migration；
+- 不新增 `operation_effectiveness_results` 或 `operation_outcomes`；
+- 不新增 `lifecycle_snapshots`；
+- 不新增 `benchmark_snapshots` 或 `benchmark_results`；
+- 不新增 analytics cache 表；
+- 不修改 V001–V013 或既有业务表。
+
+Action Effect、Lifecycle 和 Benchmark 结果仅在请求期间存在。未来若需要历史报告、周报/月报、固化分析结果或物化性能优化，必须重新进行 Database Design 与 Migration Review。
+
+数据库审查结论：**V1 无数据库变更。**
+
+## 12. TBD 审查
+
+### 12.1 TBD-P8-01：Drama category
+
+当前没有标准化 category。V1 明确不支持 category 自动分组、同类剧自动 Benchmark 或从名称/标签推断 category。
+
+未来启用前必须先冻结 Category 主数据、Drama 关联关系、分类治理规则和历史变更语义。该 TBD 作为 V1 排除项，不阻塞当前实现规划。
+
+### 12.2 TBD-P8-02：Action 结构不足
+
+当前没有结构化 Action Type、实际开始时间和活动持续时间。V1 明确不支持 promotion/recommendation/campaign/release_event 类型分析、活动周期分析或文本推断。
+
+V1 只使用 action ID、Drama 关联、完成历史事件、priority、source evidence 和结构化状态。该 TBD 作为 V1 排除项，不阻塞当前实现规划。
+
+## 13. API 设计审查
+
+### 13.1 Action Effectiveness
+
+```http
 GET /api/v1/operations/effectiveness
 ```
 
-应支持 `action_id`、`drama_id`、`status`、`analysis_as_of`、受限 `window_days` 和分页。必须返回窗口、数据完整性和非因果声明。
+- 权限：USER、ADMINISTRATOR；匿名 401；
+- 参数：`action_id`、`drama_id`、固定值 `status=COMPLETED`、`analysis_as_of`、`page`、`page_size`；
+- `page >= 1`，`page_size` 为 1–100；
+- 固定 7 日窗口，不暴露 `window_days`；
+- 返回 `ResponseModel[PageResponse[ActionEffectResponse]]`。
 
-### 生命周期
+### 13.2 Lifecycle
 
-```text
+```http
 GET /api/v1/dramas/{drama_id}/lifecycle
 ```
 
-支持可选 `analysis_as_of`，返回阶段、规则版本、证据、输入窗口和 Availability。
+- 权限：USER、ADMINISTRATOR；
+- 参数：正整数 `drama_id`，可选 `analysis_as_of`；
+- Drama 不存在为 404；历史不足为 200 + Availability；
+- 返回 `ResponseModel[LifecycleResponse]`。
 
-### Benchmark
+### 13.3 Benchmark
 
-```text
+```http
 GET /api/v1/dramas/benchmark
 ```
 
-必须限制 drama ID 数量或分页筛选组，返回指标口径、版本和 `analysis_as_of`。静态 `/benchmark` 路径必须在动态 `/{drama_id}` 路径之前注册。
+- 权限：USER、ADMINISTRATOR；
+- 参数：去重后 2–20 个 `drama_ids`、必填 `platform_id`、可选 `analysis_as_of`；
+- 显式组有严格上限，V1 不分页；
+- 返回 `ResponseModel[BenchmarkResponse]`；
+- 静态 `/benchmark` 必须先于动态 `/{drama_id}` 注册。
 
-三个接口均只允许 USER/ADMINISTRATOR 查询，匿名返回 401。V1 不提供写接口。
+三个接口全部只读，不提供 POST、PUT、PATCH。Router 不访问 Repository、ORM、Provider 或 Rule Component。API 设计通过。
 
-## 9. Dashboard 设计审查
+## 14. Dashboard 设计审查
 
-Operation Analytics Dashboard 可以包含：
+Operation Analytics Dashboard 冻结为三个展示区：Operation Effectiveness、Lifecycle Overview 和 Benchmark Analysis。
 
-1. Action Effectiveness；
-2. Lifecycle Overview；
-3. Benchmark Analysis。
+前端只请求和展示 API 结果，不计算指标、生命周期、Benchmark 中位数或 Availability。页面必须展示 `analysis_as_of`、分析窗口、规则版本、Availability，以及行动完成前后变化不构成因果关系的提示。
 
-前端只展示 API 结果和查询条件，不计算行动效果、生命周期或 Benchmark 指标。必须明确显示非因果说明、分析时间、窗口和版本。禁止 AI 建议卡片、自动方案和推荐排名。
+禁止 AI 建议、自动方案、推荐排名和“最佳短剧”模块。此项通过。
 
-## 10. Availability 与历史追溯
+## 15. 风险与实现控制
 
-Design V2 应建立 Phase 8 专用 Availability 协议，至少覆盖：
+| 风险 | 控制措施 |
+|---|---|
+| 因果误判 | 固定非因果字段名、文案、免责声明和测试 |
+| 完成时间被误认为开始时间 | 统一称“完成前后窗口”，不描述活动全周期 |
+| 指标口径不一致 | 固定业务时区、平台集合、窗口、as-of 与版本 |
+| 数据不足被误作 0 | Availability + null，真实零值单独表达 |
+| 重叠 Action 干扰 | PARTIAL + overlapping IDs，不作分摊 |
+| Provider 承载业务规则 | Provider/Rule 源码边界测试 |
+| Benchmark 查询膨胀 | 显式 2–20 IDs、单平台、批量 Repository 查询 |
+| 临时结果被当成历史事实 | 不落库，响应携带 revision 与版本 |
 
-- `NOT_CALCULATED`；
-- `INSUFFICIENT_HISTORY`；
-- `INCOMPLETE_BEFORE_WINDOW`；
-- `INCOMPLETE_AFTER_WINDOW`；
-- `INCOMPARABLE_SCOPE`；
-- `NOT_AVAILABLE`。
+## 16. 实现前冻结条件
 
-所有历史读取必须满足：
+以下设计项已冻结，Implementation Planning 不得自行修改：
 
-```text
-changed_at <= analysis_as_of
-```
+1. Action Effect 以首次完成事件为 T0，前后各 7 个完整业务日；
+2. Action Effect 四项指标公式和非因果语义；
+3. Lifecycle 五阶段、15 日点/双 7 日窗口、±10% 阈值和优先级；
+4. Benchmark 为同一平台、显式 2–20 Drama、滚动 30 个完整自然业务日；
+5. Availability 的四个状态、固定原因码和 null/0 区分；
+6. Provider 只读、Rule Component 纯计算、Service 只编排；
+7. `analysis_as_of`、snapshot revision 选择和三个规则版本；
+8. V1 不新增 Migration、不持久化任何分析结果；
+9. API 仅 GET、JWT 保护、统一 ResponseModel/ErrorResponse；
+10. TBD-P8-01 与 TBD-P8-02 作为 V1 排除项。
 
-不得使用当前 revision 覆盖历史复盘。响应需携带来源算法版本、规则版本、窗口和数据截点。
+Implementation Planning 还必须把以下边界写入测试计划：
 
-## 11. 主要风险
+- release time 缺失或晚于 `analysis_as_of` 时不分类；
+- Lifecycle 分类只在纯 Rule Component；
+- Action 文案使用“完成前后变化”；
+- Provider 批量读取并避免 N+1；
+- 前端不得执行任何分析公式。
 
-### 因果误判
+## 17. 最终准入判断
 
-风险最高。通过固定非因果术语、API 字段命名和页面免责声明控制。
+Design V2 的模块定位、AI 边界、数据来源、确定性规则、Availability、版本治理、API 和数据库策略满足 Phase 1–7 的架构约束。
 
-### 指标口径不一致
+最终判断：**允许进入 Phase 8 Implementation Planning；不需要 Design V3。**
 
-通过统一窗口、平台聚合、算法版本和 `analysis_as_of` 校验控制；不满足时返回 `INCOMPARABLE_SCOPE`。
-
-### 历史数据不足
-
-通过 Availability 协议明确表达，禁止用 0 或空数组伪造有效分析。
-
-### 系统复杂度
-
-V1 仅实现三个明确子模块、固定统计逻辑和纯规则，不引入持久化层、缓存、机器学习或自动决策。
-
-### 查询性能
-
-Benchmark 和历史窗口必须使用批量 Repository 查询，避免按 Drama 或 Action 循环产生 N+1。
-
-## 12. Design V2 必须冻结项
-
-进入实现前必须冻结：
-
-1. 三个子模块的最终 V1 范围；
-2. Action 效果锚点、窗口、指标和非因果术语；
-3. 生命周期五阶段精确规则、优先级和 `lifecycle_rule_version`；
-4. Benchmark 指标集合、比较组、时间和版本一致性；
-5. Phase 8 Availability 枚举；
-6. revision/as-of 读取规则；
-7. Provider、纯规则组件与 Service 的职责边界；
-8. API 参数上限、分页和静态路径注册顺序；
-9. V1 不新增 Migration、不持久化分析结果。
-
-## 13. 最终准入判断
-
-Phase 8 架构方向合理，与 Phase 1–7 互补且未引入 AI 内容或重复业务事实。
-
-最终判断：**允许进入 Phase 8 Design V2，暂不允许进入代码或数据库实现。**
-
-Design V2 完成并通过实现准入审查后，方可依次开发 Contracts、纯规则、Providers、Service、API 和 Dashboard。
+在 Contracts、Rule Components、Providers、Service 和 API Schema 的实施计划完成并确认上述冻结条件后，才可按独立阶段进入代码实现。当前仍禁止创建 Migration、数据库表或跨模块 Service 依赖。
