@@ -21,6 +21,7 @@ from repositories.data_quality_repository import (
 from repositories.director_repository import DirectorRepository
 from repositories.drama_repository import DramaRepository
 from repositories.import_repository import (
+    ImportBatchRepository,
     ImportDataRepository,
     ImportErrorRepository,
     ImportJobRepository,
@@ -33,6 +34,10 @@ from repositories.operation_action_repository import (
     OperationActionSourceRepository,
 )
 from repositories.prediction_repository import PredictionRepository
+from repositories.explanation_query_repository import (
+    AnalysisExplanationQueryRepository,
+    AnalysisLineageQueryRepository,
+)
 from repositories.score_repository import ScoreRepository
 from repositories.tag_repository import TagRepository
 from repositories.user_repository import UserRepository
@@ -42,6 +47,7 @@ from services.analytics_service import AnalyticsService
 from dashboard.service import DashboardService
 from repositories.dashboard_repository import DashboardRepository
 from services.import_service import ImportService
+from services.batch_import_service import BatchImportService
 from services.data_quality_service import DataQualityService
 from services.master_data_service import MasterDataService
 from services.platform_service import PlatformService
@@ -49,6 +55,7 @@ from services.prediction_service import PredictionObservation, PredictionService
 from services.score_service import ScoreService
 from services.user_service import UserService
 from services.operation_action_service import OperationActionService
+from services.explanation.query_service import AnalysisExplanationQueryService
 from models.master_data import Platform
 from models.relations import DramaPlatform
 from models.snapshot import DramaMetricSnapshot, DramaMetricSnapshotRevision
@@ -267,7 +274,11 @@ def get_user_service(session: DatabaseSession) -> UserService:
 
 
 def get_drama_service(session: DatabaseSession) -> DramaService:
-    return DramaService(session, DramaRepository(session))
+    return DramaService(
+        session,
+        DramaRepository(session),
+        TagRepository(session),
+    )
 
 
 def get_master_data_service(session: DatabaseSession) -> MasterDataService:
@@ -291,6 +302,16 @@ def get_import_service(session: DatabaseSession) -> ImportService:
         ImportErrorRepository(session),
         ImportDataRepository(session),
         OperationLogRepository(session),
+    )
+
+
+def get_batch_import_service(session: DatabaseSession) -> BatchImportService:
+    return BatchImportService(
+        session,
+        ImportBatchRepository(session),
+        ImportJobRepository(session),
+        ImportErrorRepository(session),
+        ImportDataRepository(session),
     )
 
 
@@ -377,6 +398,16 @@ def get_operation_action_service(session: DatabaseSession) -> OperationActionSer
     )
 
 
+def get_explanation_query_service(
+    session: DatabaseSession,
+) -> AnalysisExplanationQueryService:
+    return AnalysisExplanationQueryService(
+        session,
+        AnalysisExplanationQueryRepository(session),
+        AnalysisLineageQueryRepository(session),
+    )
+
+
 UserServiceDependency = Annotated[UserService, Depends(get_user_service)]
 DramaServiceDependency = Annotated[DramaService, Depends(get_drama_service)]
 MasterDataServiceDependency = Annotated[
@@ -388,6 +419,9 @@ PlatformServiceDependency = Annotated[
     Depends(get_platform_service),
 ]
 ImportServiceDependency = Annotated[ImportService, Depends(get_import_service)]
+BatchImportServiceDependency = Annotated[
+    BatchImportService, Depends(get_batch_import_service)
+]
 AnalyticsServiceDependency = Annotated[
     AnalyticsService,
     Depends(get_analytics_service),
@@ -412,4 +446,8 @@ DataQualityServiceDependency = Annotated[
 OperationActionServiceDependency = Annotated[
     OperationActionService,
     Depends(get_operation_action_service),
+]
+AnalysisExplanationQueryServiceDependency = Annotated[
+    AnalysisExplanationQueryService,
+    Depends(get_explanation_query_service),
 ]

@@ -52,6 +52,15 @@ from schemas.data_quality import (
     QualitySeverity,
     QualityTargetEntityType,
 )
+from schemas.explanation import (
+    ExplanationEntityType,
+    ExplanationModuleType,
+    ExplanationResponse,
+    LineageRelationshipType,
+    LineageResponse,
+    LineageSourceType,
+    LineageTargetType,
+)
 from schemas.auth import CurrentUserResponse, LoginRequest, TokenResponse
 from schemas.drama import (
     DramaActorCreate,
@@ -61,6 +70,8 @@ from schemas.drama import (
     DramaCompanyResponse,
     DramaCompanyUpdate,
     DramaCreate,
+    DramaCreateRequest,
+    DramaDetailResponse,
     DramaDirectorCreate,
     DramaDirectorResponse,
     DramaDirectorUpdate,
@@ -69,6 +80,7 @@ from schemas.drama import (
     DramaTagResponse,
     DramaTagUpdate,
     DramaUpdate,
+    DramaUpdateRequest,
 )
 from schemas.import_job import (
     ImportConfirmRequest,
@@ -90,6 +102,7 @@ from schemas.master_data import (
     DirectorResponse,
     DirectorUpdate,
     TagCreate,
+    TagListResponse,
     TagResponse,
     TagUpdate,
 )
@@ -190,6 +203,13 @@ __all__ = [
     "DataQualityRuleResponse",
     "DataQualityRuleResultResponse",
     "DataQualityScoreResponse",
+    "ExplanationEntityType",
+    "ExplanationModuleType",
+    "ExplanationResponse",
+    "LineageRelationshipType",
+    "LineageResponse",
+    "LineageSourceType",
+    "LineageTargetType",
     "DirectorCreate",
     "DirectorResponse",
     "DirectorUpdate",
@@ -200,6 +220,8 @@ __all__ = [
     "DramaCompanyResponse",
     "DramaCompanyUpdate",
     "DramaCreate",
+    "DramaCreateRequest",
+    "DramaDetailResponse",
     "DramaDirectorCreate",
     "DramaDirectorResponse",
     "DramaDirectorUpdate",
@@ -218,6 +240,7 @@ __all__ = [
     "DramaTagResponse",
     "DramaTagUpdate",
     "DramaUpdate",
+    "DramaUpdateRequest",
     "ErrorResponse",
     "HeatResponse",
     "ImportErrorCreate",
@@ -283,6 +306,7 @@ __all__ = [
     "ScoreSkipReason",
     "SchemaModel",
     "TagCreate",
+    "TagListResponse",
     "TagResponse",
     "TagUpdate",
     "TokenResponse",

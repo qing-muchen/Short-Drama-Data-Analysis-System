@@ -11,9 +11,11 @@ from routers import (
     auth,
     companies,
     data_quality,
+    explanation,
     directors,
     dramas,
     imports,
+    import_batches,
     platforms,
     prediction,
     scores,
@@ -33,10 +35,13 @@ api_v1_router.include_router(companies.router)
 api_v1_router.include_router(platforms.router)
 api_v1_router.include_router(tags.router)
 api_v1_router.include_router(imports.router)
+api_v1_router.include_router(import_batches.router)
 api_v1_router.include_router(scores.router)
 api_v1_router.include_router(prediction.router)
 api_v1_router.include_router(data_quality.router)
 api_v1_router.include_router(anomaly.router)
 api_v1_router.include_router(operation_action.router)
+api_v1_router.include_router(explanation.router)
+api_v1_router.include_router(explanation.lineage_router)
 
 __all__ = ["api_v1_router"]
