@@ -25,15 +25,24 @@ from services.operation_analytics.contracts import (
     OperationEffectivenessResult,
     OperationMetricType,
 )
+from services.operation_analytics.rules import (
+    ActionEffectCalculator,
+    AnalysisRevisionBuilder,
+    BenchmarkCalculator,
+    LifecycleClassifier,
+)
 
 __all__ = [
     "AnalysisAvailability",
+    "ActionEffectCalculator",
     "AnalysisRevisionInput",
+    "AnalysisRevisionBuilder",
     "AnalysisVersionInfo",
     "AnalysisWindow",
     "AvailabilityReason",
     "AvailabilityStatus",
     "BenchmarkInput",
+    "BenchmarkCalculator",
     "BenchmarkMemberInput",
     "BenchmarkMemberResult",
     "BenchmarkMetric",
@@ -42,6 +51,7 @@ __all__ = [
     "ComparisonScope",
     "DailyCumulativePoint",
     "LifecycleEvidence",
+    "LifecycleClassifier",
     "LifecycleInput",
     "LifecycleResult",
     "LifecycleStage",
