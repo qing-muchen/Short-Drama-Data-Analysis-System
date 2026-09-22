@@ -61,6 +61,18 @@ from schemas.explanation import (
     LineageSourceType,
     LineageTargetType,
 )
+from schemas.drama_profile import (
+    ActionProfileSummarySchema,
+    AnomalyProfileSummarySchema,
+    AvailabilityReasonSchema,
+    DramaProfileBasicSchema,
+    DramaProfileResponseSchema,
+    ExplanationProfileSummarySchema,
+    ModuleAvailabilitySchema,
+    PredictionProfileSummarySchema,
+    QualityProfileSummarySchema,
+    ScoreProfileSummarySchema,
+)
 from schemas.auth import CurrentUserResponse, LoginRequest, TokenResponse
 from schemas.drama import (
     DramaActorCreate,

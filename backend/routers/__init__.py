@@ -8,6 +8,7 @@ from routers import (
     operation_action,
     analytics,
     dashboard,
+    drama_profile,
     auth,
     companies,
     data_quality,
@@ -27,6 +28,7 @@ api_v1_router = APIRouter(prefix="/api/v1")
 api_v1_router.include_router(auth.router)
 api_v1_router.include_router(analytics.router)
 api_v1_router.include_router(dashboard.router)
+api_v1_router.include_router(drama_profile.router)
 api_v1_router.include_router(users.router)
 api_v1_router.include_router(dramas.router)
 api_v1_router.include_router(actors.router)

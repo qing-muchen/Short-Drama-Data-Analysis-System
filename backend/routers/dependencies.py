@@ -55,6 +55,16 @@ from services.prediction_service import PredictionObservation, PredictionService
 from services.score_service import ScoreService
 from services.user_service import UserService
 from services.operation_action_service import OperationActionService
+from services.drama_profile import (
+    ActionProfileProvider,
+    AnomalyProfileProvider,
+    DramaProfileBasic,
+    DramaProfileService,
+    ExplanationProfileProvider,
+    PredictionProfileProvider,
+    QualityProfileProvider,
+    ScoreProfileProvider,
+)
 from services.explanation.query_service import AnalysisExplanationQueryService
 from models.master_data import Platform
 from models.relations import DramaPlatform
@@ -408,6 +418,41 @@ def get_explanation_query_service(
     )
 
 
+class _DramaProfileBasicProvider:
+    """Adapt the existing DramaRepository to the profile basic DTO boundary."""
+
+    def __init__(self, repository: DramaRepository) -> None:
+        self.repository = repository
+
+    def get_profile_basic(self, drama_id: int) -> DramaProfileBasic:
+        drama = self.repository.get_by_id(drama_id)
+        if drama is None:
+            from services.exceptions import NotFoundException
+
+            raise NotFoundException("Drama not found")
+        return DramaProfileBasic(
+            drama_id=drama.drama_id,
+            title=drama.drama_name,
+            platform=None,
+            tags=(),
+        )
+
+
+def get_drama_profile_service(session: DatabaseSession) -> DramaProfileService:
+    return DramaProfileService(
+        ScoreProfileProvider(ScoreRepository(session)),
+        QualityProfileProvider(DataQualityScoreRepository(session)),
+        PredictionProfileProvider(PredictionRepository(session)),
+        AnomalyProfileProvider(AnomalyRepository(session)),
+        ActionProfileProvider(OperationActionRepository(session)),
+        ExplanationProfileProvider(
+            AnalysisExplanationQueryRepository(session),
+            AnalysisLineageQueryRepository(session),
+        ),
+        basic_provider=_DramaProfileBasicProvider(DramaRepository(session)),
+    )
+
+
 UserServiceDependency = Annotated[UserService, Depends(get_user_service)]
 DramaServiceDependency = Annotated[DramaService, Depends(get_drama_service)]
 MasterDataServiceDependency = Annotated[
@@ -450,4 +495,8 @@ OperationActionServiceDependency = Annotated[
 AnalysisExplanationQueryServiceDependency = Annotated[
     AnalysisExplanationQueryService,
     Depends(get_explanation_query_service),
+]
+DramaProfileServiceDependency = Annotated[
+    DramaProfileService,
+    Depends(get_drama_profile_service),
 ]
