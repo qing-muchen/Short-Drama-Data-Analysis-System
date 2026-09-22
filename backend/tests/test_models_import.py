@@ -1,4 +1,4 @@
-"""Import-only verification for the current 28-table ORM mapping."""
+"""Import-only verification for the current 31-table ORM mapping."""
 
 from sqlalchemy import CheckConstraint, ForeignKeyConstraint, UniqueConstraint, inspect
 from sqlalchemy.dialects.mysql import BIGINT
@@ -37,13 +37,16 @@ EXPECTED_TABLES = {
     "operation_actions",
     "operation_action_sources",
     "operation_action_history",
+    "analysis_explanations",
+    "analysis_lineage_records",
+    "metric_dependencies",
 }
 
 
 def test_all_models_import_and_configure() -> None:
     """All model classes load and every relationship resolves without a DB."""
 
-    assert len(models.__all__) == 28
+    assert len(models.__all__) == 31
     configure_mappers()
     assert {
         "actor_relations",
@@ -116,9 +119,9 @@ def test_metadata_matches_frozen_schema_shape() -> None:
         for table in tables
         for constraint in table.foreign_key_constraints
     )
-    assert checks == 110
-    assert uniques == 26
-    assert sum(len(table.indexes) for table in tables) == 70
+    assert checks == 126
+    assert uniques == 29
+    assert sum(len(table.indexes) for table in tables) == 78
     assert all(
         foreign_key.ondelete in {"RESTRICT", "CASCADE"}
         and foreign_key.onupdate == "RESTRICT"
@@ -140,6 +143,13 @@ def test_metadata_matches_frozen_schema_shape() -> None:
     assert ("data_quality_rule_results", "data_quality_scores") in cascade_pairs
     assert ("operation_action_sources", "operation_actions") in cascade_pairs
     assert ("operation_action_history", "operation_actions") in cascade_pairs
+
+    for table_name in (
+        "analysis_explanations",
+        "analysis_lineage_records",
+        "metric_dependencies",
+    ):
+        assert len(Base.metadata.tables[table_name].foreign_keys) == 0
 
 
 def test_snapshot_and_governance_models_remain_separate() -> None:

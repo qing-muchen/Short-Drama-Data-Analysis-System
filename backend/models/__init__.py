@@ -2,6 +2,11 @@
 
 from models.anomaly import DataAnomalyRecord
 from models.drama import Drama
+from models.explanation import (
+    AnalysisExplanation,
+    AnalysisLineageRecord,
+    MetricDependency,
+)
 from models.data_quality import (
     DataQualityRule,
     DataQualityRuleResult,
@@ -31,6 +36,8 @@ from models.user import User
 
 __all__ = [
     "Actor",
+    "AnalysisExplanation",
+    "AnalysisLineageRecord",
     "Company",
     "DataAnomalyRecord",
     "DataQualityIssue",
@@ -50,6 +57,7 @@ __all__ = [
     "ImportError",
     "ImportBatch",
     "ImportJob",
+    "MetricDependency",
     "OperationLog",
     "OperationAction",
     "OperationActionHistory",

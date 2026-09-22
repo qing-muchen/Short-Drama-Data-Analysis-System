@@ -1,5 +1,5 @@
 -- Database constraint regression suite for the schema through Migration V011.
--- Prerequisite: run 001_create_database.sql and migrations V001..V011.
+-- Prerequisite: run 001_create_database.sql and migrations V001..V013.
 -- The test uses a transaction and rolls business data back. Results are kept in a
 -- temporary MEMORY table so expected failures can be reported after the rollback.
 
@@ -554,6 +554,45 @@ SELECT 'Action delete cascades source and history', 'ACCEPTED',
        IF((SELECT COUNT(*) FROM operation_action_sources WHERE action_id = @test_cascade_action_id) = 0
           AND (SELECT COUNT(*) FROM operation_action_history WHERE action_id = @test_cascade_action_id) = 0,
           'PASS', 'FAIL');
+
+-- Phase 6 V013 explanation, lineage, and static dependency constraints.
+INSERT INTO analysis_explanations (
+  entity_type, entity_id, module_type, summary, detail,
+  algorithm_version, rule_set_version, analysis_as_of
+) VALUES (
+  'SCORE', @test_drama_id, 'SCORE', 'Score explanation',
+  '{"reason":"Growth changed","inputs":[],"rules":[],"versions":{},"evidence":[]}',
+  'Composite Score V1.0', 'N/A', UTC_TIMESTAMP(6)
+);
+SET @test_explanation_id = LAST_INSERT_ID();
+INSERT INTO constraint_test_results VALUES
+  ('V013 explanation valid row allowed', 'ACCEPTED', 'ACCEPTED', 'PASS');
+CALL assert_sql_fails('V013 explanation duplicate identity', CONCAT(
+  'INSERT INTO analysis_explanations (entity_type,entity_id,module_type,summary,detail,algorithm_version,rule_set_version,analysis_as_of) VALUES (''SCORE'',',
+  @test_drama_id, ',''SCORE'',''Duplicate'',''{}'',''Composite Score V1.0'',''N/A'',(SELECT analysis_as_of FROM analysis_explanations WHERE explanation_id = ',
+  @test_explanation_id, '))'));
+CALL assert_sql_fails('V013 explanation invalid entity type', CONCAT(
+  'INSERT INTO analysis_explanations (entity_type,entity_id,module_type,summary,detail,analysis_as_of) VALUES (''UNKNOWN'',',
+  @test_drama_id, ',''SCORE'',''Invalid'',''{}'',UTC_TIMESTAMP(6))'));
+
+INSERT INTO analysis_lineage_records (
+  target_type, target_id, source_type, source_id, relationship_type, analysis_as_of
+) VALUES (
+  'EXPLANATION', @test_explanation_id, 'METRIC', 1, 'USES_METRIC', UTC_TIMESTAMP(6)
+);
+CALL assert_sql_fails('V013 lineage duplicate identity', CONCAT(
+  'INSERT INTO analysis_lineage_records (target_type,target_id,source_type,source_id,relationship_type,analysis_as_of) VALUES (''EXPLANATION'',',
+  @test_explanation_id, ',''METRIC'',1,''USES_METRIC'',(SELECT analysis_as_of FROM analysis_lineage_records WHERE lineage_id = LAST_INSERT_ID()))'));
+INSERT INTO constraint_test_results VALUES
+  ('V013 lineage weak link allowed', 'ACCEPTED', 'ACCEPTED', 'PASS');
+
+INSERT INTO metric_dependencies (
+  parent_metric, child_metric, module_type, algorithm_version
+) VALUES ('TOTAL_SCORE', 'HEAT_SCORE', 'SCORE', 'Composite Score V1.0');
+CALL assert_sql_fails('V013 dependency self reference',
+  'INSERT INTO metric_dependencies (parent_metric,child_metric,module_type,algorithm_version) VALUES (''HEAT_SCORE'',''HEAT_SCORE'',''SCORE'',''Composite Score V1.0'')');
+INSERT INTO constraint_test_results VALUES
+  ('V013 dependency valid row allowed', 'ACCEPTED', 'ACCEPTED', 'PASS');
 
 -- Real foreign keys and RESTRICT delete behavior.
 CALL assert_sql_fails('FK rejects orphan relation',
