@@ -15,6 +15,10 @@ from services.data_quality_service import (
     QualityScoreCalculationResult,
 )
 from services.drama_service import DramaService
+from services.explanation.service import (
+    AnalysisExplanationService,
+    ExplanationGenerationRequest,
+)
 from services.exceptions import (
     BusinessException,
     ConflictException,
@@ -49,6 +53,8 @@ __all__ = [
     "BusinessException",
     "ConflictException",
     "DramaService",
+    "AnalysisExplanationService",
+    "ExplanationGenerationRequest",
     "ImportService",
     "MasterDataService",
     "NotFoundException",

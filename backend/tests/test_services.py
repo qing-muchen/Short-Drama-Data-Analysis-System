@@ -45,6 +45,8 @@ def test_service_package_exports_structural_baseline() -> None:
         "DataQualityService",
         "DashboardService",
         "DramaService",
+        "AnalysisExplanationService",
+        "ExplanationGenerationRequest",
         "ImportService",
         "MasterDataService",
         "NotFoundException",
