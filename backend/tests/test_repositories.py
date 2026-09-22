@@ -41,6 +41,8 @@ def test_repository_package_exports_expected_types() -> None:
         "DashboardRepository",
         "DirectorRepository",
         "DramaRepository",
+        "AnalysisExplanationRepository",
+        "AnalysisLineageRepository",
         "ImportDataRepository",
         "ImportErrorRepository",
         "ImportJobRepository",

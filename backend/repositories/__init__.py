@@ -17,6 +17,10 @@ from repositories.data_quality_repository import (
 )
 from repositories.director_repository import DirectorRepository
 from repositories.drama_repository import DramaRepository
+from repositories.explanation_repository import (
+    AnalysisExplanationRepository,
+    AnalysisLineageRepository,
+)
 from repositories.import_repository import (
     ImportDataRepository,
     ImportErrorRepository,
@@ -51,6 +55,8 @@ __all__ = [
     "DashboardRepository",
     "DirectorRepository",
     "DramaRepository",
+    "AnalysisExplanationRepository",
+    "AnalysisLineageRepository",
     "ImportDataRepository",
     "ImportErrorRepository",
     "ImportJobRepository",
