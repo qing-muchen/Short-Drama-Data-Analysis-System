@@ -10,6 +10,7 @@ import {
   getScoreLevelDistribution,
   getScoreRanking,
 } from '../../api/score'
+import ExplanationDrawer from '../../components/explanation/ExplanationDrawer.vue'
 import { useUserStore } from '../../stores/user'
 import type {
   DramaScore,
@@ -26,6 +27,7 @@ const scoreDate = ref(localDateString(new Date()))
 const ranking = ref<ScoreRankingItem[]>([])
 const levelDistribution = ref<ScoreLevelCount[]>(defaultDistribution())
 const selectedScore = ref<DramaScore | null>(null)
+const explanationVisible = ref(false)
 const selectedDramaId = ref<number | null>(null)
 const calculationResult = ref<ScoreCalculationResult | null>(null)
 const loading = ref(false)
@@ -350,6 +352,7 @@ onUnmounted(() => {
     <section aria-labelledby="detail-title">
       <div class="section-heading">
         <div><h2 id="detail-title">单剧评分详情</h2><p>Lifecycle为规则化生命周期阶段评分，不是预测结果</p></div>
+        <el-button v-if="selectedScore" type="primary" plain @click="explanationVisible = true">查看解释</el-button>
       </div>
       <el-alert
         v-if="detailError"
@@ -388,6 +391,12 @@ onUnmounted(() => {
         </div>
       </el-card>
     </section>
+    <ExplanationDrawer
+      v-model="explanationVisible"
+      entity-type="SCORE"
+      :entity-id="selectedScore?.score_id ?? null"
+      module-type="SCORE"
+    />
   </main>
 </template>
 

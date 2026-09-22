@@ -10,6 +10,7 @@ import {
   getPrediction,
   getPredictionHistory,
 } from '../../api/prediction'
+import ExplanationDrawer from '../../components/explanation/ExplanationDrawer.vue'
 import { useUserStore } from '../../stores/user'
 import type { Prediction } from '../../types/prediction'
 import { getApiErrorMessage } from '../../utils/api-error'
@@ -21,6 +22,7 @@ const isAdmin = computed(() => userStore.currentUser?.role_code === 'ADMINISTRAT
 
 const selectedDramaId = ref<number | null>(readDramaId(route.query.drama_id))
 const currentPrediction = ref<Prediction | null>(null)
+const explanationVisible = ref(false)
 const history = ref<Prediction[]>([])
 const loading = ref(false)
 const calculating = ref(false)
@@ -245,6 +247,7 @@ onBeforeUnmount(() => {
               <el-descriptions-item label="数据截止时间">{{ formatDateTime(currentPrediction.analysis_as_of) }}</el-descriptions-item>
               <el-descriptions-item label="指标">{{ formatMetric(currentPrediction.metric_type) }}</el-descriptions-item>
             </el-descriptions>
+            <el-button class="explanation-button" type="primary" plain @click="explanationVisible = true">查看解释</el-button>
           </div>
         </el-card>
 
@@ -271,6 +274,12 @@ onBeforeUnmount(() => {
         <el-empty v-else description="暂无预测数据" />
       </el-card>
     </template>
+    <ExplanationDrawer
+      v-model="explanationVisible"
+      entity-type="PREDICTION"
+      :entity-id="currentPrediction?.prediction_id ?? null"
+      module-type="PREDICTION"
+    />
   </main>
 </template>
 

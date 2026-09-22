@@ -9,6 +9,7 @@ import {
   getAnomalyStatistics,
   updateAnomalyStatus,
 } from '../../api/anomaly'
+import ExplanationDrawer from '../../components/explanation/ExplanationDrawer.vue'
 import { useUserStore } from '../../stores/user'
 import type {
   AnomalyRecord,
@@ -33,6 +34,7 @@ const severity = ref<AnomalySeverity | ''>('')
 const status = ref<AnomalyStatus | ''>('')
 const metricType = ref<MetricType | ''>('')
 const detail = ref<AnomalyRecord | null>(null)
+const explanationVisible = ref(false)
 const statusUpdating = ref<number | null>(null)
 const chartContainer = ref<HTMLDivElement | null>(null)
 let chart: echarts.ECharts | null = null
@@ -162,7 +164,13 @@ onBeforeUnmount(() => { window.removeEventListener('resize', resizeChart); chart
       </el-card>
       <el-card shadow="never" class="trend-card"><template #header><strong>异常趋势</strong></template><div v-if="records.length || total" ref="chartContainer" class="trend-chart" /><el-empty v-else description="暂无趋势数据" /></el-card>
     </section>
-    <el-drawer :model-value="detail !== null" title="异常详情" size="420px" @close="detail = null"><template v-if="detail"><el-descriptions :column="1" border><el-descriptions-item label="短剧">{{ detail.drama_name }}</el-descriptions-item><el-descriptions-item label="异常类型">{{ detail.anomaly_type }}</el-descriptions-item><el-descriptions-item label="指标">{{ metricLabel(detail.metric_type) }}</el-descriptions-item><el-descriptions-item label="严重等级">{{ detail.severity }}</el-descriptions-item><el-descriptions-item label="状态">{{ statusLabel(detail.status) }}</el-descriptions-item><el-descriptions-item label="证据">{{ detail.evidence_summary }}</el-descriptions-item><el-descriptions-item label="算法版本">{{ detail.algorithm_version }}</el-descriptions-item><el-descriptions-item label="分析时间">{{ formatDateTime(detail.analysis_as_of) }}</el-descriptions-item></el-descriptions></template></el-drawer>
+    <el-drawer :model-value="detail !== null" title="异常详情" size="420px" @close="detail = null"><template v-if="detail"><el-descriptions :column="1" border><el-descriptions-item label="短剧">{{ detail.drama_name }}</el-descriptions-item><el-descriptions-item label="异常类型">{{ detail.anomaly_type }}</el-descriptions-item><el-descriptions-item label="指标">{{ metricLabel(detail.metric_type) }}</el-descriptions-item><el-descriptions-item label="严重等级">{{ detail.severity }}</el-descriptions-item><el-descriptions-item label="状态">{{ statusLabel(detail.status) }}</el-descriptions-item><el-descriptions-item label="证据">{{ detail.evidence_summary }}</el-descriptions-item><el-descriptions-item label="算法版本">{{ detail.algorithm_version }}</el-descriptions-item><el-descriptions-item label="分析时间">{{ formatDateTime(detail.analysis_as_of) }}</el-descriptions-item></el-descriptions><el-button class="explanation-button" type="primary" plain @click="explanationVisible = true">查看解释</el-button></template></el-drawer>
+    <ExplanationDrawer
+      v-model="explanationVisible"
+      entity-type="ANOMALY"
+      :entity-id="detail?.record_id ?? null"
+      module-type="ANOMALY"
+    />
   </main>
 </template>
 
