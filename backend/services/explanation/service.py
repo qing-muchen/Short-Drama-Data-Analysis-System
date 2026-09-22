@@ -22,6 +22,7 @@ from .contracts import (
     LineageSource,
 )
 from .registry import ExplanationHandlerRegistry
+from .validator import ExplanationValidator
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,14 +44,6 @@ _ENTITY_MODULE_MAPPING: dict[ExplanationType, tuple[str, str]] = {
     ExplanationType.ANOMALY: ("ANOMALY", "ANOMALY"),
 }
 
-_BASE_DETAIL_FIELDS = {"reason", "inputs", "rules", "versions", "evidence"}
-_HANDLER_DETAIL_FIELDS = _BASE_DETAIL_FIELDS | {
-    "trend_direction",
-    "window_length",
-    "model_description",
-}
-
-
 class AnalysisExplanationService(BaseService):
     """Coordinate handler execution, idempotency, lineage, and one transaction."""
 
@@ -60,11 +53,14 @@ class AnalysisExplanationService(BaseService):
         explanations: AnalysisExplanationRepository,
         lineage: AnalysisLineageRepository,
         registry: ExplanationHandlerRegistry,
+        *,
+        validator: ExplanationValidator | None = None,
     ) -> None:
         super().__init__(session, explanations, lineage)
         self.explanations = explanations
         self.lineage = lineage
         self.registry = registry
+        self.validator = validator or ExplanationValidator()
 
     def generate_explanation(
         self,
@@ -85,11 +81,12 @@ class AnalysisExplanationService(BaseService):
             payload=request.payload,
             lineage_sources=request.lineage_sources,
         )
+        self.validator.validate_context_mapping(context, entity_type, module_type)
 
         # Generation is deliberately outside the transaction: a pure Handler
         # failure must not create or modify any persistence state.
         generated = handler.generate(context)
-        self._validate_generated(generated)
+        self.validator.validate_generated_explanation(generated)
 
         existing = self.explanations.get_by_identity(
             module_type=module_type,
@@ -144,25 +141,6 @@ class AnalysisExplanationService(BaseService):
             raise ValidationException("rule_set_version must not be blank")
         if not isinstance(request.payload, Mapping):
             raise ValidationException("payload must be a mapping")
-
-    @staticmethod
-    def _validate_generated(generated: GeneratedExplanation) -> None:
-        if not isinstance(generated, GeneratedExplanation):
-            raise ValidationException("Handler must return GeneratedExplanation")
-        if not isinstance(generated.detail, dict):
-            raise ValidationException("Explanation detail must be a dict")
-        missing = _BASE_DETAIL_FIELDS - set(generated.detail)
-        if missing:
-            raise ValidationException(
-                "Explanation detail is missing required fields",
-                details={"fields": sorted(missing)},
-            )
-        unexpected = set(generated.detail) - _HANDLER_DETAIL_FIELDS
-        if unexpected:
-            raise ValidationException(
-                "Explanation detail contains unsupported fields",
-                details={"fields": sorted(unexpected)},
-            )
 
     def _ensure_same_snapshot(
         self,

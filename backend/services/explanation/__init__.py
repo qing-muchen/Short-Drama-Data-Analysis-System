@@ -12,6 +12,7 @@ from .registry import (
     ExplanationHandlerNotFoundError,
     ExplanationHandlerRegistry,
 )
+from .validator import ExplanationValidator
 
 __all__ = [
     "DuplicateExplanationHandlerError",
@@ -22,4 +23,5 @@ __all__ = [
     "ExplanationType",
     "GeneratedExplanation",
     "LineageSource",
+    "ExplanationValidator",
 ]
