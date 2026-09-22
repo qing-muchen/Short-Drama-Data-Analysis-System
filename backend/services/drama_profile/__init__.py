@@ -21,6 +21,7 @@ from services.drama_profile.providers import (
     QualityProfileProvider,
     ScoreProfileProvider,
 )
+from services.drama_profile.service import DramaProfileService
 
 __all__ = [
     "ActionProfileSummary",
@@ -40,4 +41,5 @@ __all__ = [
     "ProfileProvider",
     "QualityProfileProvider",
     "ScoreProfileProvider",
+    "DramaProfileService",
 ]
