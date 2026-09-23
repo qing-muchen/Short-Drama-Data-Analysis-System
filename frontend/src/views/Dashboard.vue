@@ -198,6 +198,7 @@ onUnmounted(() => {
         <router-link to="/anomalies"><el-button type="danger" plain>异常检测分析</el-button></router-link>
         <router-link to="/operation-actions"><el-button type="primary" plain>运营行动中心</el-button></router-link>
         <router-link to="/operation-analytics"><el-button type="primary" plain>运营分析中心</el-button></router-link>
+        <router-link to="/data-governance"><el-button type="warning" plain>数据治理中心</el-button></router-link>
         <router-link to="/dramas"><el-button type="success" plain>Drama 360° 全景画像（选择短剧）</el-button></router-link>
         <router-link v-if="isAdmin" to="/imports"><el-button>数据导入</el-button></router-link>
         <el-button :icon="Refresh" :loading="loading" @click="loadDashboard">刷新数据</el-button>

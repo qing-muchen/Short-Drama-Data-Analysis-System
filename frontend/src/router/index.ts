@@ -99,6 +99,12 @@ const router = createRouter({
       component: () => import('../views/operationAnalytics/OperationAnalytics.vue'),
       meta: { requiresAuth: true },
     },
+    {
+      path: '/data-governance',
+      name: 'data-governance',
+      component: () => import('../views/dataGovernance/DataGovernance.vue'),
+      meta: { requiresAuth: true },
+    },
   ],
 })
 
