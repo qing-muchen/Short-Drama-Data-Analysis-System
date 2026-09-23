@@ -1,0 +1,46 @@
+"""Phase 10 analysis reporting read-model contracts and pure components."""
+
+from .contracts import (
+    AVAILABLE_REPORT,
+    AnalysisSnapshot,
+    ExportDescriptor,
+    ExportFormat,
+    FilterDefinition,
+    ReportAvailability,
+    ReportAvailabilityReason,
+    ReportAvailabilityStatus,
+    ReportColumn,
+    ReportColumnType,
+    ReportFilter,
+    ReportMetadata,
+    ReportRequest,
+    ReportResponse,
+    ReportRow,
+    ReportSchema,
+    ReportType,
+    SnapshotSemantics,
+)
+from .registry import ReportSchemaRegistry, create_default_registry
+
+__all__ = (
+    "AVAILABLE_REPORT",
+    "AnalysisSnapshot",
+    "ExportDescriptor",
+    "ExportFormat",
+    "FilterDefinition",
+    "ReportAvailability",
+    "ReportAvailabilityReason",
+    "ReportAvailabilityStatus",
+    "ReportColumn",
+    "ReportColumnType",
+    "ReportFilter",
+    "ReportMetadata",
+    "ReportRequest",
+    "ReportResponse",
+    "ReportRow",
+    "ReportSchema",
+    "ReportSchemaRegistry",
+    "ReportType",
+    "SnapshotSemantics",
+    "create_default_registry",
+)
