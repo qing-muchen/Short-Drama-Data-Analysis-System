@@ -197,6 +197,7 @@ onUnmounted(() => {
         <router-link to="/predictions"><el-button type="info" plain>播放趋势预测</el-button></router-link>
         <router-link to="/anomalies"><el-button type="danger" plain>异常检测分析</el-button></router-link>
         <router-link to="/operation-actions"><el-button type="primary" plain>运营行动中心</el-button></router-link>
+        <router-link to="/operation-analytics"><el-button type="primary" plain>运营分析中心</el-button></router-link>
         <router-link to="/dramas"><el-button type="success" plain>Drama 360° 全景画像（选择短剧）</el-button></router-link>
         <router-link v-if="isAdmin" to="/imports"><el-button>数据导入</el-button></router-link>
         <el-button :icon="Refresh" :loading="loading" @click="loadDashboard">刷新数据</el-button>
@@ -230,6 +231,16 @@ onUnmounted(() => {
           <p>查看单剧下一日累计播放量预测与历史预测趋势。</p>
         </div>
         <router-link to="/predictions"><el-button type="primary" plain>进入预测分析</el-button></router-link>
+      </div>
+    </el-card>
+
+    <el-card shadow="never" class="prediction-entry">
+      <div class="prediction-entry-content">
+        <div>
+          <strong>短剧运营分析中心</strong>
+          <p>查看行动前后指标变化、生命周期状态与同平台统计比较。</p>
+        </div>
+        <router-link to="/operation-analytics"><el-button type="primary" plain>进入运营分析</el-button></router-link>
       </div>
     </el-card>
 

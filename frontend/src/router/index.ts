@@ -93,6 +93,12 @@ const router = createRouter({
       component: () => import('../views/operationAction/OperationActionAnalysis.vue'),
       meta: { requiresAuth: true },
     },
+    {
+      path: '/operation-analytics',
+      name: 'operation-analytics',
+      component: () => import('../views/operationAnalytics/OperationAnalytics.vue'),
+      meta: { requiresAuth: true },
+    },
   ],
 })
 
