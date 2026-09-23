@@ -13,6 +13,7 @@ from repositories.actor_repository import ActorRepository
 from repositories.analytics_repository import AnalyticsRepository
 from repositories.anomaly_repository import AnomalyRepository
 from repositories.company_repository import CompanyRepository
+from repositories.data_governance_repository import DataGovernanceRepository
 from repositories.data_quality_repository import (
     DataQualityRuleRepository,
     DataQualityRuleResultRepository,
@@ -50,6 +51,20 @@ from repositories.dashboard_repository import DashboardRepository
 from services.import_service import ImportService
 from services.batch_import_service import BatchImportService
 from services.data_quality_service import DataQualityService
+from services.data_governance.providers import (
+    CompletenessProvider as GovernanceCompletenessProvider,
+    ConsistencyProvider as GovernanceConsistencyProvider,
+    FreshnessProvider as GovernanceFreshnessProvider,
+)
+from services.data_governance.rules import (
+    CompletenessRule as GovernanceCompletenessRule,
+    ConsistencyRule as GovernanceConsistencyRule,
+    FreshnessRule as GovernanceFreshnessRule,
+)
+from services.data_governance.service import (
+    DataGovernanceService,
+    SystemClock as GovernanceSystemClock,
+)
 from services.master_data_service import MasterDataService
 from services.platform_service import PlatformService
 from services.prediction_service import PredictionObservation, PredictionService
@@ -487,6 +502,23 @@ def get_operation_analytics_service(
     )
 
 
+def get_data_governance_service(
+    session: DatabaseSession,
+) -> DataGovernanceService:
+    """Compose the read-only Phase 9 governance graph for one request."""
+
+    repository = DataGovernanceRepository(session)
+    return DataGovernanceService(
+        GovernanceFreshnessProvider(repository),
+        GovernanceCompletenessProvider(repository),
+        GovernanceConsistencyProvider(repository),
+        GovernanceFreshnessRule(),
+        GovernanceCompletenessRule(),
+        GovernanceConsistencyRule(),
+        GovernanceSystemClock(),
+    )
+
+
 UserServiceDependency = Annotated[UserService, Depends(get_user_service)]
 DramaServiceDependency = Annotated[DramaService, Depends(get_drama_service)]
 MasterDataServiceDependency = Annotated[
@@ -537,4 +569,8 @@ DramaProfileServiceDependency = Annotated[
 OperationAnalyticsServiceDependency = Annotated[
     OperationAnalyticsService,
     Depends(get_operation_analytics_service),
+]
+DataGovernanceServiceDependency = Annotated[
+    DataGovernanceService,
+    Depends(get_data_governance_service),
 ]

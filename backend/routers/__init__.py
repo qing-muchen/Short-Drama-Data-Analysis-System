@@ -12,6 +12,7 @@ from routers import (
     drama_profile,
     auth,
     companies,
+    data_governance,
     data_quality,
     explanation,
     directors,
@@ -42,6 +43,7 @@ api_v1_router.include_router(imports.router)
 api_v1_router.include_router(import_batches.router)
 api_v1_router.include_router(scores.router)
 api_v1_router.include_router(prediction.router)
+api_v1_router.include_router(data_governance.router)
 api_v1_router.include_router(data_quality.router)
 api_v1_router.include_router(anomaly.router)
 api_v1_router.include_router(operation_action.router)
