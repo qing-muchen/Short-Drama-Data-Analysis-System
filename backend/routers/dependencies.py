@@ -33,6 +33,7 @@ from repositories.operation_action_repository import (
     OperationActionRepository,
     OperationActionSourceRepository,
 )
+from repositories.operation_analytics_repository import OperationAnalyticsRepository
 from repositories.prediction_repository import PredictionRepository
 from repositories.explanation_query_repository import (
     AnalysisExplanationQueryRepository,
@@ -55,6 +56,21 @@ from services.prediction_service import PredictionObservation, PredictionService
 from services.score_service import ScoreService
 from services.user_service import UserService
 from services.operation_action_service import OperationActionService
+from services.operation_analytics.providers import (
+    BenchmarkProvider,
+    LifecycleInputProvider,
+    OperationEffectivenessProvider,
+)
+from services.operation_analytics.rules import (
+    ActionEffectCalculator,
+    AnalysisRevisionBuilder,
+    BenchmarkCalculator,
+    LifecycleClassifier,
+)
+from services.operation_analytics.service import (
+    OperationAnalyticsService,
+    SystemClock,
+)
 from services.drama_profile import (
     ActionProfileProvider,
     AnomalyProfileProvider,
@@ -453,6 +469,24 @@ def get_drama_profile_service(session: DatabaseSession) -> DramaProfileService:
     )
 
 
+def get_operation_analytics_service(
+    session: DatabaseSession,
+) -> OperationAnalyticsService:
+    """Compose the read-only Phase 8 analytics graph for one request."""
+
+    repository = OperationAnalyticsRepository(session)
+    return OperationAnalyticsService(
+        OperationEffectivenessProvider(repository),
+        LifecycleInputProvider(repository),
+        BenchmarkProvider(repository),
+        ActionEffectCalculator(),
+        LifecycleClassifier(),
+        BenchmarkCalculator(),
+        AnalysisRevisionBuilder(),
+        SystemClock(),
+    )
+
+
 UserServiceDependency = Annotated[UserService, Depends(get_user_service)]
 DramaServiceDependency = Annotated[DramaService, Depends(get_drama_service)]
 MasterDataServiceDependency = Annotated[
@@ -499,4 +533,8 @@ AnalysisExplanationQueryServiceDependency = Annotated[
 DramaProfileServiceDependency = Annotated[
     DramaProfileService,
     Depends(get_drama_profile_service),
+]
+OperationAnalyticsServiceDependency = Annotated[
+    OperationAnalyticsService,
+    Depends(get_operation_analytics_service),
 ]
