@@ -21,6 +21,7 @@ from routers import (
     import_batches,
     platforms,
     prediction,
+    reporting,
     scores,
     tags,
     users,
@@ -43,6 +44,7 @@ api_v1_router.include_router(imports.router)
 api_v1_router.include_router(import_batches.router)
 api_v1_router.include_router(scores.router)
 api_v1_router.include_router(prediction.router)
+api_v1_router.include_router(reporting.router)
 api_v1_router.include_router(data_governance.router)
 api_v1_router.include_router(data_quality.router)
 api_v1_router.include_router(anomaly.router)

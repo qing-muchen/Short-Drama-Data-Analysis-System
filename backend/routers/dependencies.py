@@ -1,7 +1,10 @@
 """Request-scoped composition root for Service and Repository objects."""
 
+import logging
+import re
+from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Iterator, Mapping, NoReturn
 from zoneinfo import ZoneInfo
 
 from fastapi import Depends
@@ -36,6 +39,7 @@ from repositories.operation_action_repository import (
 )
 from repositories.operation_analytics_repository import OperationAnalyticsRepository
 from repositories.prediction_repository import PredictionRepository
+from repositories.reporting_repository import ReportingRepository
 from repositories.explanation_query_repository import (
     AnalysisExplanationQueryRepository,
     AnalysisLineageQueryRepository,
@@ -86,6 +90,30 @@ from services.operation_analytics.service import (
     OperationAnalyticsService,
     SystemClock,
 )
+from services.exceptions import ConflictException, ValidationException
+from services.reporting.contracts import (
+    ExportFormat,
+    ReportAvailabilityStatus,
+    ReportResponse,
+    ReportSchema,
+    ReportType,
+)
+from services.reporting.policies import (
+    ExportDecisionStatus,
+    ExportLimitPolicy,
+    FilterValidationError,
+    ReportFilterPolicy,
+)
+from services.reporting.providers import create_default_provider_registry
+from services.reporting.registry import create_default_registry
+from services.reporting.serializers import ReportSerializer, SerializedReport
+from services.reporting.serializers.csv_serializer import CsvReportSerializer
+from services.reporting.serializers.xlsx_serializer import XlsxReportSerializer
+from services.reporting.service import (
+    ReportExportPreparation,
+    ReportingService,
+    SystemClock as ReportingSystemClock,
+)
 from services.drama_profile import (
     ActionProfileProvider,
     AnomalyProfileProvider,
@@ -104,6 +132,7 @@ from models.quality import DataQualityIssue
 
 DatabaseSession = Annotated[Session, Depends(get_db_session)]
 BUSINESS_TIME_ZONE = ZoneInfo("Asia/Shanghai")
+logger = logging.getLogger(__name__)
 
 
 class _PredictionHistoryProvider:
@@ -519,6 +548,257 @@ def get_data_governance_service(
     )
 
 
+@dataclass(slots=True)
+class ReportingExportStream:
+    """Owned binary export stream closed after response iteration."""
+
+    serialized: SerializedReport
+    media_type: str
+    filename: str
+    headers: dict[str, str]
+
+    def iter_bytes(self) -> Iterator[bytes]:
+        try:
+            yield from self.serialized.iter_bytes()
+        finally:
+            self.serialized.close()
+
+    def close(self) -> None:
+        self.serialized.close()
+
+
+class ReportingApiService:
+    """Request-scoped HTTP export flow around the transport-neutral Service."""
+
+    def __init__(
+        self,
+        service: ReportingService,
+        serializers: Mapping[ExportFormat, ReportSerializer],
+        export_limit_policy: ExportLimitPolicy,
+    ) -> None:
+        self._service = service
+        self._serializers = dict(serializers)
+        self._export_limit_policy = export_limit_policy
+
+    def get_catalog(self) -> tuple[ReportSchema, ...]:
+        return self._service.get_catalog()
+
+    def preview_report(
+        self,
+        *,
+        report_type: object,
+        filters: Mapping[str, object] | None,
+        analysis_as_of: datetime | None,
+        page_size: int,
+    ) -> ReportResponse:
+        try:
+            return self._service.preview_report(
+                report_type=self._report_type(report_type),
+                filters=filters,
+                analysis_as_of=analysis_as_of,
+                limit=page_size,
+            )
+        except (FilterValidationError, TypeError, ValueError) as exc:
+            raise self._validation_error(exc) from exc
+
+    def export_report(
+        self,
+        *,
+        report_type: object,
+        filters: Mapping[str, object] | None,
+        analysis_as_of: datetime | None,
+        export_format: object,
+        confirmation: int | None,
+    ) -> ReportingExportStream:
+        internal_format = self._export_format(export_format)
+        try:
+            preparation = self._service.prepare_export(
+                report_type=self._report_type(report_type),
+                export_format=internal_format,
+                filters=filters,
+                analysis_as_of=analysis_as_of,
+                confirmed_row_count=confirmation,
+            )
+        except (FilterValidationError, TypeError, ValueError) as exc:
+            raise self._validation_error(exc) from exc
+
+        decision = preparation.decision
+        if decision is None:
+            self._raise_unavailable(preparation.report.availability.status.value)
+        if decision.status is ExportDecisionStatus.REQUIRE_CONFIRMATION:
+            raise ConflictException(
+                "Export confirmation is required",
+                code=decision.code or "EXPORT_CONFIRMATION_REQUIRED",
+                details={"confirmed_row_count": decision.total_rows},
+            )
+        if decision.status is ExportDecisionStatus.REJECT:
+            raise ValidationException(
+                "Report export is not permitted",
+                code=decision.code or "EXPORT_LIMIT_EXCEEDED",
+                details={
+                    "total_rows": decision.total_rows,
+                    "max_rows": decision.max_rows,
+                },
+            )
+        if (
+            preparation.report.availability.status
+            is not ReportAvailabilityStatus.AVAILABLE
+        ):
+            self._raise_unavailable(
+                preparation.report.availability.status.value
+            )
+
+        serializer = self._serializers.get(internal_format)
+        if serializer is None:
+            raise ValidationException(
+                "Report export format is not configured",
+                code="UNSUPPORTED_EXPORT_FORMAT",
+            )
+        try:
+            serialized = serializer.serialize(
+                preparation.report.rows,
+                preparation.schema,
+            )
+        except Exception as exc:
+            logger.exception("report serialization failed")
+            raise ValidationException(
+                "Report export could not be generated",
+                code="EXPORT_FAILED",
+            ) from exc
+
+        size_decision = self._export_limit_policy.evaluate_file_size(
+            serialized.byte_length
+        )
+        if size_decision.status is not ExportDecisionStatus.ALLOW:
+            serialized.close()
+            raise ValidationException(
+                "Report export exceeds the file size limit",
+                code=size_decision.code or "EXPORT_SIZE_LIMIT_EXCEEDED",
+                details={"byte_length": serialized.byte_length},
+            )
+        if (
+            serialized.mime_type != preparation.descriptor.mime_type
+            or serialized.file_extension != preparation.descriptor.extension
+        ):
+            serialized.close()
+            raise ValidationException(
+                "Report serializer output does not match its descriptor",
+                code="EXPORT_DESCRIPTOR_MISMATCH",
+            )
+
+        try:
+            filename = self._filename(preparation)
+        except Exception:
+            serialized.close()
+            raise
+        snapshot = preparation.report.metadata.snapshot
+        headers = {
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Length": str(serialized.byte_length),
+            "X-Report-Schema-Version": self._ascii_header(
+                preparation.schema.schema_version
+            ),
+            "X-Analysis-As-Of": snapshot.analysis_as_of.isoformat(),
+            "X-Snapshot-Semantics": snapshot.semantics.value,
+        }
+        return ReportingExportStream(
+            serialized=serialized,
+            media_type=serialized.mime_type,
+            filename=filename,
+            headers=headers,
+        )
+
+    @staticmethod
+    def _report_type(value: object) -> ReportType:
+        raw = getattr(value, "value", value)
+        try:
+            return ReportType(raw)
+        except (TypeError, ValueError) as exc:
+            raise ValidationException(
+                "Unsupported report type",
+                code="UNSUPPORTED_REPORT_TYPE",
+            ) from exc
+
+    @staticmethod
+    def _export_format(value: object) -> ExportFormat:
+        raw = getattr(value, "value", value)
+        try:
+            return ExportFormat(raw)
+        except (TypeError, ValueError) as exc:
+            raise ValidationException(
+                "Unsupported export format",
+                code="UNSUPPORTED_EXPORT_FORMAT",
+            ) from exc
+
+    @staticmethod
+    def _validation_error(error: Exception) -> ValidationException:
+        if isinstance(error, FilterValidationError):
+            return ValidationException(
+                error.message,
+                code=error.code,
+                details={"field": error.field} if error.field else None,
+            )
+        return ValidationException(str(error), code="INVALID_REPORT_REQUEST")
+
+    @staticmethod
+    def _raise_unavailable(status: str) -> NoReturn:
+        raise ValidationException(
+            "Report data is unavailable",
+            code="REPORT_NOT_AVAILABLE",
+            details={"availability": status},
+        )
+
+    @staticmethod
+    def _ascii_header(value: str) -> str:
+        return "".join(char for char in value if 32 <= ord(char) <= 126)
+
+    @staticmethod
+    def _filename(preparation: ReportExportPreparation) -> str:
+        snapshot = preparation.report.metadata.snapshot.analysis_as_of
+        schema_version = re.sub(
+            r"[^A-Za-z0-9._-]+",
+            "-",
+            preparation.schema.schema_version,
+        ).strip("-._")
+        filename = preparation.descriptor.filename_template.format(
+            analysis_as_of=snapshot.strftime("%Y%m%dT%H%M%SZ"),
+            schema_version=schema_version,
+        )
+        if not filename.isascii() or any(char in filename for char in "/\\\r\n"):
+            raise ValidationException(
+                "Report filename is unsafe",
+                code="UNSAFE_EXPORT_FILENAME",
+            )
+        return filename
+
+
+def get_reporting_service(session: DatabaseSession) -> ReportingApiService:
+    """Compose one read-only reporting graph and its safe export flow."""
+
+    schema_registry = create_default_registry()
+    repository = ReportingRepository(session)
+    provider_registry = create_default_provider_registry(
+        repository,
+        schema_registry,
+    )
+    export_limit_policy = ExportLimitPolicy()
+    service = ReportingService(
+        schema_registry=schema_registry,
+        provider_registry=provider_registry,
+        filter_policy=ReportFilterPolicy(schema_registry),
+        export_limit_policy=export_limit_policy,
+        clock=ReportingSystemClock(),
+    )
+    return ReportingApiService(
+        service,
+        {
+            ExportFormat.CSV: CsvReportSerializer(),
+            ExportFormat.XLSX: XlsxReportSerializer(),
+        },
+        export_limit_policy,
+    )
+
+
 UserServiceDependency = Annotated[UserService, Depends(get_user_service)]
 DramaServiceDependency = Annotated[DramaService, Depends(get_drama_service)]
 MasterDataServiceDependency = Annotated[
@@ -573,4 +853,8 @@ OperationAnalyticsServiceDependency = Annotated[
 DataGovernanceServiceDependency = Annotated[
     DataGovernanceService,
     Depends(get_data_governance_service),
+]
+ReportingServiceDependency = Annotated[
+    ReportingApiService,
+    Depends(get_reporting_service),
 ]
