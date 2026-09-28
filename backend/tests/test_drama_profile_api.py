@@ -37,15 +37,11 @@ class FakeProfileService:
 
 
 def test_profile_route_is_registered_and_read_only():
-    paths = {route.path for route in app.routes}
-    assert "/api/v1/dramas/{drama_id}/profile" in paths
-    methods = {
-        method
-        for route in app.routes
-        if route.path == "/api/v1/dramas/{drama_id}/profile"
-        for method in route.methods
-    }
-    assert methods == {"GET"}
+    paths = app.openapi()["paths"]
+    profile_path = "/api/v1/dramas/{drama_id}/profile"
+
+    assert profile_path in paths
+    assert set(paths[profile_path]) == {"get"}
 
 
 def test_router_converts_service_dto_to_uniform_response():
@@ -64,6 +60,6 @@ def test_router_converts_service_dto_to_uniform_response():
 
 
 def test_schema_boundary_does_not_add_write_routes():
-    for route in app.routes:
-        if route.path == "/api/v1/dramas/{drama_id}/profile":
-            assert route.methods == {"GET"}
+    operations = app.openapi()["paths"]["/api/v1/dramas/{drama_id}/profile"]
+
+    assert set(operations) == {"get"}

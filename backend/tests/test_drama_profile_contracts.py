@@ -1,6 +1,8 @@
 """Tests for the pure Phase 7 Drama Profile contracts."""
 
+import ast
 from datetime import datetime, timezone
+import inspect
 
 import pytest
 
@@ -89,11 +91,27 @@ def test_profile_response_supports_complete_and_partial_profiles() -> None:
 
 
 def test_contract_module_has_no_persistence_dependencies() -> None:
-    source = __import__(
-        "inspect"
-    ).getsource(__import__("services.drama_profile.contracts", fromlist=["contracts"]))
-    for forbidden in ("sqlalchemy", "Session", "query", "select", "Repository"):
-        assert forbidden not in source
+    module = __import__("services.drama_profile.contracts", fromlist=["contracts"])
+    tree = ast.parse(inspect.getsource(module))
+    imported_roots = {
+        alias.name.split(".")[0]
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    }
+    imported_roots.update(
+        node.module.split(".")[0]
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module
+    )
+    referenced_names = {
+        node.id for node in ast.walk(tree) if isinstance(node, ast.Name)
+    }
+
+    assert imported_roots.isdisjoint(
+        {"sqlalchemy", "database", "models", "repositories"}
+    )
+    assert referenced_names.isdisjoint({"Session", "query", "select", "Repository"})
 
 
 def test_invalid_dto_values_are_rejected() -> None:

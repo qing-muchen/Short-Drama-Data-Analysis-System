@@ -81,7 +81,13 @@ def test_openapi_registers_only_authorized_basic_api_paths() -> None:
 
     for resource in crud_resources:
         assert set(paths[f"/api/v1/{resource}"]) == {"get", "post"}
-        item_path = next(path for path in paths if path.startswith(f"/api/v1/{resource}/"))
+        item_path = next(
+            path
+            for path in paths
+            if path.startswith(f"/api/v1/{resource}/")
+            and path.count("/") == 4
+            and "{" in path
+        )
         assert set(paths[item_path]) == {"get", "put", "delete"}
 
     assert set(paths["/api/v1/users"]) == {"get"}
