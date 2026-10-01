@@ -30,3 +30,16 @@ Thumbs.db
 # Temporary
 *.tmp
 *.temp
+
+# Local acceptance and tool state
+.acceptance-clean-*/
+.reasonix/
+reasonix.toml
+backup*.sql
+
+# Generated documentation and simulation artifacts
+docs/pic/
+docs/result/
+simulation/
+scripts/*.py
+scripts/*.ps1
