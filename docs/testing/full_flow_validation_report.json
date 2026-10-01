@@ -1,0 +1,63 @@
+{
+  "jobs": [
+    {
+      "import_job_id": 1,
+      "import_type": "MASTER_DATA",
+      "status": "COMPLETED",
+      "total_rows": 702,
+      "valid_rows": 702,
+      "error_rows": 0,
+      "imported_rows": 702
+    },
+    {
+      "import_job_id": 2,
+      "import_type": "SNAPSHOT",
+      "status": "COMPLETED_WITH_ERRORS",
+      "total_rows": 50000,
+      "valid_rows": 47450,
+      "error_rows": 2550,
+      "imported_rows": 47450
+    },
+    {
+      "import_job_id": 3,
+      "import_type": "SNAPSHOT",
+      "status": "COMPLETED_WITH_ERRORS",
+      "total_rows": 21856,
+      "valid_rows": 16673,
+      "error_rows": 5183,
+      "imported_rows": 16673
+    }
+  ],
+  "error_code_counts": {
+    "CONFLICTING_SNAPSHOT": 273,
+    "DUPLICATE_RECORD": 89,
+    "INACTIVE_REFERENCE": 6726,
+    "INVALID_RANKING": 182,
+    "MISSING_REQUIRED_DATA": 463
+  },
+  "total_import_errors": 7733,
+  "db_counts": {
+    "dramas": 100,
+    "actors": 400,
+    "directors": 100,
+    "companies": 70,
+    "platforms": 8,
+    "tags": 24,
+    "drama_platforms": 215,
+    "drama_tags": 264,
+    "drama_actors": 792,
+    "drama_directors": 110,
+    "drama_companies": 251,
+    "drama_metric_snapshots": 64123,
+    "drama_metric_snapshot_revisions": 64123,
+    "data_quality_issues": 0,
+    "initial_revisions": 64123
+  },
+  "future_timestamp_validation_job": {
+    "import_job_id": 4,
+    "status": "VALIDATION_FAILED",
+    "total_rows": 2,
+    "valid_rows": 0,
+    "error_rows": 2
+  }
+}
