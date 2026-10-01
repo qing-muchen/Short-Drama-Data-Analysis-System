@@ -13,9 +13,18 @@ from analytics.heat import HeatScore
 from analytics.metrics import MetricResult, RawMetrics, calculate_engagement
 from analytics.potential import PotentialScore
 from auth.dependencies import get_current_user
-from dashboard.service import DashboardOverview, DashboardRanking, DashboardService
+from dashboard.service import (
+    DashboardOverview,
+    DashboardRanking,
+    DashboardService,
+    DashboardTagDistribution,
+)
 from main import app
-from repositories.dashboard_repository import DashboardCounts, DashboardRepository
+from repositories.dashboard_repository import (
+    DashboardCounts,
+    DashboardRepository,
+    DashboardTagCount,
+)
 from routers.dependencies import get_dashboard_service
 
 AS_OF = datetime(2026, 9, 8, 4, 0, 0)
@@ -63,6 +72,9 @@ def test_dashboard_service_composes_analytics_without_recomputing_scores() -> No
     repository.get_counts = MagicMock(
         return_value=DashboardCounts(2, 4, 3, 2, 2, 5)
     )
+    repository.get_tag_distribution = MagicMock(
+        return_value=[DashboardTagCount("都市", 1, 2)]
+    )
     metrics = [
         _metric(1, "Drama One", 1000, 0.3, warning_count=1),
         _metric(2, "Drama Two", 500, 0.1, excluded_error_count=1),
@@ -93,6 +105,9 @@ def test_dashboard_service_composes_analytics_without_recomputing_scores() -> No
     assert potential[0].potential_score == 80.0
     analytics.get_rankings.assert_called()
     assert service.trend(_context())[0]["play_count"] == 900
+    tags = service.tag_distribution(10)
+    assert tags == [DashboardTagDistribution("都市", 1, 50.0)]
+    repository.get_tag_distribution.assert_called_once_with(10)
 
 
 class FakeDashboardService:
@@ -120,6 +135,9 @@ class FakeDashboardService:
             "freshness_summary": {"fresh": 2, "stale": 0, "unknown": 0},
         }
 
+    def tag_distribution(self, limit: int) -> list[DashboardTagDistribution]:
+        return [DashboardTagDistribution("都市", 1, 50.0)][:limit]
+
 
 def _request(method: str, path: str) -> tuple[int, dict[str, object]]:
     async def perform() -> tuple[int, dict[str, object]]:
@@ -144,6 +162,7 @@ def test_dashboard_routes_are_authenticated_and_use_response_schemas() -> None:
             "/api/v1/dashboard/rankings/potential?limit=3",
             "/api/v1/dashboard/trend",
             "/api/v1/dashboard/quality",
+            "/api/v1/dashboard/tags",
         )
         responses = [_request("GET", path) for path in paths]
     finally:
@@ -154,4 +173,8 @@ def test_dashboard_routes_are_authenticated_and_use_response_schemas() -> None:
     assert responses[1][1]["data"][0]["heat_score"] == 90.0
     assert responses[4][1]["data"][0]["play_count"] == 900
     assert responses[5][1]["data"]["warning_count"] == 1
-
+    assert responses[6][1]["data"][0] == {
+        "tag_name": "都市",
+        "drama_count": 1,
+        "percentage": 50.0,
+    }

@@ -6,6 +6,10 @@ type UnauthorizedHandler = () => void
 
 let unauthorizedHandler: UnauthorizedHandler | null = null
 
+function isCurrentUserRequest(url: string | undefined): boolean {
+  return url != null && /\/auth\/me(?:[?#]|$)/.test(url)
+}
+
 export function setUnauthorizedHandler(handler: UnauthorizedHandler): void {
   unauthorizedHandler = handler
 }
@@ -26,7 +30,9 @@ apiClient.interceptors.request.use((config) => {
 apiClient.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
-    if (error.response?.status === 401) {
+    // Only /auth/me authoritatively validates the current login session. A 401
+    // from a business request must not invalidate other concurrent requests.
+    if (error.response?.status === 401 && isCurrentUserRequest(error.config?.url)) {
       clearAccessToken()
       unauthorizedHandler?.()
     }

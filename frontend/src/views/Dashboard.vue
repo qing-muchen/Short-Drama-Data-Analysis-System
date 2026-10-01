@@ -9,6 +9,7 @@ import {
   getOverview,
   getPotentialRanking,
   getQuality,
+  getTagDistribution,
   getTrend,
 } from '../api/dashboard'
 import { useUserStore } from '../stores/user'
@@ -16,6 +17,7 @@ import type {
   DashboardOverview,
   QualitySummary,
   RankingItem,
+  TagDistributionItem,
   TrendItem,
 } from '../types/dashboard'
 import { getApiErrorMessage } from '../utils/api-error'
@@ -28,16 +30,35 @@ interface QualityCard {
 
 const userStore = useUserStore()
 const isAdmin = computed(() => userStore.currentUser?.role_code === 'ADMINISTRATOR')
-const loading = ref(false)
 const errorMessage = ref('')
+const overviewLoading = ref(false)
+const heatLoading = ref(false)
+const growthLoading = ref(false)
+const potentialLoading = ref(false)
+const trendLoading = ref(false)
+const qualityLoading = ref(false)
+const tagLoading = ref(false)
+const isLoading = computed(
+  () =>
+    overviewLoading.value ||
+    heatLoading.value ||
+    growthLoading.value ||
+    potentialLoading.value ||
+    trendLoading.value ||
+    qualityLoading.value ||
+    tagLoading.value,
+)
 const overview = ref<DashboardOverview | null>(null)
 const heatRanking = ref<RankingItem[]>([])
 const growthRanking = ref<RankingItem[]>([])
 const potentialRanking = ref<RankingItem[]>([])
 const trend = ref<TrendItem[]>([])
 const quality = ref<QualitySummary | null>(null)
+const tagDistribution = ref<TagDistributionItem[]>([])
 const trendContainer = ref<HTMLDivElement | null>(null)
+const tagChartContainer = ref<HTMLDivElement | null>(null)
 let trendChart: echarts.ECharts | null = null
+let tagChart: echarts.ECharts | null = null
 
 const numberFormatter = new Intl.NumberFormat('zh-CN')
 const percentFormatter = new Intl.NumberFormat('zh-CN', {
@@ -81,28 +102,106 @@ function readableError(error: unknown): string {
 }
 
 async function loadDashboard(): Promise<void> {
-  loading.value = true
+  if (isLoading.value) {
+    return
+  }
+
+  const analysisAsOf = new Date().toISOString()
+  const failures: Array<{ label: string; reason: unknown }> = []
   errorMessage.value = ''
+
+  overviewLoading.value = true
   try {
-    const [overviewData, heatData, growthData, potentialData, trendData, qualityData] =
-      await Promise.all([
-        getOverview(),
-        getHeatRanking(),
-        getGrowthRanking(),
-        getPotentialRanking(),
-        getTrend(),
-        getQuality(),
-      ])
-    overview.value = overviewData
-    heatRanking.value = heatData
-    growthRanking.value = growthData
-    potentialRanking.value = potentialData
-    trend.value = trendData
-    quality.value = qualityData
+    overview.value = await getOverview(analysisAsOf)
   } catch (error: unknown) {
+    failures.push({ label: '运营概览', reason: error })
     errorMessage.value = readableError(error)
   } finally {
-    loading.value = false
+    overviewLoading.value = false
+  }
+
+  heatLoading.value = true
+  growthLoading.value = true
+  potentialLoading.value = true
+  trendLoading.value = true
+  qualityLoading.value = true
+  tagLoading.value = true
+
+  const requests: Array<{ label: string; promise: Promise<void> }> = [
+    {
+      label: 'Heat 排行',
+      promise: getHeatRanking(analysisAsOf)
+        .then((data) => {
+          heatRanking.value = data
+        })
+        .finally(() => {
+          heatLoading.value = false
+        }),
+    },
+    {
+      label: '增长排行',
+      promise: getGrowthRanking(analysisAsOf)
+        .then((data) => {
+          growthRanking.value = data
+        })
+        .finally(() => {
+          growthLoading.value = false
+        }),
+    },
+    {
+      label: '潜力排行',
+      promise: getPotentialRanking(analysisAsOf)
+        .then((data) => {
+          potentialRanking.value = data
+        })
+        .finally(() => {
+          potentialLoading.value = false
+        }),
+    },
+    {
+      label: '运营趋势',
+      promise: getTrend(analysisAsOf)
+        .then((data) => {
+          trend.value = data
+        })
+        .finally(() => {
+          trendLoading.value = false
+        }),
+    },
+    {
+      label: '数据质量',
+      promise: getQuality(analysisAsOf)
+        .then((data) => {
+          quality.value = data
+        })
+        .finally(() => {
+          qualityLoading.value = false
+        }),
+    },
+    {
+      label: '热门标签',
+      promise: getTagDistribution()
+        .then((data) => {
+          tagDistribution.value = data
+        })
+        .finally(() => {
+          tagLoading.value = false
+        }),
+    },
+  ]
+  const results = await Promise.allSettled(requests.map((request) => request.promise))
+  results.forEach((result, index) => {
+    if (result.status === 'rejected') {
+      failures.push({ label: requests[index]?.label ?? '未知模块', reason: result.reason })
+    }
+  })
+
+  if (failures.length === requests.length + 1) {
+    errorMessage.value = readableError(failures[0]?.reason)
+  } else if (failures.length > 0) {
+    errorMessage.value = `部分 Dashboard 数据加载失败：${failures
+      .map((failure) => failure.label)
+      .join('、')}。已保留其他模块数据。`
   }
 }
 
@@ -116,22 +215,34 @@ function renderTrend(): void {
   trendChart ??= echarts.init(trendContainer.value)
   const option: echarts.EChartsOption = {
     tooltip: { trigger: 'axis' },
-    legend: { data: ['播放量', '互动率'] },
-    grid: { left: 24, right: 28, top: 48, bottom: 18, containLabel: true },
+    legend: {
+      data: ['播放量', '互动率'],
+      type: 'scroll',
+      left: 'center',
+      bottom: 8,
+    },
+    grid: { left: 64, right: 64, top: 52, bottom: 88, containLabel: true },
     xAxis: {
       type: 'category',
       boundaryGap: false,
       data: trend.value.map((item) => item.date),
+      axisLabel: { hideOverlap: true, rotate: 30, margin: 16 },
     },
     yAxis: [
       {
         type: 'value',
         name: '播放量',
+        nameGap: 18,
+        axisLabel: { margin: 12 },
       },
       {
         type: 'value',
         name: '互动率',
-        axisLabel: { formatter: '{value}' },
+        nameGap: 18,
+        axisLabel: {
+          margin: 12,
+          formatter: (value: number) => percentFormatter.format(value),
+        },
       },
     ],
     series: [
@@ -157,6 +268,44 @@ function renderTrend(): void {
 
 function resizeTrend(): void {
   trendChart?.resize()
+  tagChart?.resize()
+}
+
+function renderTagChart(): void {
+  if (!tagChartContainer.value || tagDistribution.value.length === 0) {
+    tagChart?.dispose()
+    tagChart = null
+    return
+  }
+
+  tagChart ??= echarts.init(tagChartContainer.value)
+  const ordered = [...tagDistribution.value].reverse()
+  tagChart.setOption(
+    {
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: { type: 'shadow' },
+        valueFormatter: (value: number) => `${numberFormatter.format(value)} 部`,
+      },
+      grid: { left: 20, right: 36, top: 16, bottom: 24, containLabel: true },
+      xAxis: { type: 'value', minInterval: 1 },
+      yAxis: {
+        type: 'category',
+        data: ordered.map((item) => item.tag_name),
+        axisLabel: { width: 90, overflow: 'truncate' },
+      },
+      series: [
+        {
+          name: '短剧数量',
+          type: 'bar',
+          data: ordered.map((item) => item.drama_count),
+          barMaxWidth: 24,
+          itemStyle: { color: '#409eff', borderRadius: [0, 4, 4, 0] },
+        },
+      ],
+    },
+    true,
+  )
 }
 
 watch(
@@ -164,6 +313,15 @@ watch(
   async () => {
     await nextTick()
     renderTrend()
+  },
+  { deep: true },
+)
+
+watch(
+  tagDistribution,
+  async () => {
+    await nextTick()
+    renderTagChart()
   },
   { deep: true },
 )
@@ -176,11 +334,12 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('resize', resizeTrend)
   trendChart?.dispose()
+  tagChart?.dispose()
 })
 </script>
 
 <template>
-  <main v-loading="loading" class="dashboard-page">
+  <main class="dashboard-page">
     <header class="page-header">
       <div>
         <p class="eyebrow">Short Drama Analytics</p>
@@ -191,6 +350,7 @@ onUnmounted(() => {
         <router-link to="/dramas"><el-button>短剧管理</el-button></router-link>
         <router-link to="/actors"><el-button>演员管理</el-button></router-link>
         <router-link to="/platforms"><el-button>平台管理</el-button></router-link>
+        <router-link to="/tags"><el-button>标签管理</el-button></router-link>
         <router-link to="/analytics"><el-button type="primary" plain>分析中心</el-button></router-link>
         <router-link to="/scores"><el-button type="success" plain>综合评分</el-button></router-link>
         <router-link to="/data-quality"><el-button type="warning" plain>数据质量治理</el-button></router-link>
@@ -202,7 +362,7 @@ onUnmounted(() => {
         <router-link to="/reports"><el-button type="primary" plain>分析报告中心</el-button></router-link>
         <router-link to="/dramas"><el-button type="success" plain>Drama 360° 全景画像（选择短剧）</el-button></router-link>
         <router-link v-if="isAdmin" to="/imports"><el-button>数据导入</el-button></router-link>
-        <el-button :icon="Refresh" :loading="loading" @click="loadDashboard">刷新数据</el-button>
+        <el-button :icon="Refresh" :loading="isLoading" @click="loadDashboard">刷新数据</el-button>
       </div>
     </header>
 
@@ -219,7 +379,7 @@ onUnmounted(() => {
       </template>
     </el-alert>
 
-    <section class="overview-grid" aria-label="核心指标">
+    <section v-loading="overviewLoading" class="overview-grid" aria-label="核心指标">
       <el-card v-for="card in overviewCards" :key="card.label" shadow="hover">
         <p class="metric-label">{{ card.label }}</p>
         <strong class="metric-value">{{ card.value }}</strong>
@@ -239,6 +399,26 @@ onUnmounted(() => {
     <el-card shadow="never" class="prediction-entry">
       <div class="prediction-entry-content">
         <div>
+          <strong>运营行动与告警处置</strong>
+          <p>跟踪分析结果的分派、处理记录与状态闭环。</p>
+        </div>
+        <router-link to="/operation-actions"><el-button type="primary" plain>进入行动中心</el-button></router-link>
+      </div>
+    </el-card>
+
+    <el-card shadow="never" class="prediction-entry">
+      <div class="prediction-entry-content">
+        <div>
+          <strong>运营异常检测</strong>
+          <p>查看异常数量、严重等级、变化趋势与可解释检测证据。</p>
+        </div>
+        <router-link to="/anomalies"><el-button type="danger" plain>进入异常分析</el-button></router-link>
+      </div>
+    </el-card>
+
+    <el-card shadow="never" class="prediction-entry">
+      <div class="prediction-entry-content">
+        <div>
           <strong>短剧运营分析中心</strong>
           <p>查看行动前后指标变化、生命周期状态与同平台统计比较。</p>
         </div>
@@ -247,7 +427,7 @@ onUnmounted(() => {
     </el-card>
 
     <section class="ranking-grid">
-      <el-card shadow="never">
+      <el-card v-loading="heatLoading" shadow="never">
         <template #header><strong>Heat Top 10</strong></template>
         <el-table :data="heatRanking" height="340" empty-text="暂无 Heat 排行数据">
           <el-table-column type="index" label="#" width="54" />
@@ -259,7 +439,7 @@ onUnmounted(() => {
         </el-table>
       </el-card>
 
-      <el-card shadow="never">
+      <el-card v-loading="growthLoading" shadow="never">
         <template #header><strong>Growth Top 10</strong></template>
         <el-table :data="growthRanking" height="340" empty-text="暂无增长排行数据">
           <el-table-column type="index" label="#" width="54" />
@@ -273,7 +453,7 @@ onUnmounted(() => {
         </el-table>
       </el-card>
 
-      <el-card shadow="never">
+      <el-card v-loading="potentialLoading" shadow="never">
         <template #header><strong>Potential Top 10</strong></template>
         <el-table :data="potentialRanking" height="340" empty-text="暂无 Potential 排行数据">
           <el-table-column type="index" label="#" width="54" />
@@ -289,13 +469,13 @@ onUnmounted(() => {
     </section>
 
     <section class="detail-grid">
-      <el-card class="trend-card" shadow="never">
+      <el-card v-loading="trendLoading" class="trend-card" shadow="never">
         <template #header><strong>近 30 日运营趋势</strong></template>
         <div v-if="trend.length" ref="trendContainer" class="trend-chart" />
         <el-empty v-else description="当前范围暂无趋势数据" />
       </el-card>
 
-      <el-card shadow="never">
+      <el-card v-loading="qualityLoading" shadow="never">
         <template #header><strong>数据质量</strong></template>
         <div class="quality-list">
           <div v-for="item in qualityCards" :key="item.label" class="quality-item">
@@ -310,6 +490,22 @@ onUnmounted(() => {
         </p>
       </el-card>
     </section>
+
+    <el-card v-loading="tagLoading" class="tag-analysis-card" shadow="never">
+      <template #header><strong>热门标签 Top 10</strong></template>
+      <div v-if="tagDistribution.length" class="tag-analysis">
+        <el-table :data="tagDistribution" height="340">
+          <el-table-column type="index" label="排名" width="70" />
+          <el-table-column prop="tag_name" label="标签" min-width="140" />
+          <el-table-column prop="drama_count" label="短剧数量" width="110" align="right" />
+          <el-table-column label="占比" width="90" align="right">
+            <template #default="scope">{{ scope.row.percentage.toFixed(2) }}%</template>
+          </el-table-column>
+        </el-table>
+        <div ref="tagChartContainer" class="tag-chart" aria-label="热门标签分布图" />
+      </div>
+      <el-empty v-else description="暂无标签统计数据" />
+    </el-card>
   </main>
 </template>
 
@@ -409,6 +605,21 @@ h1 {
   gap: 20px;
 }
 
+.tag-analysis-card {
+  margin-top: 20px;
+}
+
+.tag-analysis {
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) minmax(0, 1.4fr);
+  gap: 24px;
+}
+
+.tag-chart {
+  width: 100%;
+  height: 340px;
+}
+
 .trend-chart {
   width: 100%;
   height: 360px;
@@ -444,7 +655,8 @@ h1 {
   }
 
   .page-header,
-  .detail-grid {
+  .detail-grid,
+  .tag-analysis {
     grid-template-columns: 1fr;
   }
 

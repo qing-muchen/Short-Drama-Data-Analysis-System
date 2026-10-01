@@ -41,3 +41,9 @@ export interface QualitySummary {
   error_count: number
   freshness_summary: FreshnessSummary
 }
+
+export interface TagDistributionItem {
+  tag_name: string
+  drama_count: number
+  percentage: number
+}

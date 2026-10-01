@@ -11,6 +11,7 @@ from dashboard.schemas import (
     DashboardOverviewResponse,
     QualitySummaryResponse,
     RankingResponse,
+    TagDistributionResponse,
     TrendResponse,
 )
 from routers.dependencies import DashboardServiceDependency
@@ -154,3 +155,16 @@ def quality(
         tag_scope=tag_scope,
     )
     return item_response(service.quality(context), QualitySummaryResponse)
+
+
+@router.get("/tags", response_model=ResponseModel[list[TagDistributionResponse]])
+def tag_distribution(
+    service: DashboardServiceDependency,
+    limit: Annotated[int, Query(ge=1, le=20)] = 10,
+) -> ResponseModel[list[TagDistributionResponse]]:
+    return ResponseModel(
+        data=[
+            TagDistributionResponse.model_validate(item)
+            for item in service.tag_distribution(limit)
+        ]
+    )

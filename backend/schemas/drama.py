@@ -41,6 +41,16 @@ class DramaUpdate(SchemaModel):
     status: DramaStatus | None = None
 
 
+class DramaTagSummary(SchemaModel):
+    tag_id: int = Field(ge=1)
+    tag_name: str = Field(min_length=1, max_length=100)
+
+
+class DramaPlatformSummary(SchemaModel):
+    platform_id: int = Field(ge=1)
+    platform_name: str = Field(min_length=1, max_length=100)
+
+
 class DramaResponse(SchemaModel):
     drama_id: int = Field(ge=1)
     drama_code: str = Field(min_length=1, max_length=32)
@@ -52,6 +62,19 @@ class DramaResponse(SchemaModel):
     status: DramaStatus
     created_at: datetime
     updated_at: datetime
+
+
+class DramaCreateRequest(DramaCreate):
+    tags: list[int] = Field(default_factory=list, max_length=100)
+
+
+class DramaUpdateRequest(DramaUpdate):
+    tags: list[int] | None = Field(default=None, max_length=100)
+
+
+class DramaDetailResponse(DramaResponse):
+    tags: list[DramaTagSummary] = Field(default_factory=list)
+    platforms: list[DramaPlatformSummary] = Field(default_factory=list)
 
 
 class DramaActorCreate(SchemaModel):

@@ -1,8 +1,10 @@
 """Analytics Service orchestrating Repository data and frozen V1 calculations."""
 
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
 from dataclasses import dataclass
-from typing import Iterable
+from threading import Condition
+from time import monotonic
+from typing import Callable, Iterable, TypeVar, cast
 
 from sqlalchemy.orm import Session
 
@@ -28,6 +30,50 @@ from repositories.analytics_repository import AnalyticsRecord, AnalyticsReposito
 from repositories.drama_repository import DramaRepository
 from services.base import BaseService
 from services.exceptions import NotFoundException, ValidationException
+
+
+CacheValue = TypeVar("CacheValue")
+CacheKey = tuple[object, ...]
+_CACHE_TTL_SECONDS = 15.0
+_CACHE_MAX_ENTRIES = 16
+_cache_condition = Condition()
+_cache_entries: OrderedDict[CacheKey, tuple[float, object]] = OrderedDict()
+_cache_in_flight: set[CacheKey] = set()
+
+
+def _read_through_cache(key: CacheKey, loader: Callable[[], CacheValue]) -> CacheValue:
+    """Share identical short-lived analytics work without changing result semantics."""
+
+    with _cache_condition:
+        while True:
+            cached = _cache_entries.get(key)
+            if cached is not None:
+                created_at, value = cached
+                if monotonic() - created_at <= _CACHE_TTL_SECONDS:
+                    _cache_entries.move_to_end(key)
+                    return cast(CacheValue, value)
+                del _cache_entries[key]
+            if key not in _cache_in_flight:
+                _cache_in_flight.add(key)
+                break
+            _cache_condition.wait()
+
+    try:
+        value = loader()
+    except Exception:
+        with _cache_condition:
+            _cache_in_flight.discard(key)
+            _cache_condition.notify_all()
+        raise
+
+    with _cache_condition:
+        _cache_entries[key] = (monotonic(), value)
+        _cache_entries.move_to_end(key)
+        while len(_cache_entries) > _CACHE_MAX_ENTRIES:
+            _cache_entries.popitem(last=False)
+        _cache_in_flight.discard(key)
+        _cache_condition.notify_all()
+    return value
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,21 +181,23 @@ class AnalyticsService(BaseService):
     def get_metrics(self, context: AnalysisContext) -> list[MetricResult]:
         """Return all current metrics in one AnalysisContext for Dashboard use."""
 
-        points: list[SnapshotPoint] = []
-        for record in self.read(
-            self.analytics.list_snapshot_records,
-            analysis_as_of=context.analysis_as_of,
-            platform_ids=context.platform_scope,
-            tag_ids=context.tag_scope,
-        ):
-            point = self._to_point(record)
-            if self._in_current_scope(point):
-                points.append(point)
-        grouped = self._group_points(points, context.granularity)
-        return [
-            self._calculate_metrics(key, group, context)
-            for key, group in sorted(grouped.items())
-        ]
+        key: CacheKey = (
+            "metrics",
+            id(self._session.get_bind()),
+            context.deterministic_key,
+        )
+
+        def load() -> tuple[MetricResult, ...]:
+            grouped = self._group_points(
+                self._get_current_points(context),
+                context.granularity,
+            )
+            return tuple(
+                self._calculate_metrics(group_key, group, context)
+                for group_key, group in sorted(grouped.items())
+            )
+
+        return list(_read_through_cache(key, load))
 
     def get_rankings(
         self, context: AnalysisContext
@@ -181,20 +229,11 @@ class AnalyticsService(BaseService):
         from analytics.constants import WINDOW_TARGETS
 
         start = context.analysis_as_of - WINDOW_TARGETS[context.time_window]
-        points: list[SnapshotPoint] = []
-        for record in self.read(
-            self.analytics.list_snapshot_records,
-            analysis_as_of=context.analysis_as_of,
-            platform_ids=context.platform_scope,
-            tag_ids=context.tag_scope,
-        ):
-            point = self._to_point(record)
-            if (
-                self._in_current_scope(point)
-                and point.is_valid
-                and point.snapshot_time >= start
-            ):
-                points.append(point)
+        points = [
+            point
+            for point in self._get_current_points(context)
+            if point.is_valid and point.snapshot_time >= start
+        ]
         by_day: dict[object, list[SnapshotPoint]] = defaultdict(list)
         for point in points:
             by_day[point.snapshot_time.date()].append(point)
@@ -218,6 +257,31 @@ class AnalyticsService(BaseService):
 
     def get_quality_summary(self, context: AnalysisContext) -> dict[str, object]:
         return self.quality_summary_from_metrics(self.get_metrics(context))
+
+    def _get_current_points(self, context: AnalysisContext) -> list[SnapshotPoint]:
+        """Return scoped points, sharing only an identical short-lived DB snapshot."""
+
+        key: CacheKey = (
+            "points",
+            id(self._session.get_bind()),
+            context.analysis_as_of,
+            context.platform_scope,
+            context.tag_scope,
+        )
+
+        def load() -> tuple[SnapshotPoint, ...]:
+            return tuple(
+                point
+                for record in self.read(
+                    self.analytics.list_snapshot_records,
+                    analysis_as_of=context.analysis_as_of,
+                    platform_ids=context.platform_scope,
+                    tag_ids=context.tag_scope,
+                )
+                if self._in_current_scope(point := self._to_point(record))
+            )
+
+        return list(_read_through_cache(key, load))
 
     @staticmethod
     def quality_summary_from_metrics(

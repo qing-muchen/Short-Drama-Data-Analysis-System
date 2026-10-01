@@ -3,14 +3,15 @@
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import CheckConstraint, ForeignKey, Index, String, Text, text
-from sqlalchemy.dialects.mysql import BIGINT, CHAR, DATETIME
+from sqlalchemy import CheckConstraint, ForeignKey, Index, String, Text, UniqueConstraint, text
+from sqlalchemy.dialects.mysql import BIGINT, CHAR, DATETIME, SMALLINT
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database.base import Base
 from models.common import CreatedUpdatedAtMixin
 
 if TYPE_CHECKING:
+    from models.import_batch import ImportBatch
     from models.operation_log import OperationLog
     from models.snapshot import DramaMetricSnapshot
     from models.user import User
@@ -50,11 +51,39 @@ class ImportJob(CreatedUpdatedAtMixin, Base):
             "idx_import_jobs_user_created", "initiated_by_user_id", "created_at"
         ),
         Index("idx_import_jobs_file_hash", "file_hash"),
+        Index("idx_import_jobs_batch_status", "import_batch_id", "status"),
+        UniqueConstraint(
+            "import_batch_id", "batch_sequence", name="uq_import_jobs_batch_sequence"
+        ),
+        UniqueConstraint(
+            "import_batch_id", "batch_file_type", name="uq_import_jobs_batch_file_type"
+        ),
+        CheckConstraint(
+            "(import_batch_id IS NULL AND batch_sequence IS NULL AND batch_file_type IS NULL) "
+            "OR (import_batch_id IS NOT NULL AND batch_sequence IS NOT NULL "
+            "AND batch_sequence > 0 AND batch_file_type IN "
+            "('MASTER_DATA', 'DRAMA_TAGS', 'DRAMA_PLATFORMS', 'SNAPSHOT'))",
+            name="chk_import_jobs_batch_fields",
+        ),
     )
 
     import_job_id: Mapped[int] = mapped_column(
         BIGINT(unsigned=True), primary_key=True, autoincrement=True
     )
+    import_batch_id: Mapped[int | None] = mapped_column(
+        BIGINT(unsigned=True),
+        ForeignKey(
+            "import_batches.import_batch_id",
+            name="fk_import_jobs_batch",
+            ondelete="RESTRICT",
+            onupdate="RESTRICT",
+        ),
+        nullable=True,
+    )
+    batch_sequence: Mapped[int | None] = mapped_column(
+        SMALLINT(unsigned=True), nullable=True
+    )
+    batch_file_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
     initiated_by_user_id: Mapped[int] = mapped_column(
         BIGINT(unsigned=True),
         ForeignKey(
@@ -90,6 +119,7 @@ class ImportJob(CreatedUpdatedAtMixin, Base):
     finished_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6), nullable=True)
 
     initiated_by: Mapped["User"] = relationship(back_populates="initiated_import_jobs")
+    import_batch: Mapped["ImportBatch | None"] = relationship(back_populates="files")
     errors: Mapped[list["ImportError"]] = relationship(back_populates="import_job")
     snapshot_slots: Mapped[list["DramaMetricSnapshot"]] = relationship(
         back_populates="source_import_job"

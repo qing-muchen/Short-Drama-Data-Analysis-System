@@ -2,13 +2,13 @@
 
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
-from typing import Any, Mapping
+from typing import Any, Literal, Mapping
 from zoneinfo import ZoneInfo
 
 from pydantic import ValidationError as PydanticValidationError
 
 from imports.parser import ParsedFile, ParsedRow
-from imports.templates import MASTER_DATA_ENTITY_TYPES
+from imports.templates import MASTER_DATA_ENTITY_TYPES, MASTER_DATA_PRIMARY_KEY_FIELDS
 from schemas.drama import DramaCreate
 from schemas.master_data import ActorCreate, CompanyCreate, DirectorCreate, TagCreate
 from schemas.platform import PlatformCreate
@@ -39,11 +39,27 @@ class ValidatedRecord:
     values: dict[str, Any]
 
 
+SkippedRecordStatus = Literal["SKIPPED_EXISTING"]
+
+
+@dataclass(frozen=True, slots=True)
+class SkippedRecord:
+    """A valid master-data row intentionally excluded from the INSERT stage."""
+
+    source_row_number: int
+    entity_type: str
+    identity_field: str
+    identity_value: int | str
+    status: SkippedRecordStatus = "SKIPPED_EXISTING"
+    reason: str = "Already exists"
+
+
 @dataclass(frozen=True, slots=True)
 class ValidationResult:
     total_rows: int
     records: tuple[ValidatedRecord, ...]
     errors: tuple[ImportValidationError, ...]
+    skipped_records: tuple[SkippedRecord, ...] = ()
 
     @property
     def valid_rows(self) -> int:
@@ -53,17 +69,26 @@ class ValidationResult:
     def error_rows(self) -> int:
         return len({error.source_row_number for error in self.errors})
 
+    @property
+    def skipped_rows(self) -> int:
+        return len(self.skipped_records)
+
 
 @dataclass(frozen=True, slots=True)
 class ImportValidationContext:
     existing_drama_codes: frozenset[str] = frozenset()
     existing_platform_names: frozenset[str] = frozenset()
     existing_tag_names: frozenset[str] = frozenset()
+    existing_master_primary_keys: Mapping[str, frozenset[int]] = None  # type: ignore[assignment]
+    use_master_primary_keys: bool = False
+    skip_existing_master_data: bool = False
     release_references: Mapping[tuple[str, str], Mapping[str, Any]] = None  # type: ignore[assignment]
     existing_snapshot_keys: frozenset[tuple[int, datetime]] = frozenset()
     received_at: datetime | None = None
 
     def __post_init__(self) -> None:
+        if self.existing_master_primary_keys is None:
+            object.__setattr__(self, "existing_master_primary_keys", {})
         if self.release_references is None:
             object.__setattr__(self, "release_references", {})
 
@@ -100,33 +125,109 @@ class ImportValidator:
     ) -> ValidationResult:
         records: list[ValidatedRecord] = []
         errors: list[ImportValidationError] = []
+        skipped_records: list[SkippedRecord] = []
         seen: set[tuple[Any, ...]] = set()
+        seen_primary_keys: set[tuple[str, int]] = set()
         drama_codes = {_key(value) for value in context.existing_drama_codes}
         platform_names = {_key(value) for value in context.existing_platform_names}
         tag_names = {_key(value) for value in context.existing_tag_names}
 
         for row in parsed.rows:
             try:
-                record = self._master_record(row)
+                entity_type = _master_entity_type(row)
+                primary_key_field = MASTER_DATA_PRIMARY_KEY_FIELDS[entity_type]
+                primary_key = (
+                    _optional_positive_int(row, primary_key_field)
+                    if context.use_master_primary_keys
+                    else None
+                )
+                primary_identity = (
+                    (entity_type, primary_key) if primary_key is not None else None
+                )
+                if (
+                    primary_identity is not None
+                    and primary_identity in seen_primary_keys
+                ):
+                    raise RowValidationFailure(
+                        primary_key_field,
+                        "DUPLICATE_RECORD",
+                        "Duplicate primary key in import file",
+                        primary_key,
+                    )
+                if (
+                    primary_key is not None
+                    and primary_key
+                    in context.existing_master_primary_keys.get(
+                        entity_type, frozenset()
+                    )
+                ):
+                    skipped_records.append(
+                        SkippedRecord(
+                            row.source_row_number,
+                            entity_type,
+                            primary_key_field,
+                            primary_key,
+                        )
+                    )
+                    seen_primary_keys.add(primary_identity)
+                    continue
+
+                record = self._master_record(
+                    row,
+                    entity_type=entity_type,
+                    primary_key_field=primary_key_field,
+                    primary_key=primary_key,
+                )
                 identity = self._master_identity(record)
                 if identity in seen:
-                    raise RowValidationFailure(None, "DUPLICATE_RECORD", "Duplicate row in import file")
-                if record.entity_type == "DRAMA" and _key(record.values["drama_code"]) in drama_codes:
-                    raise RowValidationFailure("drama_code", "BUSINESS_UNIQUENESS", "Drama code already exists")
-                if record.entity_type == "PLATFORM" and _key(record.values["platform_name"]) in platform_names:
-                    raise RowValidationFailure("name", "BUSINESS_UNIQUENESS", "Platform name already exists")
-                if record.entity_type == "TAG" and _key(record.values["tag_name"]) in tag_names:
-                    raise RowValidationFailure("name", "BUSINESS_UNIQUENESS", "Tag name already exists")
+                    raise RowValidationFailure(
+                        None, "DUPLICATE_RECORD", "Duplicate row in import file"
+                    )
+                duplicate = _existing_business_identity(
+                    record,
+                    drama_codes=drama_codes,
+                    platform_names=platform_names,
+                    tag_names=tag_names,
+                )
+                if duplicate is not None:
+                    field_name, identity_value, message = duplicate
+                    if context.skip_existing_master_data:
+                        skipped_records.append(
+                            SkippedRecord(
+                                row.source_row_number,
+                                entity_type,
+                                field_name,
+                                identity_value,
+                            )
+                        )
+                        seen.add(identity)
+                        if primary_identity is not None:
+                            seen_primary_keys.add(primary_identity)
+                        continue
+                    raise RowValidationFailure(
+                        field_name, "BUSINESS_UNIQUENESS", message, identity_value
+                    )
                 seen.add(identity)
+                if primary_identity is not None:
+                    seen_primary_keys.add(primary_identity)
                 records.append(record)
             except RowValidationFailure as error:
                 errors.append(_to_error(row.source_row_number, error))
-        return ValidationResult(len(parsed.rows), tuple(records), tuple(errors))
+        return ValidationResult(
+            len(parsed.rows),
+            tuple(records),
+            tuple(errors),
+            tuple(skipped_records),
+        )
 
-    def _master_record(self, row: ParsedRow) -> ValidatedRecord:
-        entity_type = _required_text(row, "entity_type", max_length=32).upper()
-        if entity_type not in MASTER_DATA_ENTITY_TYPES:
-            raise RowValidationFailure("entity_type", "INVALID_STATUS", "Unsupported master data entity type", entity_type)
+    def _master_record(
+        self,
+        row: ParsedRow,
+        *,
+        entity_type: str,
+        primary_key_field: str,
+        primary_key: int | None,
+    ) -> ValidatedRecord:
         name = _required_text(row, "name", max_length=200)
         description = _optional_text(row.values.get("description"))
         try:
@@ -162,6 +263,8 @@ class ImportValidator:
             item = error.errors()[0]
             field = str(item.get("loc", ("row",))[0])
             raise RowValidationFailure(field, "FIELD_VALIDATION", "A field value is invalid", row.values.get(field)) from error
+        if primary_key is not None:
+            values[primary_key_field] = primary_key
         return ValidatedRecord(row.source_row_number, entity_type, values)
 
     @staticmethod
@@ -246,8 +349,60 @@ class ImportValidator:
         return ValidatedRecord(row.source_row_number, "SNAPSHOT", values)
 
 
+def collect_master_primary_keys(parsed: ParsedFile) -> dict[str, set[int]]:
+    """Collect valid, explicitly supplied master IDs for one bounded DB lookup."""
+
+    primary_keys = {entity_type: set() for entity_type in MASTER_DATA_ENTITY_TYPES}
+    for row in parsed.rows:
+        try:
+            entity_type = _master_entity_type(row)
+            value = _optional_positive_int(
+                row, MASTER_DATA_PRIMARY_KEY_FIELDS[entity_type]
+            )
+        except RowValidationFailure:
+            # The normal validation pass reports malformed entity types or IDs.
+            continue
+        if value is not None:
+            primary_keys[entity_type].add(value)
+    return primary_keys
+
+
 def _key(value: str) -> str:
     return value.strip().casefold()
+
+
+def _master_entity_type(row: ParsedRow) -> str:
+    entity_type = _required_text(row, "entity_type", max_length=32).upper()
+    if entity_type not in MASTER_DATA_ENTITY_TYPES:
+        raise RowValidationFailure(
+            "entity_type",
+            "INVALID_STATUS",
+            "Unsupported master data entity type",
+            entity_type,
+        )
+    return entity_type
+
+
+def _existing_business_identity(
+    record: ValidatedRecord,
+    *,
+    drama_codes: set[str],
+    platform_names: set[str],
+    tag_names: set[str],
+) -> tuple[str, str, str] | None:
+    if record.entity_type == "DRAMA":
+        value = str(record.values["drama_code"])
+        if _key(value) in drama_codes:
+            return "drama_code", value, "Drama code already exists"
+    elif record.entity_type == "PLATFORM":
+        value = str(record.values["platform_name"])
+        if _key(value) in platform_names:
+            return "name", value, "Platform name already exists"
+    elif record.entity_type == "TAG":
+        value = str(record.values["tag_name"])
+        if _key(value) in tag_names:
+            return "name", value, "Tag name already exists"
+    return None
 
 
 def _safe_raw(value: Any) -> str | None:

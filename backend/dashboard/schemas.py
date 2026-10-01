@@ -46,10 +46,16 @@ class QualitySummaryResponse(SchemaModel):
     freshness_summary: dict[str, int]
 
 
+class TagDistributionResponse(SchemaModel):
+    tag_name: str = Field(min_length=1, max_length=100)
+    drama_count: int = Field(ge=0)
+    percentage: float = Field(ge=0, le=100)
+
+
 __all__ = [
     "DashboardOverviewResponse",
     "QualitySummaryResponse",
     "RankingResponse",
+    "TagDistributionResponse",
     "TrendResponse",
 ]
-

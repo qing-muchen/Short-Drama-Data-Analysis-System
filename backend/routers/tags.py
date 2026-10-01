@@ -9,7 +9,13 @@ from routers.dependencies import MasterDataServiceDependency
 from routers.errors import ERROR_RESPONSES
 from routers.responses import item_response, page_response
 from schemas.common import PageResponse, ResponseModel
-from schemas.master_data import EntityStatus, TagCreate, TagResponse, TagUpdate
+from schemas.master_data import (
+    EntityStatus,
+    TagCreate,
+    TagListResponse,
+    TagResponse,
+    TagUpdate,
+)
 
 router = APIRouter(
     prefix="/tags",
@@ -19,21 +25,21 @@ router = APIRouter(
 )
 
 
-@router.get("", response_model=ResponseModel[PageResponse[TagResponse]])
+@router.get("", response_model=ResponseModel[PageResponse[TagListResponse]])
 def list_tags(
     service: MasterDataServiceDependency,
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
     status_filter: Annotated[EntityStatus | None, Query(alias="status")] = None,
     name_contains: Annotated[str | None, Query(min_length=1, max_length=100)] = None,
-) -> ResponseModel[PageResponse[TagResponse]]:
+) -> ResponseModel[PageResponse[TagListResponse]]:
     result = service.list_tags(
         page=page,
         page_size=page_size,
         status=status_filter,
         name_contains=name_contains,
     )
-    return page_response(result, TagResponse)
+    return page_response(result, TagListResponse)
 
 
 @router.get("/{tag_id}", response_model=ResponseModel[TagResponse])

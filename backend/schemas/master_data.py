@@ -89,3 +89,7 @@ class TagResponse(SchemaModel):
     status: EntityStatus
     created_at: datetime
     updated_at: datetime
+
+
+class TagListResponse(TagResponse):
+    drama_count: int = Field(default=0, ge=0)

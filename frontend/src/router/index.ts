@@ -21,6 +21,12 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      path: '/dramas/:id',
+      name: 'drama-detail',
+      component: () => import('../views/drama/DramaDetail.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/dramas/:id/profile',
       name: 'drama-profile',
       component: () => import('../views/dramaProfile/DramaProfile.vue'),
@@ -39,9 +45,27 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      path: '/tags',
+      name: 'tags',
+      component: () => import('../views/master/TagList.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/imports',
       name: 'imports',
       component: () => import('../views/import/ImportUpload.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/imports/batches',
+      name: 'import-batches',
+      component: () => import('../views/import/BatchImport.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/imports/batches/:id',
+      name: 'import-batch',
+      component: () => import('../views/import/BatchImport.vue'),
       meta: { requiresAuth: true },
     },
     {

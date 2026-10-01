@@ -39,6 +39,13 @@ class DashboardRanking:
     growth_7d: float | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class DashboardTagDistribution:
+    tag_name: str
+    drama_count: int
+    percentage: float
+
+
 class DashboardService(BaseService):
     """Compose Dashboard views; all metric calculations stay in AnalyticsService."""
 
@@ -118,6 +125,20 @@ class DashboardService(BaseService):
         result = dict(self.analytics.get_quality_summary(context))
         result["analysis_as_of"] = context.analysis_as_of
         return result
+
+    def tag_distribution(self, limit: int) -> list[DashboardTagDistribution]:
+        return [
+            DashboardTagDistribution(
+                tag_name=item.tag_name,
+                drama_count=item.drama_count,
+                percentage=(
+                    round(item.drama_count * 100 / item.total_drama_count, 2)
+                    if item.total_drama_count
+                    else 0.0
+                ),
+            )
+            for item in self.read(self.dashboard.get_tag_distribution, limit)
+        ]
 
     @staticmethod
     def _ranking(

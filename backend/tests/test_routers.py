@@ -105,6 +105,7 @@ def test_openapi_registers_only_authorized_basic_api_paths() -> None:
     assert set(paths["/api/v1/dashboard/rankings/potential"]) == {"get"}
     assert set(paths["/api/v1/dashboard/trend"]) == {"get"}
     assert set(paths["/api/v1/dashboard/quality"]) == {"get"}
+    assert set(paths["/api/v1/dashboard/tags"]) == {"get"}
     assert set(paths["/api/v1/scores/calculate"]) == {"post"}
     assert set(paths["/api/v1/scores/ranking"]) == {"get"}
     assert set(paths["/api/v1/scores/level-distribution"]) == {"get"}

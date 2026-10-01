@@ -6,6 +6,7 @@ from uuid import uuid4
 from sqlalchemy.orm import Session
 
 from repositories.drama_repository import DramaRepository
+from repositories.tag_repository import TagRepository
 from services.base import BaseService
 from services.exceptions import NotFoundException, ValidationException
 
@@ -13,9 +14,15 @@ from services.exceptions import NotFoundException, ValidationException
 class DramaService(BaseService):
     """Coordinate drama persistence and logical deactivation."""
 
-    def __init__(self, session: Session, dramas: DramaRepository) -> None:
-        super().__init__(session, dramas)
+    def __init__(
+        self,
+        session: Session,
+        dramas: DramaRepository,
+        tags: TagRepository | None = None,
+    ) -> None:
+        super().__init__(session, dramas, *([tags] if tags is not None else []))
         self.dramas = dramas
+        self.tags = tags
 
     def list_dramas(
         self,
@@ -24,6 +31,7 @@ class DramaService(BaseService):
         page_size: int,
         status: str | None = None,
         name_contains: str | None = None,
+        tag_ids: tuple[int, ...] = (),
     ) -> Any:
         return self.read(
             self.dramas.list_page,
@@ -31,6 +39,7 @@ class DramaService(BaseService):
             page_size=page_size,
             status=status,
             name_contains=name_contains,
+            tag_ids=tag_ids,
         )
 
     def get_drama(self, drama_id: int) -> Any:
@@ -44,16 +53,32 @@ class DramaService(BaseService):
 
     def create_drama(self, values: Mapping[str, Any]) -> Any:
         create_values = dict(values)
+        tag_ids = self._tag_ids(create_values.pop("tags", []))
+        self._validate_tags(tag_ids)
         create_values["drama_code"] = self._new_drama_code()
         with self.transaction():
-            return self.dramas.create(create_values)
+            drama = self.dramas.create(create_values)
+            if self.tags is not None:
+                self.dramas.replace_tags(drama.drama_id, tag_ids)
+            drama_id = drama.drama_id
+        return self.get_drama(drama_id) if self.tags is not None else drama
 
     def update_drama(self, drama_id: int, values: Mapping[str, Any]) -> Any:
-        self._reject_null(values, "drama_name", "status")
+        self._reject_null(values, "drama_name", "status", "tags")
+        update_values = dict(values)
+        tag_ids = (
+            self._tag_ids(update_values.pop("tags"))
+            if "tags" in update_values
+            else None
+        )
+        if tag_ids is not None:
+            self._validate_tags(tag_ids)
         self.get_drama(drama_id)
         with self.transaction():
-            drama = self.dramas.update(drama_id, values)
-        return drama
+            drama = self.dramas.update(drama_id, update_values)
+            if tag_ids is not None:
+                self.dramas.replace_tags(drama_id, tag_ids)
+        return self.get_drama(drama_id) if self.tags is not None else drama
 
     def deactivate_drama(self, drama_id: int) -> Any:
         return self.update_drama(drama_id, {"status": "INACTIVE"})
@@ -63,6 +88,29 @@ class DramaService(BaseService):
             candidate = f"DRM{uuid4().hex[:29].upper()}"
             if self.read(self.dramas.get_by_drama_code, candidate) is None:
                 return candidate
+
+    def _validate_tags(self, tag_ids: tuple[int, ...]) -> None:
+        if not tag_ids:
+            return
+        if self.tags is None:
+            raise RuntimeError("TagRepository is required when tags are provided")
+        active_ids = self.read(self.tags.get_active_ids, tag_ids)
+        missing = sorted(set(tag_ids) - active_ids)
+        if missing:
+            raise ValidationException(
+                "Tags must exist and be active",
+                details={"tag_ids": missing},
+            )
+
+    @staticmethod
+    def _tag_ids(values: Any) -> tuple[int, ...]:
+        tag_ids = tuple(dict.fromkeys(int(value) for value in values))
+        if any(tag_id < 1 for tag_id in tag_ids):
+            raise ValidationException(
+                "Tag identifiers must be positive",
+                details={"tag_ids": list(tag_ids)},
+            )
+        return tag_ids
 
     @staticmethod
     def _reject_null(values: Mapping[str, Any], *required: str) -> None:

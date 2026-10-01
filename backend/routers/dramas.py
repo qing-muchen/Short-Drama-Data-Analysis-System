@@ -9,7 +9,12 @@ from routers.dependencies import DramaServiceDependency
 from routers.errors import ERROR_RESPONSES
 from routers.responses import item_response, page_response
 from schemas.common import PageResponse, ResponseModel
-from schemas.drama import DramaCreate, DramaResponse, DramaStatus, DramaUpdate
+from schemas.drama import (
+    DramaCreateRequest,
+    DramaDetailResponse,
+    DramaStatus,
+    DramaUpdateRequest,
+)
 
 router = APIRouter(
     prefix="/dramas",
@@ -19,69 +24,74 @@ router = APIRouter(
 )
 
 
-@router.get("", response_model=ResponseModel[PageResponse[DramaResponse]])
+@router.get("", response_model=ResponseModel[PageResponse[DramaDetailResponse]])
 def list_dramas(
     service: DramaServiceDependency,
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
     drama_status: Annotated[DramaStatus | None, Query(alias="status")] = None,
     name_contains: Annotated[str | None, Query(min_length=1, max_length=200)] = None,
-) -> ResponseModel[PageResponse[DramaResponse]]:
+    tag_ids: Annotated[
+        str | None,
+        Query(pattern=r"^\d+(,\d+)*$", max_length=500),
+    ] = None,
+) -> ResponseModel[PageResponse[DramaDetailResponse]]:
     result = service.list_dramas(
         page=page,
         page_size=page_size,
         status=drama_status,
         name_contains=name_contains,
+        tag_ids=tuple(int(value) for value in tag_ids.split(",")) if tag_ids else (),
     )
-    return page_response(result, DramaResponse)
+    return page_response(result, DramaDetailResponse)
 
 
-@router.get("/{drama_id}", response_model=ResponseModel[DramaResponse])
+@router.get("/{drama_id}", response_model=ResponseModel[DramaDetailResponse])
 def get_drama(
     service: DramaServiceDependency,
     drama_id: Annotated[int, Path(ge=1)],
-) -> ResponseModel[DramaResponse]:
-    return item_response(service.get_drama(drama_id), DramaResponse)
+) -> ResponseModel[DramaDetailResponse]:
+    return item_response(service.get_drama(drama_id), DramaDetailResponse)
 
 
 @router.post(
     "",
-    response_model=ResponseModel[DramaResponse],
+    response_model=ResponseModel[DramaDetailResponse],
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(require_admin)],
 )
 def create_drama(
-    payload: DramaCreate,
+    payload: DramaCreateRequest,
     service: DramaServiceDependency,
-) -> ResponseModel[DramaResponse]:
+) -> ResponseModel[DramaDetailResponse]:
     entity = service.create_drama(payload.model_dump(exclude_unset=True))
-    return item_response(entity, DramaResponse)
+    return item_response(entity, DramaDetailResponse)
 
 
 @router.put(
     "/{drama_id}",
-    response_model=ResponseModel[DramaResponse],
+    response_model=ResponseModel[DramaDetailResponse],
     dependencies=[Depends(require_admin)],
 )
 def update_drama(
-    payload: DramaUpdate,
+    payload: DramaUpdateRequest,
     service: DramaServiceDependency,
     drama_id: Annotated[int, Path(ge=1)],
-) -> ResponseModel[DramaResponse]:
+) -> ResponseModel[DramaDetailResponse]:
     entity = service.update_drama(
         drama_id,
         payload.model_dump(exclude_unset=True),
     )
-    return item_response(entity, DramaResponse)
+    return item_response(entity, DramaDetailResponse)
 
 
 @router.delete(
     "/{drama_id}",
-    response_model=ResponseModel[DramaResponse],
+    response_model=ResponseModel[DramaDetailResponse],
     dependencies=[Depends(require_admin)],
 )
 def delete_drama(
     service: DramaServiceDependency,
     drama_id: Annotated[int, Path(ge=1)],
-) -> ResponseModel[DramaResponse]:
-    return item_response(service.deactivate_drama(drama_id), DramaResponse)
+) -> ResponseModel[DramaDetailResponse]:
+    return item_response(service.deactivate_drama(drama_id), DramaDetailResponse)

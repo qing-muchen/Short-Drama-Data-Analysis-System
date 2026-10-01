@@ -4,8 +4,10 @@ import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'elem
 import { useRouter } from 'vue-router'
 
 import { createDrama, deactivateDrama, getDramas, updateDrama } from '../../api/drama'
+import { getTags } from '../../api/tag'
 import { useUserStore } from '../../stores/user'
 import type { Drama, DramaCreate, DramaStatus } from '../../types/drama'
+import type { Tag } from '../../types/master'
 import { getApiErrorMessage } from '../../utils/api-error'
 
 interface DramaForm {
@@ -13,6 +15,7 @@ interface DramaForm {
   drama_name: string
   synopsis: string
   status: DramaStatus
+  tags: number[]
 }
 
 const userStore = useUserStore()
@@ -27,6 +30,8 @@ const pageSize = ref(20)
 const total = ref(0)
 const nameContains = ref('')
 const statusFilter = ref<DramaStatus | ''>('')
+const availableTags = ref<Tag[]>([])
+const selectedTagIds = ref<number[]>([])
 const dialogVisible = ref(false)
 const editingId = ref<number | null>(null)
 const formRef = ref<FormInstance>()
@@ -35,6 +40,7 @@ const form = reactive<DramaForm>({
   drama_name: '',
   synopsis: '',
   status: 'DRAFT',
+  tags: [],
 })
 
 const formRules: FormRules<DramaForm> = {
@@ -84,6 +90,7 @@ async function loadRows(): Promise<void> {
       page_size: pageSize.value,
       name_contains: nameContains.value.trim() || undefined,
       status: statusFilter.value || undefined,
+      tag_ids: selectedTagIds.value.length ? selectedTagIds.value.join(',') : undefined,
     })
     rows.value = result.items
     total.value = result.total
@@ -102,12 +109,33 @@ function search(): void {
 function resetFilters(): void {
   nameContains.value = ''
   statusFilter.value = ''
+  selectedTagIds.value = []
+  search()
+}
+
+async function loadTags(): Promise<void> {
+  try {
+    const result = await getTags({ page: 1, page_size: 100, status: 'ACTIVE' })
+    availableTags.value = result.items
+  } catch (error: unknown) {
+    ElMessage.error(getApiErrorMessage(error, '标签列表加载失败，请稍后重试。'))
+  }
+}
+
+function clearTagFilter(): void {
+  selectedTagIds.value = []
   search()
 }
 
 function openCreate(): void {
   editingId.value = null
-  Object.assign(form, { drama_code: '', drama_name: '', synopsis: '', status: 'DRAFT' })
+  Object.assign(form, {
+    drama_code: '',
+    drama_name: '',
+    synopsis: '',
+    status: 'DRAFT',
+    tags: [],
+  })
   dialogVisible.value = true
   formRef.value?.clearValidate()
 }
@@ -119,6 +147,7 @@ function openEdit(row: Drama): void {
     drama_name: row.drama_name,
     synopsis: row.synopsis ?? '',
     status: row.status,
+    tags: row.tags.map((tag) => tag.tag_id),
   })
   dialogVisible.value = true
   formRef.value?.clearValidate()
@@ -132,6 +161,7 @@ async function submitForm(): Promise<void> {
       drama_name: form.drama_name.trim(),
       synopsis: form.synopsis.trim() || null,
       status: form.status,
+      tags: [...form.tags],
     }
     if (editingId.value === null) {
       await createDrama(payload)
@@ -174,7 +204,13 @@ function openAnalysis(row: Drama): void {
   void router.push({ path: '/analytics', query: { drama_id: String(row.drama_id) } })
 }
 
-onMounted(() => void loadRows())
+function openDetail(row: Drama): void {
+  void router.push(`/dramas/${row.drama_id}`)
+}
+
+onMounted(() => {
+  void Promise.all([loadTags(), loadRows()])
+})
 </script>
 
 <template>
@@ -187,6 +223,7 @@ onMounted(() => void loadRows())
       </div>
       <div class="header-actions">
         <router-link to="/dashboard"><el-button>返回驾驶舱</el-button></router-link>
+        <router-link to="/tags"><el-button>标签管理</el-button></router-link>
         <el-button v-if="isAdmin" type="primary" @click="openCreate">新增短剧</el-button>
       </div>
     </header>
@@ -207,6 +244,23 @@ onMounted(() => void loadRows())
         <el-button @click="resetFilters">重置</el-button>
       </div>
 
+      <div class="tag-filter" aria-label="标签筛选">
+        <span class="tag-filter-label">标签：</span>
+        <el-button
+          size="small"
+          :type="selectedTagIds.length === 0 ? 'primary' : 'default'"
+          plain
+          @click="clearTagFilter"
+        >全部</el-button>
+        <el-checkbox-group v-model="selectedTagIds" class="tag-options" @change="search">
+          <el-checkbox-button
+            v-for="tag in availableTags"
+            :key="tag.tag_id"
+            :value="tag.tag_id"
+          >{{ tag.tag_name }}</el-checkbox-button>
+        </el-checkbox-group>
+      </div>
+
       <el-alert v-if="errorMessage" :title="errorMessage" type="error" show-icon :closable="false">
         <template #default><el-button text type="primary" @click="loadRows">重新加载</el-button></template>
       </el-alert>
@@ -214,6 +268,16 @@ onMounted(() => void loadRows())
       <el-table v-loading="loading" :data="rows" empty-text="暂无短剧数据" class="data-table">
         <el-table-column prop="drama_code" label="业务编码" min-width="130" />
         <el-table-column prop="drama_name" label="短剧名称" min-width="180" show-overflow-tooltip />
+        <el-table-column label="标签" min-width="220">
+          <template #default="scope">
+            <div class="row-tags">
+              <el-tag v-for="tag in scope.row.tags" :key="tag.tag_id" size="small" effect="plain">
+                {{ tag.tag_name }}
+              </el-tag>
+              <span v-if="scope.row.tags.length === 0" class="muted">暂无标签</span>
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column label="状态" width="110">
           <template #default="scope">
             <el-tag :type="statusTone(scope.row.status)">{{ statusLabel(scope.row.status) }}</el-tag>
@@ -224,6 +288,7 @@ onMounted(() => void loadRows())
         </el-table-column>
         <el-table-column label="操作" :width="isAdmin ? 210 : 80" fixed="right">
           <template #default="scope">
+            <el-button link @click="openDetail(scope.row)">详情</el-button>
             <el-button link type="success" @click="openAnalysis(scope.row)">分析</el-button>
             <el-button v-if="isAdmin" link type="primary" @click="openEdit(scope.row)">编辑</el-button>
             <el-button
@@ -265,6 +330,24 @@ onMounted(() => void loadRows())
             <el-option v-for="item in statusOptions" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
         </el-form-item>
+        <el-form-item label="标签">
+          <el-select
+            v-model="form.tags"
+            class="full-width"
+            multiple
+            filterable
+            collapse-tags
+            collapse-tags-tooltip
+            placeholder="请选择一个或多个标签"
+          >
+            <el-option
+              v-for="tag in availableTags"
+              :key="tag.tag_id"
+              :label="tag.tag_name"
+              :value="tag.tag_id"
+            />
+          </el-select>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
@@ -282,6 +365,10 @@ onMounted(() => void loadRows())
 .eyebrow { margin-bottom: 8px !important; color: var(--el-color-primary) !important; font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
 .header-actions, .filters { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .filters { margin-bottom: 18px; }
+.tag-filter { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 18px; }
+.tag-filter-label { flex: 0 0 auto; line-height: 32px; color: var(--el-text-color-secondary); }
+.tag-options, .row-tags { display: flex; gap: 8px; flex-wrap: wrap; }
+.muted { color: var(--el-text-color-secondary); }
 .search-input { width: 260px; }
 .status-select { width: 150px; }
 .data-table { margin-top: 16px; }
