@@ -357,6 +357,8 @@ def test_history_query_returns_latest_window_in_chronological_order() -> None:
     assert "data_quality_scores.score_date <= %s" in compiled
     assert "data_quality_scores.score_date DESC" in compiled
     assert "LIMIT %s" in compiled
+    assert "FROM (SELECT" in compiled
+    assert "AS recent_quality_score_ids" in compiled
     assert "data_quality_scores.score_date ASC" in compiled
     assert statement._order_by_clauses[0].modifier.__name__ == "asc_op"
 

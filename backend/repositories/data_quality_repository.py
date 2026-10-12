@@ -287,11 +287,15 @@ class DataQualityScoreRepository(BaseRepository[DataQualityScore]):
             DataQualityScore.score_date.desc(),
             DataQualityScore.analysis_as_of.desc(),
             DataQualityScore.quality_score_id.desc(),
-        ).limit(limit)
+        ).limit(limit).subquery("recent_quality_score_ids")
 
         statement = (
             select(DataQualityScore)
-            .where(DataQualityScore.quality_score_id.in_(recent_ids))
+            .where(
+                DataQualityScore.quality_score_id.in_(
+                    select(recent_ids.c.quality_score_id)
+                )
+            )
             .order_by(
                 DataQualityScore.score_date.asc(),
                 DataQualityScore.analysis_as_of.asc(),
