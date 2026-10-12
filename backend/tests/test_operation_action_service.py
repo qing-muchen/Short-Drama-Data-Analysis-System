@@ -68,6 +68,9 @@ def test_create_action_creates_source_history_log_and_commits_once() -> None:
     sources.create_source.assert_called_once()
     assert history.create_history.call_args.args[0]["event_type"] == "CREATE"
     logs.create.assert_called_once()
+    log_values = logs.create.call_args.args[0]
+    assert "detail" not in log_values
+    assert log_values["summary"] == "Action created; action_id=9"
     validator.validate_source.assert_called_once()
     session.commit.assert_called_once_with()
     session.rollback.assert_not_called()

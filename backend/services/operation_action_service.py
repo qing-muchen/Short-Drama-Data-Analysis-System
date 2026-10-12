@@ -2,7 +2,6 @@
 
 from dataclasses import dataclass
 from datetime import date, datetime
-import json
 from typing import Any, Protocol
 
 from sqlalchemy.orm import Session
@@ -291,13 +290,11 @@ class OperationActionService(BaseService):
             raise ValidationException("Administrator permission required")
 
     def _log(self, action: Any, actor_id: int, operation_type: str, summary: str) -> None:
-        detail = json.dumps({"action_id": action.action_id}, ensure_ascii=False, sort_keys=True)
         values: dict[str, Any] = {
             "actor_user_id": actor_id,
             "operation_type": operation_type,
             "result_status": "SUCCESS",
-            "summary": summary,
-            "detail": detail,
+            "summary": f"{summary}; action_id={action.action_id}",
         }
         if action.drama_id is not None:
             values["target_drama_id"] = action.drama_id
