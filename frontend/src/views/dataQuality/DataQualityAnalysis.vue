@@ -20,7 +20,7 @@ import type {
   QualityGrade,
   QualityRuleStatus,
 } from '../../types/dataQuality'
-import { getApiErrorMessage } from '../../utils/api-error'
+import { getApiErrorDetail, getApiErrorMessage, getApiErrorStatus } from '../../utils/api-error'
 
 const userStore = useUserStore()
 const isAdmin = computed(() => userStore.currentUser?.role_code === 'ADMINISTRATOR')
@@ -98,9 +98,13 @@ async function loadDataQualityDashboard(): Promise<void> {
   history.value = historyResult.status === 'fulfilled' ? historyResult.value.items : []
   rules.value = rulesResult.status === 'fulfilled' ? rulesResult.value.items : []
 
-  const failures = [scoreResult, historyResult, rulesResult].filter(
-    (result) => result.status === 'rejected',
-  )
+  const failures = [
+    scoreResult.status === 'rejected' && getApiErrorStatus(scoreResult.reason) !== 404
+      ? scoreResult
+      : null,
+    historyResult.status === 'rejected' ? historyResult : null,
+    rulesResult.status === 'rejected' ? rulesResult : null,
+  ].filter((result) => result != null)
   if (failures.length > 0) {
     const firstFailure = failures[0]
     errorMessage.value = getApiErrorMessage(
@@ -123,7 +127,11 @@ async function recalculate(): Promise<void> {
     calculationResult.value = result
     ElMessage.success(`数据质量评分完成：${formatScore(result.total_score)} / ${result.quality_grade}`)
   } catch (error: unknown) {
-    errorMessage.value = getApiErrorMessage(error, '数据质量评分失败，请稍后重试。')
+    const reason = getApiErrorDetail(error, 'reason')
+    errorMessage.value =
+      reason === 'NO_ACTIVE_RULE_SET'
+        ? '尚未发布可执行的数据质量规则，当前仅可查看已有评分与历史记录。'
+        : getApiErrorMessage(error, '数据质量评分失败，请稍后重试。')
   } finally {
     calculating.value = false
   }
@@ -144,10 +152,10 @@ function renderRadar(): void {
         radius: '68%',
         splitNumber: 5,
         indicator: [
-          { name: 'Completeness', max: 100 },
-          { name: 'Accuracy', max: 100 },
-          { name: 'Consistency', max: 100 },
-          { name: 'Timeliness', max: 100 },
+          { name: '完整性', max: 100 },
+          { name: '准确性', max: 100 },
+          { name: '一致性', max: 100 },
+          { name: '及时性', max: 100 },
         ],
       },
       series: [
@@ -249,7 +257,7 @@ onUnmounted(() => {
   <main class="quality-page">
     <header class="page-header">
       <div>
-        <p class="eyebrow">Data Quality Governance</p>
+        <p class="eyebrow">数据质量治理</p>
         <h1>数据质量治理分析</h1>
         <p class="subtitle">从完整性、准确性、一致性和及时性观察全局数据治理成效。</p>
       </div>
@@ -283,7 +291,7 @@ onUnmounted(() => {
           重新计算质量评分
         </el-button>
       </div>
-      <p class="source-note">页面只展示Data Quality API结果，不在前端重新计算评分或等级。</p>
+      <p class="source-note">页面只展示数据质量 API 结果，不在前端重新计算评分或等级。</p>
     </el-card>
 
     <el-alert
@@ -344,10 +352,10 @@ onUnmounted(() => {
         <div v-else>
           <div ref="radarContainer" class="radar-chart" aria-label="数据质量四维雷达图" />
           <div class="dimension-grid">
-            <span>Completeness<strong>{{ formatScore(currentScore.completeness_score) }}</strong></span>
-            <span>Accuracy<strong>{{ formatScore(currentScore.accuracy_score) }}</strong></span>
-            <span>Consistency<strong>{{ formatScore(currentScore.consistency_score) }}</strong></span>
-            <span>Timeliness<strong>{{ formatScore(currentScore.timeliness_score) }}</strong></span>
+            <span>完整性<strong>{{ formatScore(currentScore.completeness_score) }}</strong></span>
+            <span>准确性<strong>{{ formatScore(currentScore.accuracy_score) }}</strong></span>
+            <span>一致性<strong>{{ formatScore(currentScore.consistency_score) }}</strong></span>
+            <span>及时性<strong>{{ formatScore(currentScore.timeliness_score) }}</strong></span>
           </div>
         </div>
       </el-card>

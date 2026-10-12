@@ -649,6 +649,17 @@ h1 {
   }
 }
 
+@media (max-width: 1500px) {
+  .page-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .header-actions {
+    justify-content: flex-start;
+  }
+}
+
 @media (max-width: 720px) {
   .dashboard-page {
     padding: 18px;

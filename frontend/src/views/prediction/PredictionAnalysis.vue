@@ -13,7 +13,7 @@ import {
 import ExplanationDrawer from '../../components/explanation/ExplanationDrawer.vue'
 import { useUserStore } from '../../stores/user'
 import type { Prediction } from '../../types/prediction'
-import { getApiErrorMessage } from '../../utils/api-error'
+import { getApiErrorDetail, getApiErrorMessage, getApiErrorStatus } from '../../utils/api-error'
 
 const route = useRoute()
 const router = useRouter()
@@ -67,7 +67,12 @@ async function loadPrediction(): Promise<void> {
   currentPrediction.value = latestResult.status === 'fulfilled' ? latestResult.value : null
   history.value = historyResult.status === 'fulfilled' ? historyResult.value.items : []
 
-  const failures = [latestResult, historyResult].filter((result) => result.status === 'rejected')
+  const failures = [
+    latestResult.status === 'rejected' && getApiErrorStatus(latestResult.reason) !== 404
+      ? latestResult
+      : null,
+    historyResult.status === 'rejected' ? historyResult : null,
+  ].filter((result) => result != null)
   if (failures.length > 0) {
     const firstFailure = failures[0]
     errorMessage.value = getApiErrorMessage(
@@ -92,7 +97,16 @@ async function calculate(): Promise<void> {
     await loadPrediction()
     ElMessage.success(`预测生成成功：${formatNumber(result.predicted_value)}`)
   } catch (error: unknown) {
-    errorMessage.value = getApiErrorMessage(error, '预测生成失败，请稍后重试。')
+    const reason = getApiErrorDetail(error, 'reason')
+    const reasonMessages: Record<string, string> = {
+      NO_HISTORY: '尚无可用于预测的历史指标快照。',
+      INSUFFICIENT_HISTORY: '历史数据不足：预测需要连续 8 天且累计播放量单调不下降的数据。',
+      DATA_QUALITY_BLOCKED: '历史数据未通过预测所需的数据质量检查。',
+    }
+    errorMessage.value =
+      typeof reason === 'string' && reasonMessages[reason]
+        ? reasonMessages[reason]
+        : getApiErrorMessage(error, '预测生成失败，请稍后重试。')
   } finally {
     calculating.value = false
   }
