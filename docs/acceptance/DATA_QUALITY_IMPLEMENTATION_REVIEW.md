@@ -41,4 +41,3 @@ Design V2 给出了四个维度的候选检查方向和 Timeliness 分段建议�
 5. 批准独立、可审计的数据 Migration/初始化编号；不得修改 V009。
 
 在上述决议前，本阶段没有实现 evaluator、没有插入规则，也没有声称 Data Quality 闭环完成。
-
