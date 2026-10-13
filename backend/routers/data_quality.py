@@ -18,8 +18,8 @@ from schemas.data_quality import (
     DataQualityRuleResponse,
     DataQualityRuleResultResponse,
     DataQualityScoreResponse,
+    QualityAlgorithmVersion,
 )
-from services.data_quality_service import CURRENT_RULE_SET_VERSION
 from services.exceptions import NotFoundException
 
 router = APIRouter(
@@ -41,6 +41,7 @@ def calculate_quality_score(
     result = service.calculate_quality_score(
         payload.score_date,
         administrator_id=administrator.user_id,
+        algorithm_version=payload.algorithm_version,
     )
     return ResponseModel(
         data=DataQualityCalculationResponse.model_validate(result)
@@ -54,9 +55,14 @@ def calculate_quality_score(
 def get_current_quality_score(
     current_user: AuthenticatedUserDependency,
     service: DataQualityServiceDependency,
+    algorithm_version: Annotated[
+        QualityAlgorithmVersion, Query()
+    ] = "Quality Score V2.0",
 ) -> ResponseModel[DataQualityScoreResponse]:
     del current_user
-    entity = service.get_current_quality_score()
+    entity = service.get_current_quality_score(
+        algorithm_version=algorithm_version,
+    )
     if entity is None:
         raise NotFoundException("Data quality score was not found")
     return ResponseModel(data=_score_response(entity))
@@ -72,12 +78,16 @@ def get_quality_history(
     start_date: Annotated[date | None, Query()] = None,
     end_date: Annotated[date | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=365)] = 90,
+    algorithm_version: Annotated[
+        QualityAlgorithmVersion, Query()
+    ] = "Quality Score V2.0",
 ) -> ResponseModel[DataQualityHistoryResponse]:
     del current_user
     entities = service.get_quality_history(
         start_date=start_date,
         end_date=end_date,
         limit=limit,
+        algorithm_version=algorithm_version,
     )
     items = [
         DataQualityHistoryItemResponse(**_history_values(entity))
@@ -95,26 +105,21 @@ def get_quality_history(
 def get_current_quality_rules(
     current_user: AuthenticatedUserDependency,
     service: DataQualityServiceDependency,
+    algorithm_version: Annotated[
+        QualityAlgorithmVersion, Query()
+    ] = "Quality Score V2.0",
 ) -> ResponseModel[DataQualityRuleListResponse]:
     del current_user
-    score = service.get_current_quality_score()
-    if score is None:
-        payload = DataQualityRuleListResponse(
-            rule_set_version=CURRENT_RULE_SET_VERSION,
-            rule_set_hash=None,
-            total=0,
-            items=[],
-        )
-        return ResponseModel(data=payload)
-
+    del algorithm_version
+    current = service.get_current_quality_rules()
     items = [
-        DataQualityRuleResponse.model_validate(result.rule)
-        for result in score.rule_results
+        DataQualityRuleResponse.model_validate(rule)
+        for rule in current.rules
     ]
     return ResponseModel(
         data=DataQualityRuleListResponse(
-            rule_set_version=score.rule_set_version,
-            rule_set_hash=score.rule_set_hash,
+            rule_set_version=current.rule_set_version,
+            rule_set_hash=current.rule_set_hash,
             total=len(items),
             items=items,
         )

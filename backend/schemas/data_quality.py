@@ -8,6 +8,7 @@ from pydantic import Field
 from schemas.common import SchemaModel
 
 QualityGrade = Literal["S", "A", "B", "C"]
+QualityAlgorithmVersion = Literal["Quality Score V1.0", "Quality Score V2.0"]
 QualityScopeType = Literal["ALL"]
 QualityDimension = Literal[
     "COMPLETENESS",
@@ -28,16 +29,17 @@ QualityTargetEntityType = Literal[
 
 
 class DataQualityCalculateRequest(SchemaModel):
-    """Only the score date is client-controlled in Phase 2 V1."""
+    """Administrator-selected score date and released algorithm version."""
 
     score_date: date
+    algorithm_version: QualityAlgorithmVersion = "Quality Score V2.0"
 
 
 class DataQualityCalculationResponse(SchemaModel):
     quality_score_id: int = Field(ge=1)
     score_date: date
     analysis_as_of: datetime
-    algorithm_version: Literal["Quality Score V1.0"]
+    algorithm_version: QualityAlgorithmVersion
     rule_set_version: Literal["DQ Rules 1.0"]
     rule_set_hash: str = Field(min_length=64, max_length=64)
     score_scope_type: QualityScopeType
@@ -79,7 +81,7 @@ class DataQualityScoreResponse(SchemaModel):
     timeliness_score: float = Field(ge=0, le=100)
     total_score: float = Field(ge=0, le=100)
     quality_grade: QualityGrade
-    algorithm_version: Literal["Quality Score V1.0"]
+    algorithm_version: QualityAlgorithmVersion
     rule_set_version: Literal["DQ Rules 1.0"]
     rule_set_hash: str = Field(min_length=64, max_length=64)
     evaluated_entity_count: int = Field(ge=0)
@@ -100,7 +102,7 @@ class DataQualityHistoryItemResponse(SchemaModel):
     timeliness_score: float = Field(ge=0, le=100)
     total_score: float = Field(ge=0, le=100)
     quality_grade: QualityGrade
-    algorithm_version: Literal["Quality Score V1.0"]
+    algorithm_version: QualityAlgorithmVersion
     rule_set_version: Literal["DQ Rules 1.0"]
     rule_set_hash: str = Field(min_length=64, max_length=64)
     score_scope_type: QualityScopeType
@@ -149,6 +151,7 @@ __all__ = (
     "DataQualityRuleResultResponse",
     "DataQualityScoreResponse",
     "QualityDimension",
+    "QualityAlgorithmVersion",
     "QualityGrade",
     "QualityResultStatus",
     "QualityRuleStatus",

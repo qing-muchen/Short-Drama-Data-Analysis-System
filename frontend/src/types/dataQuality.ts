@@ -1,4 +1,5 @@
 export type QualityGrade = 'S' | 'A' | 'B' | 'C'
+export type QualityAlgorithmVersion = 'Quality Score V1.0' | 'Quality Score V2.0'
 export type QualityScopeType = 'ALL'
 export type QualityDimension =
   | 'COMPLETENESS'
@@ -19,7 +20,7 @@ export interface DataQualityCalculationResult {
   quality_score_id: number
   score_date: string
   analysis_as_of: string
-  algorithm_version: 'Quality Score V1.0'
+  algorithm_version: QualityAlgorithmVersion
   rule_set_version: 'DQ Rules 1.0'
   rule_set_hash: string
   score_scope_type: QualityScopeType
@@ -61,7 +62,7 @@ export interface DataQualityScore {
   timeliness_score: number
   total_score: number
   quality_grade: QualityGrade
-  algorithm_version: 'Quality Score V1.0'
+  algorithm_version: QualityAlgorithmVersion
   rule_set_version: 'DQ Rules 1.0'
   rule_set_hash: string
   evaluated_entity_count: number
@@ -82,7 +83,7 @@ export interface DataQualityHistoryItem {
   timeliness_score: number
   total_score: number
   quality_grade: QualityGrade
-  algorithm_version: 'Quality Score V1.0'
+  algorithm_version: QualityAlgorithmVersion
   rule_set_version: 'DQ Rules 1.0'
   rule_set_hash: string
   score_scope_type: QualityScopeType
@@ -125,4 +126,5 @@ export interface DataQualityHistoryParams {
   start_date?: string
   end_date?: string
   limit?: number
+  algorithm_version?: QualityAlgorithmVersion
 }

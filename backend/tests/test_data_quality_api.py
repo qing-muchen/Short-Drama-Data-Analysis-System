@@ -95,7 +95,7 @@ class FakeDataQualityService:
             quality_score_id=31,
             score_date=args[0],
             analysis_as_of=ANALYSIS_AS_OF,
-            algorithm_version="Quality Score V1.0",
+            algorithm_version=kwargs.get("algorithm_version", "Quality Score V2.0"),
             rule_set_version="DQ Rules 1.0",
             rule_set_hash=RULE_SET_HASH,
             score_scope_type="ALL",
@@ -108,13 +108,22 @@ class FakeDataQualityService:
             quality_grade="A",
         )
 
-    def get_current_quality_score(self) -> Any | None:
-        self.calls.append(("get_current_quality_score", (), {}))
+    def get_current_quality_score(self, **kwargs: Any) -> Any | None:
+        self.calls.append(("get_current_quality_score", (), kwargs))
         return self.current_score
 
     def get_quality_history(self, **kwargs: Any) -> list[Any]:
         self.calls.append(("get_quality_history", (), kwargs))
         return self.history
+
+    def get_current_quality_rules(self) -> SimpleNamespace:
+        self.calls.append(("get_current_quality_rules", (), {}))
+        rules = () if self.current_score is None else (_rule(),)
+        return SimpleNamespace(
+            rule_set_version="DQ Rules 1.0",
+            rule_set_hash=RULE_SET_HASH if rules else None,
+            rules=rules,
+        )
 
 
 def _request(method: str, path: str, **kwargs: Any) -> tuple[int, Any]:
@@ -191,7 +200,10 @@ def test_admin_calculate_delegates_only_allowed_request_fields() -> None:
         (
             "calculate_quality_score",
             (SCORE_DATE,),
-            {"administrator_id": 7},
+            {
+                "administrator_id": 7,
+                "algorithm_version": "Quality Score V2.0",
+            },
         )
     ]
     assert body["message"] == "success"
@@ -234,7 +246,13 @@ def test_user_reads_current_score_with_rule_results() -> None:
         app.dependency_overrides.clear()
 
     assert status_code == 200
-    assert service.calls == [("get_current_quality_score", (), {})]
+    assert service.calls == [
+        (
+            "get_current_quality_score",
+            (),
+            {"algorithm_version": "Quality Score V2.0"},
+        )
+    ]
     data = body["data"]
     assert data["quality_score_id"] == 31
     assert data["quality_grade"] == "A"
@@ -267,6 +285,7 @@ def test_user_reads_filtered_history_and_empty_history() -> None:
             "start_date": date(2026, 9, 1),
             "end_date": SCORE_DATE,
             "limit": 30,
+            "algorithm_version": "Quality Score V2.0",
         },
     )
     assert body["data"]["total"] == 1

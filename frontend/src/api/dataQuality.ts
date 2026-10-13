@@ -8,26 +8,33 @@ import type {
   DataQualityHistoryParams,
   DataQualityRuleList,
   DataQualityScore,
+  QualityAlgorithmVersion,
 } from '../types/dataQuality'
 
 const DATA_QUALITY_REQUEST_TIMEOUT_MS = 60_000
 
 export async function calculateDataQuality(
   scoreDate: string,
+  algorithmVersion: QualityAlgorithmVersion,
 ): Promise<DataQualityCalculationResult> {
   const response = await apiClient.post<ApiResponse<DataQualityCalculationResult>>(
     '/data-quality/calculate',
-    { score_date: scoreDate },
+    { score_date: scoreDate, algorithm_version: algorithmVersion },
     { timeout: DATA_QUALITY_REQUEST_TIMEOUT_MS },
   )
   return response.data.data
 }
 
-export async function getCurrentDataQualityScore(): Promise<DataQualityScore | null> {
+export async function getCurrentDataQualityScore(
+  algorithmVersion: QualityAlgorithmVersion,
+): Promise<DataQualityScore | null> {
   try {
     const response = await apiClient.get<ApiResponse<DataQualityScore>>(
       '/data-quality/score',
-      { timeout: DATA_QUALITY_REQUEST_TIMEOUT_MS },
+      {
+        params: { algorithm_version: algorithmVersion },
+        timeout: DATA_QUALITY_REQUEST_TIMEOUT_MS,
+      },
     )
     return response.data.data
   } catch (error: unknown) {
@@ -51,10 +58,15 @@ export async function getDataQualityHistory(
   return response.data.data
 }
 
-export async function getDataQualityRules(): Promise<DataQualityRuleList> {
+export async function getDataQualityRules(
+  algorithmVersion: QualityAlgorithmVersion,
+): Promise<DataQualityRuleList> {
   const response = await apiClient.get<ApiResponse<DataQualityRuleList>>(
     '/data-quality/rules',
-    { timeout: DATA_QUALITY_REQUEST_TIMEOUT_MS },
+    {
+      params: { algorithm_version: algorithmVersion },
+      timeout: DATA_QUALITY_REQUEST_TIMEOUT_MS,
+    },
   )
   return response.data.data
 }

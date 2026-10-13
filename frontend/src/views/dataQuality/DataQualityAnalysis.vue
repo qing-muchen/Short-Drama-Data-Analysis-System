@@ -16,6 +16,7 @@ import type {
   DataQualityHistoryItem,
   DataQualityRule,
   DataQualityScore,
+  QualityAlgorithmVersion,
   QualityDimension,
   QualityGrade,
   QualityRuleStatus,
@@ -25,6 +26,7 @@ import { getApiErrorDetail, getApiErrorMessage, getApiErrorStatus } from '../../
 const userStore = useUserStore()
 const isAdmin = computed(() => userStore.currentUser?.role_code === 'ADMINISTRATOR')
 const scoreDate = ref(localDateString(new Date()))
+const algorithmVersion = ref<QualityAlgorithmVersion>('Quality Score V2.0')
 const currentScore = ref<DataQualityScore | null>(null)
 const history = ref<DataQualityHistoryItem[]>([])
 const rules = ref<DataQualityRule[]>([])
@@ -36,6 +38,10 @@ const radarContainer = ref<HTMLDivElement | null>(null)
 const trendContainer = ref<HTMLDivElement | null>(null)
 let radarChart: echarts.ECharts | null = null
 let trendChart: echarts.ECharts | null = null
+
+const hasLimitedHistoricalReplay = computed(
+  () => currentScore.value?.source_watermark?.replay_capability === 'LIMITED_CURRENT_MASTER',
+)
 
 const gradeTone: Record<QualityGrade, 'danger' | 'warning' | 'success' | 'info'> = {
   S: 'danger',
@@ -89,9 +95,9 @@ async function loadDataQualityDashboard(): Promise<void> {
   calculationResult.value = null
 
   const [scoreResult, historyResult, rulesResult] = await Promise.allSettled([
-    getCurrentDataQualityScore(),
-    getDataQualityHistory({ limit: 90 }),
-    getDataQualityRules(),
+    getCurrentDataQualityScore(algorithmVersion.value),
+    getDataQualityHistory({ limit: 90, algorithm_version: algorithmVersion.value }),
+    getDataQualityRules(algorithmVersion.value),
   ])
 
   currentScore.value = scoreResult.status === 'fulfilled' ? scoreResult.value : null
@@ -122,7 +128,7 @@ async function recalculate(): Promise<void> {
   calculating.value = true
   errorMessage.value = ''
   try {
-    const result = await calculateDataQuality(scoreDate.value)
+    const result = await calculateDataQuality(scoreDate.value, algorithmVersion.value)
     await loadDataQualityDashboard()
     calculationResult.value = result
     ElMessage.success(`数据质量评分完成：${formatScore(result.total_score)} / ${result.quality_grade}`)
@@ -131,6 +137,8 @@ async function recalculate(): Promise<void> {
     errorMessage.value =
       reason === 'NO_ACTIVE_RULE_SET'
         ? '尚未发布可执行的数据质量规则，当前仅可查看已有评分与历史记录。'
+        : reason === 'INSUFFICIENT_QUALITY_DATA'
+          ? '当前没有可覆盖四个质量维度的适用证据，本次评分未保存。'
         : getApiErrorMessage(error, '数据质量评分失败，请稍后重试。')
   } finally {
     calculating.value = false
@@ -241,6 +249,10 @@ watch(
   { deep: true },
 )
 
+watch(algorithmVersion, () => {
+  void loadDataQualityDashboard()
+})
+
 onMounted(() => {
   window.addEventListener('resize', resizeCharts)
   void loadDataQualityDashboard()
@@ -282,6 +294,13 @@ onUnmounted(() => {
             :disabled-date="(value: Date) => value.getTime() > Date.now()"
           />
         </div>
+        <div>
+          <span class="toolbar-label">评分算法</span>
+          <el-select v-model="algorithmVersion" style="width: 210px">
+            <el-option label="Quality Score V2.0（规则分加权）" value="Quality Score V2.0" />
+            <el-option label="Quality Score V1.0（二元兼容）" value="Quality Score V1.0" />
+          </el-select>
+        </div>
         <el-button
           v-if="isAdmin"
           type="primary"
@@ -291,7 +310,7 @@ onUnmounted(() => {
           重新计算质量评分
         </el-button>
       </div>
-      <p class="source-note">页面只展示数据质量 API 结果，不在前端重新计算评分或等级。</p>
+      <p class="source-note">页面只展示所选算法版本的 API 结果，不混合 V1/V2 趋势，也不在前端重新计算评分或等级。</p>
     </el-card>
 
     <el-alert
@@ -315,6 +334,16 @@ onUnmounted(() => {
       :closable="false"
       :title="`评分完成：${formatScore(calculationResult.total_score)} / ${calculationResult.quality_grade}`"
       :description="`规则 ${calculationResult.applied_rule_count}/${calculationResult.rule_count} 已应用，评估 ${calculationResult.evaluated_entity_count} 条实体记录。`"
+    />
+
+    <el-alert
+      v-if="hasLimitedHistoricalReplay"
+      class="page-alert"
+      type="warning"
+      show-icon
+      :closable="false"
+      title="历史范围使用当前主数据状态"
+      description="快照与修订可按分析时间重放，但短剧、平台及上线关系不是完整双时态数据，不能视为严格历史复现。"
     />
 
     <section class="score-grid" aria-label="当前数据质量评分">

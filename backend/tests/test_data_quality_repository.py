@@ -240,6 +240,8 @@ def test_score_repository_replaces_exact_scope_collection() -> None:
     result = repository.replace_scope_scores(
         score_date=SCORE_DATE,
         rule_set_version=RULE_SET_VERSION,
+        algorithm_version=ALGORITHM_VERSION,
+        rule_set_hash=RULE_SET_HASH,
         score_scope_type="ALL",
         score_scope_id=0,
         scores=[score_values()],
@@ -256,6 +258,8 @@ def test_score_repository_replaces_exact_scope_collection() -> None:
     assert "DELETE FROM data_quality_scores" in compiled
     assert "data_quality_scores.score_date = %s" in compiled
     assert "data_quality_scores.rule_set_version = %s" in compiled
+    assert "data_quality_scores.algorithm_version = %s" in compiled
+    assert "data_quality_scores.rule_set_hash = %s" in compiled
     assert "data_quality_scores.score_scope_type = %s" in compiled
     assert "data_quality_scores.score_scope_id = %s" in compiled
     session.add_all.assert_called_once_with(result)
@@ -269,6 +273,8 @@ def test_score_repository_empty_replacement_cleans_scope() -> None:
     result = DataQualityScoreRepository(session).replace_scope_scores(
         score_date=SCORE_DATE,
         rule_set_version=RULE_SET_VERSION,
+        algorithm_version=ALGORITHM_VERSION,
+        rule_set_hash=RULE_SET_HASH,
         score_scope_type="ALL",
         score_scope_id=0,
         scores=[],

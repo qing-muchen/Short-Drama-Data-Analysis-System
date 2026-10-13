@@ -4,7 +4,7 @@ from collections.abc import Mapping, Sequence
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, func, or_, select, tuple_
 from sqlalchemy.orm import contains_eager, joinedload
 
 from models.data_quality import (
@@ -21,6 +21,35 @@ class DataQualityRuleRepository(BaseRepository[DataQualityRule]):
     """Query versioned rule definitions without executing quality rules."""
 
     model = DataQualityRule
+
+    def list_by_identities(
+        self,
+        identities: Sequence[tuple[str, str]],
+    ) -> list[DataQualityRule]:
+        """Return exact stable rule-code/version identities for seed validation."""
+
+        if not identities:
+            return []
+        statement = select(DataQualityRule).where(
+            tuple_(DataQualityRule.rule_code, DataQualityRule.rule_version).in_(
+                tuple(identities)
+            )
+        )
+        return list(self.session.scalars(statement).all())
+
+    def bulk_create(
+        self,
+        values: Sequence[Mapping[str, Any]],
+    ) -> list[DataQualityRule]:
+        """Insert reviewed rule definitions without committing the transaction."""
+
+        entities: list[DataQualityRule] = []
+        for item in values:
+            self._validate_columns(item, allow_primary_key=False)
+            entities.append(DataQualityRule(**dict(item)))
+        self.session.add_all(entities)
+        self.session.flush()
+        return entities
 
     def list_effective_rules(
         self,
@@ -170,17 +199,21 @@ class DataQualityScoreRepository(BaseRepository[DataQualityScore]):
         *,
         score_date: date,
         rule_set_version: str,
+        algorithm_version: str,
+        rule_set_hash: str,
         score_scope_type: str,
         score_scope_id: int,
         scores: Sequence[Mapping[str, Any]],
     ) -> list[DataQualityScore]:
-        """Replace one date, rule-set, and scope collection atomically."""
+        """Replace one exact version identity without deleting other algorithms."""
 
         self.session.execute(
             delete(DataQualityScore)
             .where(
                 DataQualityScore.score_date == score_date,
                 DataQualityScore.rule_set_version == rule_set_version,
+                DataQualityScore.algorithm_version == algorithm_version,
+                DataQualityScore.rule_set_hash == rule_set_hash,
                 DataQualityScore.score_scope_type == score_scope_type,
                 DataQualityScore.score_scope_id == score_scope_id,
             )
@@ -189,6 +222,8 @@ class DataQualityScoreRepository(BaseRepository[DataQualityScore]):
         scope_values = {
             "score_date": score_date,
             "rule_set_version": rule_set_version,
+            "algorithm_version": algorithm_version,
+            "rule_set_hash": rule_set_hash,
             "score_scope_type": score_scope_type,
             "score_scope_id": score_scope_id,
         }
@@ -200,6 +235,36 @@ class DataQualityScoreRepository(BaseRepository[DataQualityScore]):
         self.session.add_all(entities)
         self.session.flush()
         return entities
+
+    def get_by_identity(
+        self,
+        *,
+        score_date: date,
+        algorithm_version: str,
+        rule_set_version: str,
+        rule_set_hash: str,
+        score_scope_type: str,
+        score_scope_id: int,
+    ) -> DataQualityScore | None:
+        """Return one immutable score identity with its persisted rule results."""
+
+        statement = (
+            select(DataQualityScore)
+            .options(
+                joinedload(DataQualityScore.rule_results).joinedload(
+                    DataQualityRuleResult.rule
+                )
+            )
+            .where(
+                DataQualityScore.score_date == score_date,
+                DataQualityScore.algorithm_version == algorithm_version,
+                DataQualityScore.rule_set_version == rule_set_version,
+                DataQualityScore.rule_set_hash == rule_set_hash,
+                DataQualityScore.score_scope_type == score_scope_type,
+                DataQualityScore.score_scope_id == score_scope_id,
+            )
+        )
+        return self.session.execute(statement).unique().scalar_one_or_none()
 
     def get_latest_score_date(
         self,

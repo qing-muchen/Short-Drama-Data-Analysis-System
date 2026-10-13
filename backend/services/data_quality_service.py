@@ -13,10 +13,18 @@ from sqlalchemy.orm import Session
 
 from analytics.data_quality import (
     QUALITY_SCORE_VERSION,
+    QUALITY_SCORE_V2_VERSION,
+    DataQualityCalculationError,
     DataQualityScoreResult,
     QualityRuleResult,
+    ScoredQualityRuleResult,
     calculate_data_quality_score,
+    calculate_data_quality_score_v2,
     calculate_rule_pass_rate,
+)
+from repositories.data_quality_evidence_repository import (
+    DataQualityEvidenceRepository,
+    QualityEvidenceBundle,
 )
 from repositories.data_quality_repository import (
     DataQualityRuleRepository,
@@ -30,6 +38,7 @@ from services.exceptions import ValidationException
 QUALITY_SCOPE_TYPE = "ALL"
 QUALITY_SCOPE_ID = 0
 CURRENT_RULE_SET_VERSION = "DQ Rules 1.0"
+CURRENT_ALGORITHM_VERSION = QUALITY_SCORE_V2_VERSION
 BUSINESS_TIME_ZONE = ZoneInfo("Asia/Shanghai")
 
 RuleOutcome = Literal["PASS", "FAIL", "NOT_APPLICABLE"]
@@ -60,12 +69,13 @@ class RuleExecutionResult:
 
 
 class RuleEvaluator(Protocol):
-    """Callable contract for a whitelisted V1 evaluator implementation."""
+    """Callable contract for a whitelisted pure evaluator implementation."""
 
     def __call__(
         self,
         rule: Any,
         context: QualityEvaluationContext,
+        evidence: QualityEvidenceBundle,
         /,
     ) -> RuleExecutionResult: ...
 
@@ -101,8 +111,16 @@ class QualityScoreCalculationResult:
 
 
 @dataclass(frozen=True, slots=True)
+class CurrentQualityRuleSet:
+    rule_set_version: str
+    rule_set_hash: str | None
+    rules: tuple[Any, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class _PreparedRuleResult:
-    calculator_input: QualityRuleResult | None
+    v1_calculator_input: QualityRuleResult | None
+    v2_calculator_input: ScoredQualityRuleResult | None
     persistence_values: dict[str, Any]
     applicable_count: int
 
@@ -119,25 +137,44 @@ class DataQualityService(BaseService):
         operation_logs: OperationLogRepository,
         rule_evaluators: Mapping[str, RuleEvaluator],
         *,
+        evidence: DataQualityEvidenceRepository | None = None,
         calculator: QualityCalculator = calculate_data_quality_score,
+        v2_calculator: QualityCalculator = calculate_data_quality_score_v2,
     ) -> None:
-        super().__init__(session, rules, rule_results, scores, operation_logs)
+        evidence_repository = evidence or DataQualityEvidenceRepository(session)
+        super().__init__(
+            session,
+            rules,
+            rule_results,
+            scores,
+            operation_logs,
+            evidence_repository,
+        )
         self.rules = rules
         self.rule_results = rule_results
         self.scores = scores
         self.operation_logs = operation_logs
+        self.evidence = evidence_repository
         self.rule_evaluators = dict(rule_evaluators)
         self.calculator = calculator
+        self.v2_calculator = v2_calculator
 
     def calculate_quality_score(
         self,
         score_date: date,
         *,
         administrator_id: int,
+        algorithm_version: str = CURRENT_ALGORITHM_VERSION,
         now: datetime | None = None,
         request_id: str | None = None,
     ) -> QualityScoreCalculationResult:
-        """Replace the fixed-scope quality result and audit it in one transaction."""
+        """Calculate one versioned score and persist its evidence atomically."""
+
+        if algorithm_version not in {QUALITY_SCORE_VERSION, QUALITY_SCORE_V2_VERSION}:
+            raise ValidationException(
+                "Unsupported data-quality algorithm version",
+                details={"reason": "UNSUPPORTED_ALGORITHM_VERSION"},
+            )
 
         analysis_as_of = _resolve_analysis_as_of(score_date, now=now)
         context = QualityEvaluationContext(
@@ -157,18 +194,60 @@ class DataQualityService(BaseService):
                 )
 
             rule_set_hash = _calculate_rule_set_hash(active_rules)
-            prepared = [
-                self._execute_rule(rule, context=context) for rule in active_rules
-            ]
-            calculator_inputs = [
-                item.calculator_input
-                for item in prepared
-                if item.calculator_input is not None
-            ]
-            calculated = self.calculator(
-                calculator_inputs,
+            existing = self.scores.get_by_identity(
+                score_date=score_date,
+                algorithm_version=algorithm_version,
                 rule_set_version=CURRENT_RULE_SET_VERSION,
+                rule_set_hash=rule_set_hash,
+                score_scope_type=QUALITY_SCOPE_TYPE,
+                score_scope_id=QUALITY_SCOPE_ID,
             )
+            if existing is not None:
+                return _calculation_result_from_entity(existing)
+            evidence = self.evidence.load_bundle(
+                score_date=score_date,
+                analysis_as_of=analysis_as_of,
+            )
+            prepared = [
+                self._execute_rule(rule, context=context, evidence=evidence)
+                for rule in active_rules
+            ]
+            try:
+                if algorithm_version == QUALITY_SCORE_VERSION:
+                    calculator_inputs = [
+                        item.v1_calculator_input
+                        for item in prepared
+                        if item.v1_calculator_input is not None
+                    ]
+                    if not calculator_inputs:
+                        raise DataQualityCalculationError(
+                            "INSUFFICIENT_QUALITY_DATA",
+                            "no data-quality rule is applicable",
+                        )
+                    calculated = self.calculator(
+                        calculator_inputs,
+                        rule_set_version=CURRENT_RULE_SET_VERSION,
+                    )
+                else:
+                    scored_inputs = [
+                        item.v2_calculator_input
+                        for item in prepared
+                        if item.v2_calculator_input is not None
+                    ]
+                    if not scored_inputs:
+                        raise DataQualityCalculationError(
+                            "INSUFFICIENT_QUALITY_DATA",
+                            "no data-quality rule is applicable",
+                        )
+                    calculated = self.v2_calculator(
+                        scored_inputs,
+                        rule_set_version=CURRENT_RULE_SET_VERSION,
+                    )
+            except DataQualityCalculationError as error:
+                raise ValidationException(
+                    "Insufficient applicable data-quality evidence",
+                    details={"reason": error.code},
+                ) from error
             evaluated_entity_count = max(
                 (item.applicable_count for item in prepared),
                 default=0,
@@ -177,6 +256,8 @@ class DataQualityService(BaseService):
             score_entities = self.scores.replace_scope_scores(
                 score_date=score_date,
                 rule_set_version=CURRENT_RULE_SET_VERSION,
+                algorithm_version=calculated.algorithm_version,
+                rule_set_hash=rule_set_hash,
                 score_scope_type=QUALITY_SCOPE_TYPE,
                 score_scope_id=QUALITY_SCOPE_ID,
                 scores=[
@@ -188,10 +269,9 @@ class DataQualityService(BaseService):
                         "timeliness_score": calculated.timeliness_score,
                         "total_score": calculated.total_score,
                         "quality_grade": calculated.quality_grade,
-                        "algorithm_version": calculated.algorithm_version,
-                        "rule_set_hash": rule_set_hash,
                         "evaluated_entity_count": evaluated_entity_count,
                         "open_issue_count": 0,
+                        "source_watermark": dict(evidence.source_watermark),
                     }
                 ],
             )
@@ -215,7 +295,7 @@ class DataQualityService(BaseService):
             )
 
         applied_count = sum(
-            item.calculator_input is not None for item in prepared
+            item.v1_calculator_input is not None for item in prepared
         )
         return QualityScoreCalculationResult(
             quality_score_id=quality_score_id,
@@ -234,15 +314,20 @@ class DataQualityService(BaseService):
             quality_grade=calculated.quality_grade,
         )
 
-    def get_current_quality_score(self) -> Any | None:
+    def get_current_quality_score(
+        self,
+        *,
+        algorithm_version: str = CURRENT_ALGORITHM_VERSION,
+        rule_set_version: str = CURRENT_RULE_SET_VERSION,
+    ) -> Any | None:
         """Delegate current fixed-scope lookup without recalculation."""
 
         return self.read(
             self.scores.get_current_score,
             score_scope_type=QUALITY_SCOPE_TYPE,
             score_scope_id=QUALITY_SCOPE_ID,
-            algorithm_version=QUALITY_SCORE_VERSION,
-            rule_set_version=CURRENT_RULE_SET_VERSION,
+            algorithm_version=algorithm_version,
+            rule_set_version=rule_set_version,
         )
 
     def get_quality_history(
@@ -251,6 +336,8 @@ class DataQualityService(BaseService):
         start_date: date | None = None,
         end_date: date | None = None,
         limit: int = 90,
+        algorithm_version: str = CURRENT_ALGORITHM_VERSION,
+        rule_set_version: str = CURRENT_RULE_SET_VERSION,
     ) -> list[Any]:
         """Delegate persisted trend lookup without calculation or sorting."""
 
@@ -258,11 +345,34 @@ class DataQualityService(BaseService):
             self.scores.list_history,
             score_scope_type=QUALITY_SCOPE_TYPE,
             score_scope_id=QUALITY_SCOPE_ID,
-            algorithm_version=QUALITY_SCORE_VERSION,
-            rule_set_version=CURRENT_RULE_SET_VERSION,
+            algorithm_version=algorithm_version,
+            rule_set_version=rule_set_version,
             start_date=start_date,
             end_date=end_date,
             limit=limit,
+        )
+
+    def get_current_quality_rules(
+        self,
+        *,
+        now: datetime | None = None,
+    ) -> CurrentQualityRuleSet:
+        """Return currently effective reviewed rules without requiring a score."""
+
+        current = now or datetime.now(UTC)
+        if current.tzinfo is not None and current.utcoffset() is not None:
+            current = current.astimezone(UTC).replace(tzinfo=None)
+        rules = tuple(
+            self.read(
+                self.rules.list_effective_rules,
+                as_of=current,
+                status="ACTIVE",
+            )
+        )
+        return CurrentQualityRuleSet(
+            rule_set_version=CURRENT_RULE_SET_VERSION,
+            rule_set_hash=_calculate_rule_set_hash(rules) if rules else None,
+            rules=rules,
         )
 
     def _execute_rule(
@@ -270,6 +380,7 @@ class DataQualityService(BaseService):
         rule: Any,
         *,
         context: QualityEvaluationContext,
+        evidence: QualityEvidenceBundle,
     ) -> _PreparedRuleResult:
         evaluator = self.rule_evaluators.get(str(rule.evaluator_key))
         if evaluator is None:
@@ -278,7 +389,7 @@ class DataQualityService(BaseService):
                 f"No evaluator is registered for rule {rule.rule_code}",
             )
         try:
-            execution = evaluator(rule, context)
+            execution = evaluator(rule, context, evidence)
             return _prepare_rule_result(rule, execution)
         except DataQualityRuleExecutionError:
             raise
@@ -300,7 +411,7 @@ class DataQualityService(BaseService):
         evaluated_entity_count: int,
     ) -> None:
         applied_count = sum(
-            item.calculator_input is not None for item in prepared
+            item.v1_calculator_input is not None for item in prepared
         )
         detail = {
             "score_date": score_date.isoformat(),
@@ -375,7 +486,8 @@ def _prepare_rule_result(
             }
         )
         return _PreparedRuleResult(
-            calculator_input=None,
+            v1_calculator_input=None,
+            v2_calculator_input=None,
             persistence_values=persistence_values,
             applicable_count=0,
         )
@@ -417,9 +529,14 @@ def _prepare_rule_result(
         }
     )
     return _PreparedRuleResult(
-        calculator_input=QualityRuleResult(
+        v1_calculator_input=QualityRuleResult(
             dimension=str(rule.dimension),
             status=execution.status,
+            weight=rule.weight,
+        ),
+        v2_calculator_input=ScoredQualityRuleResult(
+            dimension=str(rule.dimension),
+            rule_score=rule_score,
             weight=rule.weight,
         ),
         persistence_values=persistence_values,
@@ -450,6 +567,29 @@ def _validated_rule_score(
             f"Rule {rule_code} returned a score outside 0..100",
         )
     return score.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def _calculation_result_from_entity(entity: Any) -> QualityScoreCalculationResult:
+    rule_results = tuple(entity.rule_results)
+    applied_count = sum(
+        str(item.result_status) == "APPLIED" for item in rule_results
+    )
+    return QualityScoreCalculationResult(
+        quality_score_id=int(entity.quality_score_id),
+        score_date=entity.score_date,
+        analysis_as_of=entity.analysis_as_of,
+        algorithm_version=str(entity.algorithm_version),
+        rule_set_version=str(entity.rule_set_version),
+        rule_set_hash=str(entity.rule_set_hash),
+        score_scope_type=str(entity.score_scope_type),
+        score_scope_id=int(entity.score_scope_id),
+        rule_count=len(rule_results),
+        applied_rule_count=applied_count,
+        not_applicable_rule_count=len(rule_results) - applied_count,
+        evaluated_entity_count=int(entity.evaluated_entity_count),
+        total_score=Decimal(str(entity.total_score)),
+        quality_grade=str(entity.quality_grade),
+    )
 
 
 def _calculate_rule_set_hash(rules: Sequence[Any]) -> str:
@@ -508,7 +648,9 @@ def _resolve_analysis_as_of(
 
 
 __all__ = (
+    "CURRENT_ALGORITHM_VERSION",
     "CURRENT_RULE_SET_VERSION",
+    "CurrentQualityRuleSet",
     "QUALITY_SCOPE_ID",
     "QUALITY_SCOPE_TYPE",
     "DataQualityRuleExecutionError",

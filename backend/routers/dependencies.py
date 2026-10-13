@@ -22,6 +22,9 @@ from repositories.data_quality_repository import (
     DataQualityRuleResultRepository,
     DataQualityScoreRepository,
 )
+from repositories.data_quality_evidence_repository import (
+    DataQualityEvidenceRepository,
+)
 from repositories.director_repository import DirectorRepository
 from repositories.drama_repository import DramaRepository
 from repositories.import_repository import (
@@ -55,6 +58,7 @@ from repositories.dashboard_repository import DashboardRepository
 from services.import_service import ImportService
 from services.batch_import_service import BatchImportService
 from services.data_quality_service import DataQualityService
+from analytics.data_quality_rules import production_evaluator_registry
 from services.data_governance.providers import (
     CompletenessProvider as GovernanceCompletenessProvider,
     ConsistencyProvider as GovernanceConsistencyProvider,
@@ -440,12 +444,7 @@ def get_anomaly_service(session: DatabaseSession) -> AnomalyService:
 
 
 def get_data_quality_service(session: DatabaseSession) -> DataQualityService:
-    """Compose the quality workflow with one request-scoped Session.
-
-    V1 rule evaluators are registered separately from the HTTP layer. Until a
-    configured registry is supplied, the Service still provides its persisted
-    read APIs and reports unsupported evaluator keys during calculation.
-    """
+    """Compose the production quality workflow with one request-scoped Session."""
 
     return DataQualityService(
         session,
@@ -453,7 +452,8 @@ def get_data_quality_service(session: DatabaseSession) -> DataQualityService:
         DataQualityRuleResultRepository(session),
         DataQualityScoreRepository(session),
         OperationLogRepository(session),
-        {},
+        production_evaluator_registry(),
+        evidence=DataQualityEvidenceRepository(session),
     )
 
 

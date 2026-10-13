@@ -1,4 +1,4 @@
-"""Pure Data Quality Score V1.0 calculations without persistence side effects."""
+"""Pure, deterministic Data Quality Score V1/V2 calculations."""
 
 from collections import defaultdict
 from dataclasses import dataclass
@@ -16,6 +16,7 @@ RuleStatus: TypeAlias = Literal["PASS", "FAIL"]
 QualityGrade: TypeAlias = Literal["S", "A", "B", "C"]
 
 QUALITY_SCORE_VERSION = "Quality Score V1.0"
+QUALITY_SCORE_V2_VERSION = "Quality Score V2.0"
 SCORE_QUANTUM = Decimal("0.01")
 ZERO = Decimal("0")
 ONE = Decimal("1")
@@ -47,6 +48,15 @@ class QualityRuleResult:
 
 
 @dataclass(frozen=True, slots=True)
+class ScoredQualityRuleResult:
+    """One V2 APPLIED rule score and its relative dimension weight."""
+
+    dimension: str
+    rule_score: Numeric
+    weight: Numeric | None
+
+
+@dataclass(frozen=True, slots=True)
 class DataQualityScoreResult:
     """Rounded four-dimension quality score with traceable version identity."""
 
@@ -64,6 +74,13 @@ class DataQualityScoreResult:
 class _ValidatedRuleResult:
     dimension: QualityDimension
     status: RuleStatus
+    weight: Decimal
+
+
+@dataclass(frozen=True, slots=True)
+class _ValidatedScoredRuleResult:
+    dimension: QualityDimension
+    rule_score: Decimal
     weight: Decimal
 
 
@@ -297,13 +314,119 @@ def calculate_data_quality_score(
     )
 
 
+def _validate_scored_rule_result(
+    result: ScoredQualityRuleResult,
+) -> _ValidatedScoredRuleResult:
+    if result.dimension not in QUALITY_DIMENSION_WEIGHTS:
+        raise DataQualityCalculationError(
+            "UNKNOWN_DIMENSION",
+            f"unsupported quality dimension: {result.dimension}",
+        )
+    if result.weight is None:
+        raise DataQualityCalculationError(
+            "MISSING_RULE_WEIGHT",
+            "rule weight is required",
+        )
+    weight = _as_decimal(result.weight, field_name="weight")
+    if weight <= ZERO or weight > ONE:
+        raise DataQualityCalculationError(
+            "INVALID_RULE_WEIGHT",
+            "individual rule weight must be greater than zero and at most one",
+        )
+    rule_score = _as_decimal(result.rule_score, field_name="rule_score")
+    if not ZERO <= rule_score <= ONE_HUNDRED:
+        raise DataQualityCalculationError(
+            "RULE_SCORE_OUT_OF_RANGE",
+            "rule_score must be between 0 and 100",
+        )
+    return _ValidatedScoredRuleResult(
+        dimension=result.dimension,
+        rule_score=rule_score,
+        weight=weight,
+    )
+
+
+def calculate_data_quality_score_v2(
+    rule_results: Iterable[ScoredQualityRuleResult],
+    *,
+    rule_set_version: str,
+) -> DataQualityScoreResult:
+    """Aggregate APPLIED 0..100 rule scores using normalized rule weights."""
+
+    if not isinstance(rule_set_version, str) or not rule_set_version.strip():
+        raise DataQualityCalculationError(
+            "INVALID_RULE_SET_VERSION",
+            "rule_set_version must be a non-blank string",
+        )
+    materialized = tuple(rule_results)
+    if not materialized:
+        raise DataQualityCalculationError(
+            "EMPTY_RULE_RESULTS",
+            "at least one APPLIED rule result is required",
+        )
+
+    grouped: dict[QualityDimension, list[_ValidatedScoredRuleResult]] = defaultdict(list)
+    for result in materialized:
+        validated = _validate_scored_rule_result(result)
+        grouped[validated.dimension].append(validated)
+    missing_dimensions = tuple(
+        dimension
+        for dimension in QUALITY_DIMENSION_WEIGHTS
+        if not grouped[dimension]
+    )
+    if missing_dimensions:
+        raise DataQualityCalculationError(
+            "INSUFFICIENT_QUALITY_DATA",
+            "every quality dimension requires at least one APPLIED rule: "
+            + ", ".join(missing_dimensions),
+        )
+
+    dimension_scores: dict[QualityDimension, Decimal] = {}
+    with localcontext() as context:
+        context.prec = 50
+        for dimension in QUALITY_DIMENSION_WEIGHTS:
+            ordered = sorted(
+                grouped[dimension],
+                key=lambda item: (item.weight, item.rule_score),
+            )
+            total_weight = sum((item.weight for item in ordered), start=ZERO)
+            weighted_score = sum(
+                (item.weight * item.rule_score for item in ordered),
+                start=ZERO,
+            )
+            dimension_scores[dimension] = round_half_up(
+                weighted_score / total_weight
+            )
+        raw_total = sum(
+            (
+                dimension_scores[dimension] * weight
+                for dimension, weight in QUALITY_DIMENSION_WEIGHTS.items()
+            ),
+            start=ZERO,
+        )
+    total_score = round_half_up(raw_total)
+    return DataQualityScoreResult(
+        completeness_score=dimension_scores["COMPLETENESS"],
+        accuracy_score=dimension_scores["ACCURACY"],
+        consistency_score=dimension_scores["CONSISTENCY"],
+        timeliness_score=dimension_scores["TIMELINESS"],
+        total_score=total_score,
+        quality_grade=determine_quality_grade(total_score),
+        rule_set_version=rule_set_version.strip(),
+        algorithm_version=QUALITY_SCORE_V2_VERSION,
+    )
+
+
 __all__ = (
     "QUALITY_DIMENSION_WEIGHTS",
     "QUALITY_SCORE_VERSION",
+    "QUALITY_SCORE_V2_VERSION",
     "DataQualityCalculationError",
     "DataQualityScoreResult",
     "QualityRuleResult",
+    "ScoredQualityRuleResult",
     "calculate_data_quality_score",
+    "calculate_data_quality_score_v2",
     "calculate_dimension_score",
     "calculate_rule_pass_rate",
     "determine_quality_grade",
