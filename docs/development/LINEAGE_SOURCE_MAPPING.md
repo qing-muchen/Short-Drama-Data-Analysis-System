@@ -1,60 +1,69 @@
-# Explanation / Lineage 来源映射候选
+# Explanation / Lineage 来源映射最终候选
 
 | 项目 | 值 |
 |---|---|
-| 文档版本 | 0.1 |
-| 适用软件版本 | V1.0 maintenance baseline |
-| Git 基线 | `0bd34f44d2f0e8065c22cdc423cf50d1373b8e9a` |
-| 设计状态 | **STATUS: PROPOSED — USER APPROVAL REQUIRED** |
+| 文档版本 | 0.2 |
+| Git 基线 | `15b161c09f78b804c42802bc76108613e77d9508` |
+| 状态 | **PROPOSED — APPROVAL REQUIRED** |
+| 依据 | Phase 6 Design V2、V013、实际 Score/Prediction/Anomaly DTO 与 Data Governance source validator |
 
-## 1. 设计约束
+## 1. 对 B1 映射的校正
 
-V1 来源类型限定为 `METRIC/SNAPSHOT/RULE/PREDICTION_INPUT/ANOMALY_EVIDENCE`，关系限定为 `DERIVED_FROM/USES_METRIC/USES_RULE/USES_WINDOW`；弱引用必须由 Service/只读 Provider 校验存在性和版本（`PHASE6_DATA_LINEAGE_DESIGN_V2.md:116-136,163-178,208`；V013 `:46-81`）。Explanation 是结果时快照，不能用解释文本替代来源记录。
+B1 正确要求来源落到实际 revision，但直接把 revision ID 放入 `source_id` 与现有实现冲突：Data Governance 已将 `SNAPSHOT.source_id` 校验为 `drama_metric_snapshots.snapshot_id`。最终推荐由后续 Migration 新增 `source_revision_id`：
 
-当前 Handler 行为不是可接受的生产映射：Metric 用 `score_id` 伪装 `METRIC` 且 evidence 只有维度名（metric handler `:23-47,70-77`）；Trend evidence 为空并默认把 `prediction_id` 当输入 ID（trend handler `:22-52`）；Anomaly 用 `anomaly_id` 自指来源（anomaly handler `:31-62`）。测试只证明这些组件当前行为（`test_explanation_handlers.py:41-91`），不构成业务批准。
+```text
+source_type = SNAPSHOT
+source_id = drama_metric_snapshots.snapshot_id
+source_revision_id = drama_metric_snapshot_revisions.snapshot_revision_id
+```
 
-## 2. 三类冻结候选映射（EX-03）
+三类解释的指标输入均使用真实 SNAPSHOT 来源，业务角色由 Explanation 类型和 relationship 区分；Score 的 lifecycle 还需要真实 DRAMA/DRAMA_PLATFORM 主数据来源。V015 因此还需扩展允许的 source type。新流程不再用结果 PK 自指 `METRIC/PREDICTION_INPUT/ANOMALY_EVIDENCE`；旧逻辑类型保留供 legacy 数据读取。
 
-| Explanation | 目标结果 | 目标版本 | 来源类型 → 实际表/主键 | 关系 | as-of 与 Evidence |
-|---|---|---|---|---|---|
-| METRIC → SCORE | `drama_scores.score_id` | `algorithm_version` + `analysis_as_of`；rule_set=`N/A` | `SNAPSHOT` → 每个实际参与计算的 `drama_metric_snapshot_revisions.snapshot_revision_id` | `USES_METRIC` | 所有 source `changed_at <= score.analysis_as_of`，且是相应 slot 在截点下选中的非 VOID 修订；detail 保存四维分、冻结权重、positive/weak 推导及 source revision IDs 的受控摘要 |
-| TREND → PREDICTION | `prediction_results.prediction_id` | Moving Average version + `analysis_as_of`；rule_set=`N/A` | `PREDICTION_INPUT` → 8 日连续窗口中实际使用的每个 `drama_metric_snapshot_revisions.snapshot_revision_id` | `USES_WINDOW` | 精确 8 个 observation dates、平台选择、累计播放值摘要、window=8、target date；所有修订不晚于 as-of |
-| ANOMALY → ANOMALY | `data_anomaly_records.anomaly_id` | anomaly algorithm + `analysis_as_of`；rule_set=`N/A` | `ANOMALY_EVIDENCE` → 规则实际使用窗口的每个 `drama_metric_snapshot_revisions.snapshot_revision_id` | `DERIVED_FROM` | anomaly type/severity/metric、baseline/actual/deviation（适用时）、threshold 与窗口摘要；来源集合必须与检测输入一致 |
+## 2. 最终候选映射 EX-04
 
-这里的 `PREDICTION_INPUT`、`ANOMALY_EVIDENCE` 是逻辑来源类型；其 `source_id` 明确映射到 snapshot revision PK。`METRIC` 暂不用于运行时来源，因为仓库没有独立、可用数字 PK 指向“派生指标”记录；`metric_dependencies` 只有算法依赖定义，不能冒充一次计算的输入事实。Score 采用 `SNAPSHOT` 是 V013 已允许的类型，不需伪造 ID。
+| 类型 | 目标 | 完整来源集合 | 关系 / 必填 detail | 当前可实现性 |
+|---|---|---|---|---|
+| METRIC→SCORE | 不可变 `drama_scores.score_id` | heat/raw、growth windows、engagement实际读取的全部 snapshot/revision 对；lifecycle 使用 `dramas.drama_id`（premiere_date）或实际决定最早 online_at 的 `drama_platforms.drama_platform_id` | Snapshot=`USES_METRIC`；主数据=`DERIVED_FROM`；四维分、权重、positive/weak、algorithm/as-of、source count及 current-state limitation | SnapshotPoint 有 IDs，但 MetricResult/_EligibleCandidate 丢失；V013 又无 DRAMA/DRAMA_PLATFORM source type，需内部 DTO + V015 |
+| TREND→PREDICTION | 不可变 `prediction_results.prediction_id` | 最终被共同平台交集选中的连续8日×全部平台 snapshot/revision 对；不是“至少8条”，而是精确完整输入集合 | `USES_WINDOW`；8日日期、聚合累计值、共同平台、target date、window=8 | Observation 有 revision_id，但转为 points 时丢失；需让 prepare 同时返回 evidence |
+| ANOMALY→ANOMALY | `data_anomaly_records.anomaly_id` | 当前实现所有异常均依赖连续9日、每日全部参与聚合平台的 revision 对；按 finding 保存其实际集合 | `DERIVED_FROM`；类型、metric、8历史/当前值、threshold、baseline/actual/deviation、algorithm/as-of | Observation 有 revision_id，但日聚合丢失；需携带 evidence map |
 
-## 3. 来源校验规则（EX-04）
+## 3. Anomaly 类型逐项校验
 
-每条 Lineage 在写入前必须满足：
-
-1. 目标结果存在、其 PK/algorithm/as-of 与请求完全一致，且在推荐方案中不可变。
-2. 来源 revision 存在、属于目标 drama（及适用平台/slot）、`changed_at <= analysis_as_of`。
-3. 按 `(snapshot_id, changed_at, revision_id)` 选择截点下最新可见修订；可见最新为 VOID 时，该 slot 不得作为有效输入，也不得回退。
-4. 来源的 observation time 在算法窗口内；Prediction 必须覆盖精确连续八日和实际共同平台条件。
-5. 同一来源多次出现去重；多来源均各写一条 lineage；排序只影响确定性内容，不影响集合 identity。
-6. 来源不存在/失效/越过 as-of/版本不一致：不生成部分 Explanation；在推荐单事务中整个命令回滚。
-7. 目标已重算：不可变旧目标仍存在则旧 lineage 保留；新目标生成新 Explanation/Lineage。若旧目标已被历史 replace 删除，查询标记 `TARGET_MISSING`，不得迁移到新 PK。
-
-## 4. Explanation 内容完整性
-
-| 类型 | 必填业务结果 | 必填 evidence | 不得生成的情况 |
+| anomaly_type | 实际算法输入 | 完整 revision 集合 | 不能生成的情况 |
 |---|---|---|---|
-| METRIC | score PK、四维分、总分/等级、算法/as-of | 四维实际值与权重、positive/weak 确定性推导、至少一个有效 revision source | 只有维度名称、无值/权重/来源；目标不存在 |
-| TREND | prediction PK、trend direction、target date、window=8、算法/as-of | 八日日期和值摘要、实际 source revisions、连续性和单调条件已满足 | evidence 空；历史不足；来源包含 VOID/越界修订 |
-| ANOMALY | anomaly PK/type/severity/metric、算法/as-of | threshold、evidence summary、参与检测的 source revisions；适用时 baseline/actual/deviation | 自指 anomaly PK 作为唯一来源；阈值/证据空 |
+| `PLAY_COUNT_GROWTH_ANOMALY` | 9日 play counts → 8 increments；前7 increments baseline、最后1 current | 9日全部参与平台 revisions | 任一日/平台来源集合丢失、VOID、质量 ERROR、非连续 |
+| `PLAY_COUNT_DROP_ANOMALY` | 同上，方向相反 | 同上 | 同上 |
+| `ENGAGEMENT_RATE_ANOMALY` | 9日 engagement rates；前8 baseline、最后1 current；含最低播放门槛 | 9日所有播放及互动字段贡献 revisions | 字段缺失、门槛 NOT_APPLICABLE、来源不全 |
+| `DATA_SPIKE_ANOMALY` | PLAY_COUNT 或 ENGAGEMENT_RATE 的前8值 baseline + current | 对应 metric 的9日完整 revisions；engagement 仍需播放门槛证据 | metric/门槛/source set 不完整 |
 
-共同必填：非空 summary、受控 detail envelope、algorithm/rule-set 版本（不适用用明确 `N/A`）、analysis_as_of、至少一个真实来源。解释文本可选扩展不得替代结构化证据。信息不足时返回稳定的 `EXPLANATION_EVIDENCE_INCOMPLETE`；来源暂时不可见才允许安全重试，契约性缺字段不得无限重试。
+虽然当前四类都用9日窗口，契约按 anomaly type 保存实际集合；未来新增类型不得自动套用9日。
 
-## 5. Schema 与兼容性
+## 4. 完整性与校验
 
-- 上述来源映射本身无需 V013 变更；其弱引用语义必须在 Provider 映射表和测试中冻结。
-- 当前前端 query/display 可继续读取；detail 增加字段属于向后兼容，但不能无限复制原始 snapshot。
-- 若用户要求数据库 FK 强制多态来源，现结构不能表达，需新关联模型，属于 **BREAKING CHANGE — APPROVAL REQUIRED**；本候选不推荐。
+“至少一个来源”只适用于证明记录格式，不足以证明业务输入完整。提交条件是**完整来源集合**：
 
-## 6. 未解决问题与需批准决策
+1. 每个 source snapshot/revision 都存在，revision 属于 snapshot及目标 drama/platform。
+2. `changed_at <= analysis_as_of`，且是该 slot 截点下最新可见 revision；VOID 不得作为有效输入或回退。
+3. 来源日期/平台集合与算法实际窗口一致；数量由实际依赖决定，而非固定最小1。
+4. source set 规范排序、去重；同一来源可被多个 Explanation 引用，一个 Explanation 可引用多个来源。
+5. DB 唯一约束防重复 snapshot relationship；Service 校验 revision 归属和集合完整性。
+6. 来源失效/不存在/版本不一致：新生成失败并按 EX-01 回滚；已有 legacy 查询返回 `NOT_AVAILABLE`/原因，不删除历史。
+7. 只有同一不可变目标 identity、相同内容和相同来源集合才幂等返回；不同集合冲突或显式创建新 result revision。
 
-- Score 当前聚合对象没有携带全部实际输入 revision IDs；B2 必须调整内部结果契约，具体 DTO 尚待 EX-03 批准后冻结。
-- Anomaly 各检测类型是否都能暴露完整窗口 revision IDs 需在 B2 逐规则验证；无法证明来源集合时不得生成解释。
-- 同一 as-of 的纠错重算身份仍受 EX-02 阻塞；不得把新结果 PK 自动迁移到旧解释。
+## 5. Evidence 内容要求
 
-最后审查结论：**三类来源均应落到真实 snapshot revision；当前 Handler 的自指/空 evidence 不满足完整 Lineage。**
+- Score：四维分及权重、输入版本、每个分量对应来源集合摘要；只有维度名称不完整。
+- Prediction：8日日期和值、共同平台、所有 source revisions；空 evidence 或单 revision 不完整。
+- Anomaly：类型/metric/severity/阈值/baseline/current/deviation及类型对应完整9日来源；目标 anomaly_id 自指不完整。
+- `NOT_AVAILABLE` 用于查询旧结果没有可证明完整来源；对新成功写请求不允许以 NOT_AVAILABLE 代替 Explanation，必须失败回滚。
+- 重新生成仅允许原记录不存在且完整来源仍可验证，或新 result revision；不得覆盖已有 snapshot。
+
+## 6. 兼容性与审批
+
+- 需要 V015 候选新增 nullable `source_revision_id`，并将 source type CHECK 扩展 `DRAMA/DRAMA_PLATFORM`；旧行保留 NULL。
+- Handler、Validator、Workflow 和 Data Governance source validation 需调整；公开 Explanation 查询只增加可选字段，可向后兼容。
+- 如果用户拒绝 Schema 变化，唯一安全降级是 snapshot-level lineage + detail 中保存受控 revision IDs；该方案数据库不可直接索引/校验 exact revision，不推荐。
+
+**EX-04 候选批准文本：**批准三类新 Explanation 统一以 snapshot_id + source_revision_id 记录完整实际输入集合；按上述类型校验；Evidence 不完整则新生成失败，legacy 查询返回 NOT_AVAILABLE；禁止结果自指和空 Evidence。
+
+最后结论：**PROPOSED；映射可实现，但依赖 V015 和内部 Evidence DTO。**

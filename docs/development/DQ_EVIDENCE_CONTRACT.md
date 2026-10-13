@@ -2,9 +2,9 @@
 
 | 项目 | 值 |
 |---|---|
-| 文档版本 | 0.1 |
+| 文档版本 | 0.2 |
 | 适用软件版本 | V1.0 maintenance baseline |
-| Git 基线 | `0bd34f44d2f0e8065c22cdc423cf50d1373b8e9a` |
+| Git 基线 | `15b161c09f78b804c42802bc76108613e77d9508` |
 | 设计状态 | **STATUS: PROPOSED — USER APPROVAL REQUIRED** |
 
 ## 1. 分层与接口
@@ -54,6 +54,21 @@ Prediction Service 已实现“可见 VOID 不回退”模式（`backend/service
 - 修订链损坏、重复权威记录、来源版本晚于 as-of：Evidence Repository 返回稳定契约错误，整次评分回滚；不得任选一条继续。
 - 非法配置、未知 evaluator、规则集缺维度：计算前失败，不持久化。
 - 批量结果必须带稳定排序，hash 不受数据库返回顺序影响。
+
+### 3.1 修订选择最终候选
+
+- `changed_at` 表示修订对系统可见的业务变更时间；as-of 边界为包含关系 `changed_at <= analysis_as_of`。
+- 同一 snapshot 的候选修订先按 `changed_at`、再按自增 `snapshot_revision_id` 排序。ID 仅作为相同时间戳的确定性技术 tie-breaker，不替代 `version_no` 链合法性校验。
+- 同时间戳出现多个修订不是自动错误；选择最大 ID，同时 K2 必须验证 version/previous 链。链冲突则 Evidence error，不能任选结果继续评分。
+- 重复 snapshot 由业务键 `(drama_platform_id,snapshot_time)` 去重并应受现有唯一约束；检测到重复物理 slot 时整次失败。
+- 截点前没有修订：该 expected slot 缺失；截点下最新为 VOID：slot 明确失效且不得回退；revision 行不存在/被删除：`EVIDENCE_REVISION_MISSING`。
+- 不连续窗口：对 C4/T1 按各自规则计缺失/桶分；对要求连续链的 evaluator 返回明确失败，禁止插值或补零。
+
+### 3.2 可支持的历史能力
+
+严格支持：保留的 snapshot/revision 在给定 as-of 下的可见选择、VOID、链和指标值。有限支持：import 事实及其当时状态，取决于相应行是否不可变保留。不能严格保证：drama、platform、drama_platform 等非完整双时态主数据在过去截点的状态。
+
+历史新计算必须在 `source_watermark` 标记 `LIMITED_CURRENT_MASTER`，不能宣称完全重放；已有持久化评分按其保存的 as-of、rule set/hash 和 Evidence 摘要查询。相同历史 identity 已存在时优先幂等返回，不使用今天的主数据静默覆盖。
 
 ## 4. 初始化与版本管理候选（DQ-04）
 
