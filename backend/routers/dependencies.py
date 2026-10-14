@@ -11,6 +11,7 @@ from fastapi import Depends
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from config.settings import get_settings
 from database.session import get_db_session
 from repositories.actor_repository import ActorRepository
 from repositories.analytics_repository import AnalyticsRepository
@@ -24,6 +25,7 @@ from repositories.data_quality_repository import (
 )
 from repositories.data_quality_evidence_repository import (
     DataQualityEvidenceRepository,
+    LegacyRevisionTimePolicy,
 )
 from repositories.director_repository import DirectorRepository
 from repositories.drama_repository import DramaRepository
@@ -446,6 +448,30 @@ def get_anomaly_service(session: DatabaseSession) -> AnomalyService:
 def get_data_quality_service(session: DatabaseSession) -> DataQualityService:
     """Compose the production quality workflow with one request-scoped Session."""
 
+    settings = get_settings()
+    legacy_policy = None
+    if settings.data_quality_legacy_revision_database is not None:
+        assert settings.data_quality_legacy_revision_max_id is not None
+        assert settings.data_quality_legacy_revision_expected_count is not None
+        assert (
+            settings.data_quality_legacy_revision_expected_min_changed_at is not None
+        )
+        assert (
+            settings.data_quality_legacy_revision_expected_max_changed_at is not None
+        )
+        legacy_policy = LegacyRevisionTimePolicy(
+            database_name=settings.data_quality_legacy_revision_database,
+            max_revision_id=settings.data_quality_legacy_revision_max_id,
+            expected_revision_count=(
+                settings.data_quality_legacy_revision_expected_count
+            ),
+            expected_min_changed_at=(
+                settings.data_quality_legacy_revision_expected_min_changed_at
+            ),
+            expected_max_changed_at=(
+                settings.data_quality_legacy_revision_expected_max_changed_at
+            ),
+        )
     return DataQualityService(
         session,
         DataQualityRuleRepository(session),
@@ -453,7 +479,10 @@ def get_data_quality_service(session: DatabaseSession) -> DataQualityService:
         DataQualityScoreRepository(session),
         OperationLogRepository(session),
         production_evaluator_registry(),
-        evidence=DataQualityEvidenceRepository(session),
+        evidence=DataQualityEvidenceRepository(
+            session,
+            legacy_time_policy=legacy_policy,
+        ),
     )
 
 

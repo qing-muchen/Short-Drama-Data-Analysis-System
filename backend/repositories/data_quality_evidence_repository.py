@@ -8,7 +8,7 @@ from types import MappingProxyType
 from typing import Mapping
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from models.drama import Drama
@@ -18,6 +18,36 @@ from models.snapshot import DramaMetricSnapshot, DramaMetricSnapshotRevision
 
 BUSINESS_TIME_ZONE = ZoneInfo("Asia/Shanghai")
 LIMITED_CURRENT_MASTER = "LIMITED_CURRENT_MASTER"
+LEGACY_SHANGHAI_WALL_CLOCK = "LEGACY_SHANGHAI_WALL_CLOCK"
+UTC_NAIVE = "UTC_NAIVE"
+
+
+class LegacyRevisionClassificationError(RuntimeError):
+    """Reject an unsafe or mismatched legacy timestamp policy."""
+
+
+@dataclass(frozen=True, slots=True)
+class LegacyRevisionTimePolicy:
+    """One explicitly audited database-specific legacy revision boundary."""
+
+    database_name: str
+    max_revision_id: int
+    expected_revision_count: int
+    expected_min_changed_at: datetime
+    expected_max_changed_at: datetime
+
+    def __post_init__(self) -> None:
+        if not self.database_name.strip():
+            raise ValueError("legacy revision database name is required")
+        if self.max_revision_id < 1 or self.expected_revision_count < 1:
+            raise ValueError("legacy revision boundary and count must be positive")
+        if (
+            self.expected_min_changed_at.tzinfo is not None
+            or self.expected_max_changed_at.tzinfo is not None
+        ):
+            raise ValueError("legacy revision fingerprint timestamps must be naive")
+        if self.expected_min_changed_at > self.expected_max_changed_at:
+            raise ValueError("legacy revision fingerprint range is invalid")
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,6 +70,8 @@ class SnapshotRevisionEvidence:
     favorite_count: int | None
     share_count: int | None
     changed_at: datetime
+    raw_changed_at: datetime | None = None
+    time_semantics: str = UTC_NAIVE
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,8 +99,14 @@ class QualityEvidenceBundle:
 class DataQualityEvidenceRepository:
     """Load deterministic evidence without applying rule judgments or committing."""
 
-    def __init__(self, session: Session) -> None:
+    def __init__(
+        self,
+        session: Session,
+        *,
+        legacy_time_policy: LegacyRevisionTimePolicy | None = None,
+    ) -> None:
         self.session = session
+        self.legacy_time_policy = legacy_time_policy
 
     def load_bundle(
         self,
@@ -76,6 +114,7 @@ class DataQualityEvidenceRepository:
         score_date: date,
         analysis_as_of: datetime,
     ) -> QualityEvidenceBundle:
+        self._validate_legacy_time_policy()
         window_start, window_end = _window_bounds(score_date)
         feeds = self._list_eligible_feeds()
         feed_ids = tuple(feed.drama_platform_id for feed in feeds)
@@ -107,7 +146,16 @@ class DataQualityEvidenceRepository:
             "max_revision_changed_at": (
                 max((item.changed_at for item in revisions), default=None)
             ),
+            "revision_time_semantics": (
+                "MIXED_LEGACY_SHANGHAI_AND_UTC"
+                if self.legacy_time_policy is not None
+                else UTC_NAIVE
+            ),
         }
+        if self.legacy_time_policy is not None:
+            watermark["legacy_revision_max_id"] = (
+                self.legacy_time_policy.max_revision_id
+            )
         if isinstance(watermark["max_revision_changed_at"], datetime):
             watermark["max_revision_changed_at"] = watermark[
                 "max_revision_changed_at"
@@ -159,6 +207,24 @@ class DataQualityEvidenceRepository:
         if not drama_platform_ids:
             return ()
         revision = DramaMetricSnapshotRevision
+        visibility = revision.changed_at <= analysis_as_of
+        if self.legacy_time_policy is not None:
+            legacy_raw_cutoff = _utc_naive_to_local_wall_clock(
+                analysis_as_of,
+                BUSINESS_TIME_ZONE,
+            )
+            visibility = or_(
+                and_(
+                    revision.snapshot_revision_id
+                    <= self.legacy_time_policy.max_revision_id,
+                    revision.changed_at <= legacy_raw_cutoff,
+                ),
+                and_(
+                    revision.snapshot_revision_id
+                    > self.legacy_time_policy.max_revision_id,
+                    revision.changed_at <= analysis_as_of,
+                ),
+            )
         statement = (
             select(
                 DramaMetricSnapshot.snapshot_id,
@@ -180,7 +246,7 @@ class DataQualityEvidenceRepository:
                 revision,
                 and_(
                     revision.snapshot_id == DramaMetricSnapshot.snapshot_id,
-                    revision.changed_at <= analysis_as_of,
+                    visibility,
                 ),
             )
             .where(
@@ -207,9 +273,19 @@ class DataQualityEvidenceRepository:
                 },
             )
             if row.snapshot_revision_id is not None:
+                revision_id = int(row.snapshot_revision_id)
+                normalized_changed_at, time_semantics = (
+                    _normalize_revision_changed_at(
+                        revision_id=revision_id,
+                        changed_at=row.changed_at,
+                        policy=self.legacy_time_policy,
+                    )
+                )
+                if normalized_changed_at > analysis_as_of:
+                    continue
                 group["revisions"].append(
                     SnapshotRevisionEvidence(
-                        snapshot_revision_id=int(row.snapshot_revision_id),
+                        snapshot_revision_id=revision_id,
                         snapshot_id=snapshot_id,
                         version_no=int(row.version_no),
                         previous_revision_id=(
@@ -223,12 +299,22 @@ class DataQualityEvidenceRepository:
                         comment_count=row.comment_count,
                         favorite_count=row.favorite_count,
                         share_count=row.share_count,
-                        changed_at=row.changed_at,
+                        changed_at=normalized_changed_at,
+                        raw_changed_at=row.changed_at,
+                        time_semantics=time_semantics,
                     )
                 )
         slots: list[SnapshotSlotEvidence] = []
         for snapshot_id, group in grouped.items():
-            revisions = tuple(group["revisions"])
+            revisions = tuple(
+                sorted(
+                    group["revisions"],
+                    key=lambda item: (
+                        item.changed_at,
+                        item.snapshot_revision_id,
+                    ),
+                )
+            )
             selected = max(
                 revisions,
                 key=lambda item: (item.changed_at, item.snapshot_revision_id),
@@ -253,6 +339,72 @@ class DataQualityEvidenceRepository:
                 ),
             )
         )
+
+    def _validate_legacy_time_policy(self) -> None:
+        policy = self.legacy_time_policy
+        if policy is None:
+            return
+        database_name = self.session.scalar(select(func.database()))
+        if database_name != policy.database_name:
+            raise LegacyRevisionClassificationError(
+                "legacy revision policy database does not match the active schema"
+            )
+        revision = DramaMetricSnapshotRevision
+        fingerprint = self.session.execute(
+            select(
+                func.count(revision.snapshot_revision_id),
+                func.min(revision.changed_at),
+                func.max(revision.changed_at),
+                func.max(revision.snapshot_revision_id),
+            ).where(revision.snapshot_revision_id <= policy.max_revision_id)
+        ).one()
+        actual = (
+            int(fingerprint[0]),
+            fingerprint[1],
+            fingerprint[2],
+            int(fingerprint[3]) if fingerprint[3] is not None else None,
+        )
+        expected = (
+            policy.expected_revision_count,
+            policy.expected_min_changed_at,
+            policy.expected_max_changed_at,
+            policy.max_revision_id,
+        )
+        if actual != expected:
+            raise LegacyRevisionClassificationError(
+                "legacy revision policy fingerprint does not match this database"
+            )
+
+
+def _normalize_revision_changed_at(
+    *,
+    revision_id: int,
+    changed_at: datetime,
+    policy: LegacyRevisionTimePolicy | None,
+) -> tuple[datetime, str]:
+    if changed_at.tzinfo is not None:
+        raise LegacyRevisionClassificationError(
+            "revision changed_at must be stored as a naive DATETIME"
+        )
+    if policy is None or revision_id > policy.max_revision_id:
+        return changed_at, UTC_NAIVE
+    normalized = (
+        changed_at.replace(tzinfo=BUSINESS_TIME_ZONE)
+        .astimezone(UTC)
+        .replace(tzinfo=None)
+    )
+    return normalized, LEGACY_SHANGHAI_WALL_CLOCK
+
+
+def _utc_naive_to_local_wall_clock(
+    value: datetime,
+    time_zone: ZoneInfo,
+) -> datetime:
+    if value.tzinfo is not None:
+        raise LegacyRevisionClassificationError(
+            "analysis_as_of must be normalized to UTC-naive before repository access"
+        )
+    return value.replace(tzinfo=UTC).astimezone(time_zone).replace(tzinfo=None)
 
 
 def _window_bounds(score_date: date) -> tuple[datetime, datetime]:
@@ -298,9 +450,13 @@ def _latest_valid_slots(
 
 __all__ = (
     "BUSINESS_TIME_ZONE",
+    "LEGACY_SHANGHAI_WALL_CLOCK",
     "LIMITED_CURRENT_MASTER",
+    "UTC_NAIVE",
     "DataQualityEvidenceRepository",
     "EligibleFeedEvidence",
+    "LegacyRevisionClassificationError",
+    "LegacyRevisionTimePolicy",
     "QualityEvidenceBundle",
     "SnapshotRevisionEvidence",
     "SnapshotSlotEvidence",

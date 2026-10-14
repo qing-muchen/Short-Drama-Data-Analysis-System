@@ -126,6 +126,32 @@ def test_settings_require_environment_secret(monkeypatch: pytest.MonkeyPatch) ->
     assert TEST_SECRET not in repr(settings.secret_key)
 
 
+def test_legacy_revision_settings_require_one_complete_bundle() -> None:
+    with pytest.raises(ValidationError, match="all Data Quality legacy"):
+        Settings(
+            _env_file=None,
+            secret_key=TEST_SECRET,
+            data_quality_legacy_revision_database="isolated",
+        )
+
+
+def test_legacy_revision_settings_reject_aware_fingerprint_timestamps() -> None:
+    with pytest.raises(ValidationError, match="must be naive"):
+        Settings(
+            _env_file=None,
+            secret_key=TEST_SECRET,
+            data_quality_legacy_revision_database="isolated",
+            data_quality_legacy_revision_max_id=10,
+            data_quality_legacy_revision_expected_count=10,
+            data_quality_legacy_revision_expected_min_changed_at=datetime(
+                2026, 9, 1, tzinfo=UTC
+            ),
+            data_quality_legacy_revision_expected_max_changed_at=datetime(
+                2026, 9, 2, tzinfo=UTC
+            ),
+        )
+
+
 def test_active_user_login_returns_valid_token() -> None:
     session = create_autospec(Session, instance=True)
     users = UserRepository(session)
