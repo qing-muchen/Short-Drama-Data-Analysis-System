@@ -253,9 +253,9 @@ the starting baseline and produced no divergence: local ahead 2, behind 0 before
 final audit-note commit. The origin fetch and push URLs both identify the expected
 public GitHub repository, and the current branch is `main`.
 
-All eight newly introduced Blob objects were scanned, including complete contents
-rather than only the working-tree diff. They total 91,044 bytes, are all text, and
-contain no private key, GitHub/OpenAI/AWS/Slack token, JWT, SQL dump signature,
+All newly introduced Blob objects at the audit checkpoint were scanned, including
+complete contents rather than only the working-tree diff. They were all text and
+contained no private key, GitHub/OpenAI/AWS/Slack token, JWT, SQL dump signature,
 non-example `.env`, backup, database file, Windows user path, or new binary object.
 The one author email used by the new commits matches the already-published repository
 author identity. Changed paths are limited to the Evidence compatibility code, its
